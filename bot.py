@@ -95,9 +95,26 @@ def _init_supabase():
         return False
     try:
         from supabase import create_client
+        import httpx
+        transport = httpx.HTTPTransport()
         _sb_client = create_client(SUPABASE_URL, SUPABASE_KEY)
         log.info("[SUPABASE INIT] ✅ Client berjaya dibuat")
         return True
+    except TypeError as exc:
+        if 'proxy' in str(exc):
+            log.warning("[SUPABASE INIT] Proxy error detected, trying alternative...")
+            try:
+                import supabase
+                _sb_client = supabase.Client(SUPABASE_URL, SUPABASE_KEY)
+                log.info("[SUPABASE INIT] ✅ Client berjaya dibuat (alternative)")
+                return True
+            except Exception as exc2:
+                log.error(f"[SUPABASE INIT] ❌ Alternative failed: {exc2}")
+                _sb_client = None
+                return False
+        log.error(f"[SUPABASE INIT] ❌ TypeError: {exc}")
+        _sb_client = None
+        return False
     except Exception as exc:
         log.error(f"[SUPABASE INIT] ❌ create_client failed: {exc}")
         _sb_client = None
