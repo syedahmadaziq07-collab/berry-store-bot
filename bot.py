@@ -20,8 +20,8 @@ load_dotenv()
 # Logs to console AND to bot.log file for debugging
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -51,12 +51,17 @@ except ValueError:
 
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
-log.info("=" * 50)
-log.info(f"BOT_TOKEN    : {'✅ set' if BOT_TOKEN else '❌ MISSING'}")
-log.info(f"SUPABASE_URL : {'✅ ' + SUPABASE_URL[:35] if SUPABASE_URL else '❌ MISSING'}")
-log.info(f"SUPABASE_KEY : {'✅ set (len=' + str(len(SUPABASE_KEY)) + ')' if SUPABASE_KEY else '❌ MISSING'}")
-log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
-log.info("=" * 50)
+log.info("=" * 60)
+log.info("DEBUG STARTUP — ENVIRONMENT VARIABLES")
+log.info("=" * 60)
+log.info(f"BOT_TOKEN        : {'✅ set' if BOT_TOKEN else '❌ MISSING'}")
+log.info(f"SUPABASE_URL     : {SUPABASE_URL[:30] + '...' if SUPABASE_URL else '❌ MISSING'}")
+log.info(f"SUPABASE_URL len : {len(SUPABASE_URL)} chars")
+log.info(f"SUPABASE_KEY len : {len(SUPABASE_KEY)} chars")
+log.info(f"SUPABASE_KEY ok  : {'✅ starts with eyJ' if SUPABASE_KEY.startswith('eyJ') else '❌ does NOT start with eyJ'}")
+log.info(f"ADMIN_ID         : {ADMIN_ID if ADMIN_ID else '❌ MISSING or 0'}")
+log.info(f"PORT             : {PORT}")
+log.info("=" * 60)
 
 if not BOT_TOKEN:
     log.critical("BOT_TOKEN tidak ditetapkan. Set dalam Replit Secrets → BOT_TOKEN")
@@ -84,15 +89,32 @@ _products_cache = {"data": [], "updated_at": 0.0}
 def _init_supabase():
     """Create (or recreate) Supabase client. Returns True on success."""
     global _sb_client
+    log.debug(f"[SUPABASE INIT] _supabase_ready={_supabase_ready}")
     if not _supabase_ready:
+        log.warning("[SUPABASE INIT] Skipped — _supabase_ready is False. Check SUPABASE_URL and SUPABASE_KEY.")
         return False
     try:
-        from supabase import create_client
-        _sb_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        log.info("Supabase ✅ client berjaya dibuat")
+        log.debug(f"[SUPABASE INIT] Importing supabase library...")
+        from supabase import create_client, ClientOptions
+        log.debug(f"[SUPABASE INIT] Calling create_client with URL={SUPABASE_URL[:30]}...")
+        _sb_client = create_client(
+            SUPABASE_URL,
+            SUPABASE_KEY,
+            options=ClientOptions(postgrest_client_timeout=10),
+        )
+        log.info("[SUPABASE INIT] ✅ Client berjaya dibuat")
+
+        # Live connection test — try fetching one row from products table
+        log.debug("[SUPABASE INIT] Testing live query on 'products' table...")
+        try:
+            test = _sb_client.table("products").select("id").limit(1).execute()
+            log.info(f"[SUPABASE INIT] ✅ Live query OK — products table reachable. Rows returned: {len(test.data)}")
+        except Exception as test_exc:
+            log.error(f"[SUPABASE INIT] ❌ Live query FAILED: {type(test_exc).__name__}: {test_exc}")
+
         return True
     except Exception as exc:
-        log.error(f"Supabase ❌ gagal buat client: {exc}")
+        log.error(f"[SUPABASE INIT] ❌ create_client failed: {type(exc).__name__}: {exc}")
         _sb_client = None
         return False
 
