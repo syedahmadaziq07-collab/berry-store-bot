@@ -9,6 +9,7 @@ import time
 import random
 import logging
 import threading
+import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -28,6 +29,8 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # ─── Load Environment Variables ───────────────────────────────────────────────
 
@@ -35,7 +38,7 @@ def _get_env(key: str, fallback: str = "") -> str:
     """Get env var, strip whitespace, return fallback if empty."""
     return (os.getenv(key) or fallback).strip()
 
-BOT_TOKEN    = _get_env("BOT_TOKEN") or _get_env("TOKEN")
+BOT_TOKEN    = _get_env("BOT_TOKEN") or _get_env("TOKEN") or _get_env("TELEGRAM_BOT_TOKEN")
 SUPABASE_URL = _get_env("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY = _get_env("SUPABASE_KEY")
 ADMIN_ID     = 0
@@ -76,6 +79,7 @@ else:
 # ─── Supabase Client ──────────────────────────────────────────────────────────
 
 _sb_client = None
+_products_cache = {"data": [], "updated_at": 0.0}
 
 def _init_supabase():
     """Create (or recreate) Supabase client. Returns True on success."""
@@ -103,6 +107,47 @@ def get_sb():
 
 _init_supabase()
 
+def _reset_supabase(reason: str):
+    global _sb_client
+    log.warning(f"Supabase client reset: {reason}")
+    _sb_client = None
+
+async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int = 12):
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        started = time.monotonic()
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(lambda: operation(get_sb())),
+                timeout=timeout,
+            )
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            log.info(f"Supabase {label} ok attempt={attempt} duration_ms={elapsed_ms}")
+            return result
+        except Exception as exc:
+            last_exc = exc
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            log.warning(
+                f"Supabase {label} failed attempt={attempt}/{attempts} duration_ms={elapsed_ms} "
+                f"type={type(exc).__name__} error={str(exc)[:300]}"
+            )
+            _reset_supabase(f"{label} attempt {attempt} failed")
+            if attempt < attempts:
+                await asyncio.sleep(min(0.4 * (2 ** (attempt - 1)) + random.uniform(0, 0.3), 3))
+    raise last_exc
+
+def _cache_products(products):
+    _products_cache["data"] = products or []
+    _products_cache["updated_at"] = time.time()
+
+def _cached_products(max_age: int = 300):
+    products = _products_cache.get("data") or []
+    updated_at = float(_products_cache.get("updated_at") or 0)
+    age = time.time() - updated_at if updated_at else 999999
+    if products and age <= max_age:
+        return products, int(age)
+    return [], int(age)
+
 # ─── Flask Keep-Alive Server ──────────────────────────────────────────────────
 
 from flask import Flask, jsonify
@@ -115,7 +160,13 @@ def _index():
 
 @_app.route("/health")
 def _health():
-    return jsonify(status="ok", supabase=_sb_client is not None), 200
+    cached, age = _cached_products()
+    return jsonify(
+        status="ok",
+        supabase=_sb_client is not None,
+        cached_products=len(cached),
+        products_cache_age_seconds=age if cached else None,
+    ), 200
 
 def _start_flask():
     log.info(f"Flask keep-alive berjalan di port {PORT}")
@@ -126,6 +177,7 @@ threading.Thread(target=_start_flask, daemon=True).start()
 # ─── Telegram Imports ─────────────────────────────────────────────────────────
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import Conflict
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -192,29 +244,36 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        products = get_sb().table("products").select("*").execute().data
+        result = await _run_supabase(
+            "products.list",
+            lambda sb: sb.table("products").select("id, name, stock, price, duration").order("id").execute(),
+        )
+        products = result.data or []
+        _cache_products(products)
+        log.info(f"Products loaded: {len(products)} items source=supabase")
     except Exception as exc:
-        log.warning(f"Supabase shop: {exc}")
-        msg = "⚠️ Gagal muatkan produk. Cuba lagi."
-        if update.callback_query:
-            await update.callback_query.edit_message_text(msg, reply_markup=back_home())
+        products, age = _cached_products()
+        if products:
+            log.error(f"Shop error using cached products age_s={age}: {exc}", exc_info=True)
         else:
-            await update.message.reply_text(msg, reply_markup=back_home())
-        return
+            log.error(f"Shop error no cache available: {exc}", exc_info=True)
+            msg = f"⚠️ Gagal muatkan produk. Cuba lagi.\nError: {str(exc)[:100]}"
+            if update.callback_query:
+                await update.callback_query.edit_message_text(msg, reply_markup=back_home())
+            else:
+                await update.message.reply_text(msg, reply_markup=back_home())
+            return
 
     if not products:
-        text, kb = "⚠️ Tiada produk tersedia.", back_home()
+        text = "⚠️ Tiada produk tersedia."
+        kb = back_home()
     else:
-        text = (
-            "╭ - - - - - - - - - - - - - - - - - - - ╮\n"
-            "┊  LIST PRODUCT\n"
-            "┊ - - - - - - - - - - - - - - - - - - - -\n"
-        )
+        text = "╭─────────────────────╮\n┊  LIST PRODUCT\n┊─────────────────────\n"
         rows = []
         for i, p in enumerate(products, 1):
             text += f"┊ {i}. {p['name']} ( {p['stock']} )\n"
             rows.append([InlineKeyboardButton(str(i), callback_data=f"product_{p['id']}")])
-        text += "╰ - - - - - - - - - - - - - - - - - - - ╯"
+        text += "╰─────────────────────╯"
         rows.append([InlineKeyboardButton("🏠 Home", callback_data="home")])
         kb = InlineKeyboardMarkup(rows)
 
@@ -230,11 +289,20 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     qty = max(1, min(qty, 10))   # clamp between 1–10
 
     try:
-        p = get_sb().table("products").select("*").eq("id", product_id).single().execute().data
+        result = await _run_supabase(
+            f"products.detail id={product_id}",
+            lambda sb: sb.table("products").select("*").eq("id", product_id).single().execute(),
+        )
+        p = result.data
     except Exception as exc:
-        log.warning(f"Supabase product: {exc}")
-        await update.callback_query.edit_message_text("⚠️ Gagal muatkan produk.", reply_markup=back_shop())
-        return
+        cached, age = _cached_products()
+        p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
+        if p:
+            log.warning(f"Supabase product detail fallback id={product_id} cache_age_s={age}: {exc}")
+        else:
+            log.warning(f"Supabase product detail failed id={product_id}: {exc}", exc_info=True)
+            await update.callback_query.edit_message_text("⚠️ Gagal muatkan produk. Cuba lagi.", reply_markup=back_shop())
+            return
 
     total = round(p["price"] * qty, 2)
     stock = p.get("stock", 0)
@@ -269,29 +337,45 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 
 async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int):
     user = update.effective_user
+    print(f"[CREATE_ORDER] product_id={product_id} qty={qty} user={user.id}")
     try:
-        sb = get_sb()
-        p  = sb.table("products").select("*").eq("id", product_id).single().execute().data
+        product_result = await _run_supabase(
+            f"products.order_fetch id={product_id}",
+            lambda sb: sb.table("products").select("*").eq("id", product_id).single().execute(),
+        )
+        p = product_result.data
     except Exception as exc:
-        log.warning(f"Supabase create_order fetch: {exc}")
-        await update.callback_query.answer("⚠️ Ralat sambungan. Cuba lagi.", show_alert=True)
+        log.warning(f"Supabase create_order fetch product_id={product_id}: {exc}", exc_info=True)
+        print(f"[CREATE_ORDER] ERROR fetching product: {exc}")
+        # answer() already called in on_button — use edit instead
+        await update.callback_query.edit_message_text(
+            "⚠️ Ralat sambungan. Cuba lagi.", reply_markup=back_shop())
         return
 
     if p["stock"] < qty:
-        await update.callback_query.answer("⚠️ Stok tidak mencukupi!", show_alert=True)
+        await update.callback_query.edit_message_text(
+            "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
         return
 
     order_id = f"ORD{random.randint(10000, 99999)}{user.id}"
     total    = round(p["price"] * qty, 2)
+    print(f"[CREATE_ORDER] Inserting order {order_id} total=RM{total}")
     try:
-        sb.table("orders").insert({
-            "id": order_id, "user_id": user.id, "username": user.username or "",
-            "product_id": product_id, "product_name": p["name"],
-            "quantity": qty, "amount": total, "status": "pending",
-        }).execute()
+        await _run_supabase(
+            f"orders.insert id={order_id}",
+            lambda sb: sb.table("orders").insert({
+                "id": order_id, "user_id": user.id, "username": user.username or "",
+                "product_id": product_id, "product_name": p["name"],
+                "quantity": qty, "amount": total, "status": "pending",
+            }).execute(),
+            attempts=1,
+        )
     except Exception as exc:
         log.warning(f"Supabase create_order insert: {exc}")
-        await update.callback_query.answer("⚠️ Gagal buat order. Cuba lagi.", show_alert=True)
+        print(f"[CREATE_ORDER] ERROR inserting order: {exc}")
+        await update.callback_query.edit_message_text(
+            f"⚠️ Gagal buat order.\n\nRalat: {exc}\n\nSila hubungi admin.",
+            reply_markup=back_shop())
         return
 
     log.info(f"Order created: {order_id} by {user.id}")
@@ -312,15 +396,14 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    # answer() already called in on_button — do NOT call query.answer() here
     query = update.callback_query
     try:
         order = get_sb().table("orders").select("*").eq("id", order_id).single().execute().data
     except Exception as exc:
         log.warning(f"Supabase payment: {exc}")
-        await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.")
+        await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
         return
-
-    await query.answer()
 
     qr = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payment_qr.png")
 
@@ -452,7 +535,9 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     if update.effective_user.id != ADMIN_ID:
-        await update.callback_query.answer("⛔ Bukan admin.", show_alert=True); return
+        await update.callback_query.edit_message_caption(
+            caption="⛔ Bukan admin.", reply_markup=None)
+        return
     try:
         sb    = get_sb()
         order = sb.table("orders").select("*").eq("id", order_id).single().execute().data
@@ -462,28 +547,69 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             sb.table("products").update({"stock": max(0, p["stock"] - order["quantity"])}).eq("id", order["product_id"]).execute()
     except Exception as exc:
         log.warning(f"Supabase approve: {exc}")
-        await update.callback_query.answer("⚠️ Ralat approve.", show_alert=True); return
+        print(f"[APPROVE] ERROR: {exc}")
+        await update.callback_query.edit_message_caption(
+            caption=f"⚠️ Ralat approve: {exc}", reply_markup=None)
+        return
 
     log.info(f"Order {order_id} approved by admin")
     await update.callback_query.edit_message_caption(
         caption=(update.callback_query.message.caption or "") + "\n\n✅ APPROVED", reply_markup=None)
+    # Message 1 → Customer
     try:
-        await context.bot.send_message(chat_id=order["user_id"],
-            text="✅ Payment confirmed! Admin will send your account shortly.")
+        await context.bot.send_message(
+            chat_id=order["user_id"],
+            text=(
+                "✅ Pembayaran anda telah disahkan!\n\n"
+                "✅ Payment dah confirm!\n\n"
+                "Akaun akan dihantar secepat mungkin 🚀\n"
+                "(biasanya laju je, tak lebih dari 1 jam 😉)\n\n"
+                "Kalau lebih 1 jam tak dapat apa-apa, jangan segan terus DM admin: @berryrc ya 🙌"
+            ),
+        )
     except Exception as exc:
         log.warning(f"Notify user approve: {exc}")
+
+    # Message 2 → Admin (copy-paste /send command)
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"/send {order_id}",
+        )
+    except Exception as exc:
+        log.warning(f"Notify admin send command: {exc}")
+
+    # Message 3 → Admin (account template to fill in)
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"Order: {order_id}\n"
+                f"Produk: {order.get('product_name', '-')}\n"
+                f"Customer: @{order.get('username', '-')}\n\n"
+                f"Email: \n"
+                f"Password: "
+            ),
+        )
+    except Exception as exc:
+        log.warning(f"Notify admin template: {exc}")
 
 
 async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     if update.effective_user.id != ADMIN_ID:
-        await update.callback_query.answer("⛔ Bukan admin.", show_alert=True); return
+        await update.callback_query.edit_message_caption(
+            caption="⛔ Bukan admin.", reply_markup=None)
+        return
     try:
         sb    = get_sb()
         order = sb.table("orders").select("*").eq("id", order_id).single().execute().data
         sb.table("orders").update({"status": "rejected"}).eq("id", order_id).execute()
     except Exception as exc:
         log.warning(f"Supabase reject: {exc}")
-        await update.callback_query.answer("⚠️ Ralat reject.", show_alert=True); return
+        print(f"[REJECT] ERROR: {exc}")
+        await update.callback_query.edit_message_caption(
+            caption=f"⚠️ Ralat reject: {exc}", reply_markup=None)
+        return
 
     log.info(f"Order {order_id} rejected by admin")
     await update.callback_query.edit_message_caption(
@@ -542,8 +668,11 @@ async def _admin_notify(context: ContextTypes.DEFAULT_TYPE, text: str):
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q    = update.callback_query
     data = q.data
+    # Answer FIRST — dismisses the Telegram loading spinner immediately.
+    # Never call q.answer() again inside any sub-handler.
     await q.answer()
-    log.debug(f"Button: {data} from {update.effective_user.id}")
+    print(f"[BUTTON] Callback received: {q.data} from user {update.effective_user.id}")
+    log.info(f"Button: {data} from {update.effective_user.id}")
 
     try:
         if   data == "home":               await show_home(update, context)
@@ -551,24 +680,20 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "myorders":           await my_orders(update, context)
         elif data == "referral":           await show_referral(update, context)
         elif data == "support":            await show_support(update, context)
-        elif data == "qty_display":        await q.answer("Guna ➖ ➕ untuk tukar qty")
+        elif data == "qty_display":        pass  # display-only button, answer() already called above
 
         elif data.startswith("product_"):
-            # product_{product_id}
             await show_product(update, context, int(data.split("_")[1]))
 
         elif data.startswith("qty_minus_"):
-            # qty_minus_{product_id}_{current_qty}
             parts = data.split("_")          # ['qty', 'minus', pid, qty]
             await qty_adjust(update, context, int(parts[2]), int(parts[3]), -1)
 
         elif data.startswith("qty_plus_"):
-            # qty_plus_{product_id}_{current_qty}
             parts = data.split("_")          # ['qty', 'plus', pid, qty]
             await qty_adjust(update, context, int(parts[2]), int(parts[3]), +1)
 
         elif data.startswith("buy_"):
-            # buy_{product_id}_{qty}
             parts = data.split("_")
             await create_order(update, context, int(parts[1]), int(parts[2]))
 
@@ -637,26 +762,268 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buyer_id = info["user_id"]
     details  = update.message.text
 
+    # Fetch product duration from order → product
+    duration = "-"
+    try:
+        sb    = get_sb()
+        order = sb.table("orders").select("product_id").eq("id", order_id).single().execute().data
+        if order.get("product_id"):
+            p        = sb.table("products").select("duration").eq("id", order["product_id"]).single().execute().data
+            duration = p.get("duration") or "-"
+    except Exception as exc:
+        log.warning(f"Could not fetch duration for order {order_id}: {exc}")
+
     try:
         await context.bot.send_message(
             chat_id=buyer_id,
             text=(
-                f"🎉 Your account is ready!\n"
+                f"🎉 Akaun anda sudah sedia!\n"
                 f"Order ID: {order_id}\n\n"
                 f"{details}\n\n"
-                f"Keep this info safe. Do not share with anyone."
+                f"⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
+                f"📌 Tempoh: {duration}\n"
+                f"💬 Ada masalah? Hubungi: @berryrc"
             ),
         )
-        await update.message.reply_text(f"✅ Account details sent to buyer (Order: {order_id})")
+        await update.message.reply_text(f"✅ Maklumat akaun berjaya dihantar kepada pembeli (Order: {order_id})")
         log.info(f"Account details sent for order {order_id} → buyer {buyer_id}")
     except Exception as exc:
         log.warning(f"Send account details error: {exc}")
-        await update.message.reply_text(f"⚠️ Failed to send to buyer: {exc}")
+        await update.message.reply_text(f"⚠️ Gagal hantar kepada pembeli: {exc}")
 
+
+# ─── /stock ───────────────────────────────────────────────────────────────────
+
+async def cmd_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+
+    try:
+        result = await _run_supabase(
+            "products.stock_list",
+            lambda sb: sb.table("products").select("id, name, stock").order("id").execute(),
+        )
+        products = result.data or []
+    except Exception as exc:
+        log.warning(f"stock fetch error: {exc}", exc_info=True)
+        await update.message.reply_text(f"⚠️ Gagal muatkan produk: {exc}")
+        return
+
+    # No args → show product list with IDs
+    if not context.args:
+        if not products:
+            await update.message.reply_text("⚠️ Tiada produk dalam database.")
+            return
+        lines = ["📦 SENARAI PRODUK & STOK", "─────────────────────"]
+        for p in products:
+            lines.append(f"ID {p['id']}  |  {p['name']}  |  Stok: {p['stock']}")
+        lines.append("─────────────────────")
+        lines.append("Guna: /stock <id> <kuantiti>")
+        lines.append("Contoh: /stock 1 50")
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    # Validate args: /stock <product_id> <quantity>
+    if len(context.args) != 2:
+        await update.message.reply_text("⚠️ Format salah.\nGuna: /stock <id> <kuantiti>\nContoh: /stock 1 50")
+        return
+
+    try:
+        product_id = int(context.args[0])
+        new_stock  = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("⚠️ ID dan kuantiti mesti nombor.\nContoh: /stock 1 50")
+        return
+
+    if new_stock < 0:
+        await update.message.reply_text("⚠️ Stok tidak boleh negatif.")
+        return
+
+    # Find product name for confirmation message
+    product = next((p for p in products if p["id"] == product_id), None)
+    if not product:
+        await update.message.reply_text(f"⚠️ Produk ID {product_id} tidak dijumpai.\nGuna /stock untuk tengok senarai.")
+        return
+
+    try:
+        sb.table("products").update({"stock": new_stock}).eq("id", product_id).execute()
+    except Exception as exc:
+        log.warning(f"stock update error: {exc}")
+        await update.message.reply_text(f"⚠️ Gagal update stok: {exc}")
+        return
+
+    log.info(f"Stock updated: product {product_id} → {new_stock} by admin")
+    await update.message.reply_text(
+        f"✅ Stok berjaya dikemaskini!\n\n"
+        f"Produk : {product['name']}\n"
+        f"Stok lama: {product['stock']}\n"
+        f"Stok baru: {new_stock}"
+    )
+
+# ─── /broadcast ───────────────────────────────────────────────────────────────
+
+async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+
+    message = " ".join(context.args).strip() if context.args else ""
+    if not message:
+        await update.message.reply_text(
+            "⚠️ Sila masukkan mesej.\n\nContoh:\n/broadcast Produk baru dah ada! Check /start sekarang 🔥"
+        )
+        return
+
+    try:
+        users = get_sb().table("users").select("id").execute().data
+    except Exception as exc:
+        log.warning(f"broadcast fetch users error: {exc}")
+        await update.message.reply_text(f"⚠️ Gagal ambil senarai pengguna: {exc}")
+        return
+
+    if not users:
+        await update.message.reply_text("⚠️ Tiada pengguna dalam database.")
+        return
+
+    sent = failed = 0
+    for u in users:
+        try:
+            await context.bot.send_message(chat_id=u["id"], text=message)
+            sent += 1
+        except Exception as exc:
+            log.warning(f"broadcast failed for user {u['id']}: {exc}")
+            failed += 1
+
+    log.info(f"Broadcast done: {sent} sent, {failed} failed")
+    await update.message.reply_text(
+        f"📢 Broadcast selesai!\n\n"
+        f"✅ Berjaya dihantar : {sent} pengguna\n"
+        f"❌ Gagal            : {failed} pengguna"
+    )
+
+# ─── /adminorders ─────────────────────────────────────────────────────────────
+
+async def cmd_adminorders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+
+    try:
+        sb     = get_sb()
+        orders = (
+            sb.table("orders")
+            .select("id, user_id, username, product_name, amount, status")
+            .in_("status", ["pending", "waiting_approval"])
+            .order("id", desc=True)
+            .limit(10)
+            .execute()
+            .data
+        )
+    except Exception as exc:
+        log.warning(f"adminorders error: {exc}")
+        await update.message.reply_text(f"⚠️ Gagal muatkan orders: {exc}")
+        return
+
+    if not orders:
+        await update.message.reply_text("✅ Tiada order yang menunggu tindakan.")
+        return
+
+    STATUS_LABEL = {
+        "pending":          "⏳ Belum bayar",
+        "waiting_approval": "🔍 Tunggu approve",
+    }
+
+    lines = ["📋 PENDING ORDERS", "─────────────────────"]
+    for o in orders:
+        label = STATUS_LABEL.get(o["status"], o["status"])
+        lines.append(
+            f"{label}\n"
+            f"  Order  : {o['id']}\n"
+            f"  Produk : {o.get('product_name', '-')}\n"
+            f"  Customer: @{o.get('username', '-')}\n"
+            f"  RM {o['amount']}\n"
+        )
+
+    lines.append("─────────────────────")
+    lines.append(f"Total: {len(orders)} order")
+
+    await update.message.reply_text("\n".join(lines))
+
+# ─── /ping ────────────────────────────────────────────────────────────────────
+
+async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Pong! Bot hidup ✅")
+
+# ─── /admin Dashboard ─────────────────────────────────────────────────────────
+
+async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+
+    try:
+        all_orders_result = await _run_supabase(
+            "admin.orders_summary",
+            lambda sb: sb.table("orders").select("status, amount").execute(),
+        )
+        products_result = await _run_supabase(
+            "admin.products_summary",
+            lambda sb: sb.table("products").select("name, stock, price").execute(),
+        )
+        users_result = await _run_supabase(
+            "admin.users_summary",
+            lambda sb: sb.table("users").select("id").execute(),
+        )
+
+        all_orders     = all_orders_result.data or []
+        products       = products_result.data or []
+        total_users    = len(users_result.data or [])
+
+        pending        = [o for o in all_orders if o["status"] == "pending"]
+        waiting        = [o for o in all_orders if o["status"] == "waiting_approval"]
+        completed      = [o for o in all_orders if o["status"] == "completed"]
+        total_revenue  = sum(float(o["amount"]) for o in completed)
+        low_stock      = [p for p in products if p.get("stock", 0) <= 3]
+
+    except Exception as exc:
+        log.warning(f"Admin dashboard error: {exc}", exc_info=True)
+        await update.message.reply_text(f"⚠️ Gagal muatkan data: {exc}")
+        return
+
+    now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
+
+    lines = [
+        f"🛠 ADMIN DASHBOARD",
+        f"📅 {now}",
+        f"─────────────────────",
+        f"👤 Total Users   : {total_users}",
+        f"📦 Total Orders  : {len(all_orders)}",
+        f"✅ Completed     : {len(completed)}",
+        f"🔍 Pending Resit : {len(waiting)}",
+        f"⏳ Pending Pay   : {len(pending)}",
+        f"💰 Total Revenue : RM {total_revenue:.2f}",
+        f"─────────────────────",
+    ]
+
+    if low_stock:
+        lines.append("⚠️ LOW STOCK (≤3 unit):")
+        for p in low_stock:
+            lines.append(f"  • {p['name']} — {p['stock']} unit")
+    else:
+        lines.append("✅ Semua stok mencukupi")
+
+    await update.message.reply_text("\n".join(lines))
 
 # ─── Global Error Handler ─────────────────────────────────────────────────────
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
+    if isinstance(context.error, Conflict):
+        log.error(
+            "Telegram polling conflict detected. Another running bot instance is using the same token. "
+            "Stop the old Replit/deployment/session that uses this bot token."
+        )
+        return
     log.error(f"Telegram error: {context.error}", exc_info=True)
 
 # ─── Build Application ────────────────────────────────────────────────────────
@@ -664,6 +1031,11 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
+    app.add_handler(CommandHandler("ping",        cmd_ping))
+    app.add_handler(CommandHandler("admin",       cmd_admin))
+    app.add_handler(CommandHandler("adminorders", cmd_adminorders))
+    app.add_handler(CommandHandler("stock",       cmd_stock))
+    app.add_handler(CommandHandler("broadcast",   cmd_broadcast))
     app.add_handler(CommandHandler("shop",   show_shop))
     app.add_handler(CommandHandler("orders", my_orders))
     app.add_handler(CommandHandler("send",   send_account_command))
@@ -689,7 +1061,6 @@ def main():
                 drop_pending_updates=True,
                 allowed_updates=Update.ALL_TYPES,
             )
-            # run_polling only returns on clean shutdown
             log.info("Bot berhenti dengan bersih.")
             break
 
