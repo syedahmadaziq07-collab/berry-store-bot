@@ -94,27 +94,12 @@ def _init_supabase():
         log.warning("[SUPABASE INIT] Skipped — _supabase_ready is False. Check SUPABASE_URL and SUPABASE_KEY.")
         return False
     try:
-        log.debug(f"[SUPABASE INIT] Importing supabase library...")
-        from supabase import create_client, ClientOptions
-        log.debug(f"[SUPABASE INIT] Calling create_client with URL={SUPABASE_URL[:30]}...")
-        _sb_client = create_client(
-            SUPABASE_URL,
-            SUPABASE_KEY,
-            options=ClientOptions(postgrest_client_timeout=10),
-        )
+        from supabase import create_client
+        _sb_client = create_client(SUPABASE_URL, SUPABASE_KEY)
         log.info("[SUPABASE INIT] ✅ Client berjaya dibuat")
-
-        # Live connection test — try fetching one row from products table
-        log.debug("[SUPABASE INIT] Testing live query on 'products' table...")
-        try:
-            test = _sb_client.table("products").select("id").limit(1).execute()
-            log.info(f"[SUPABASE INIT] ✅ Live query OK — products table reachable. Rows returned: {len(test.data)}")
-        except Exception as test_exc:
-            log.error(f"[SUPABASE INIT] ❌ Live query FAILED: {type(test_exc).__name__}: {test_exc}")
-
         return True
     except Exception as exc:
-        log.error(f"[SUPABASE INIT] ❌ create_client failed: {type(exc).__name__}: {exc}")
+        log.error(f"[SUPABASE INIT] ❌ create_client failed: {exc}")
         _sb_client = None
         return False
 
