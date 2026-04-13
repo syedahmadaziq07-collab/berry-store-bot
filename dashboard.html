@@ -375,17 +375,40 @@ button:active{transform:scale(.97)}
 
     <!-- ══ PAGE: ORDERS ══ -->
     <div class="page" id="page-orders">
-      <div class="filter-row">
-        <input type="text" id="ordSearch" placeholder="🔍 Order ID or @username" oninput="filterOrders()"/>
-        <div class="filter-pills" id="statusPills">
-          <span class="fpill active" data-st="" onclick="setStatusFilter(this,'')">All</span>
-          <span class="fpill" data-st="pending" onclick="setStatusFilter(this,'pending')">Pending</span>
-          <span class="fpill" data-st="waiting_approval" onclick="setStatusFilter(this,'waiting_approval')">Waiting Approval</span>
-          <span class="fpill" data-st="completed" onclick="setStatusFilter(this,'completed')">Completed</span>
-          <span class="fpill" data-st="cancelled" onclick="setStatusFilter(this,'cancelled')">Cancelled</span>
-          <span class="fpill" data-st="rejected" onclick="setStatusFilter(this,'rejected')">Rejected</span>
+
+      <!-- Search + Date filter row -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem">
+        <input type="text" id="ordSearch" placeholder="Search by Order ID or username…" oninput="filterOrders()" style="width:300px;min-width:220px;padding:.4rem .75rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.8rem;background:var(--white);outline:none;color:var(--text);font-family:inherit"/>
+        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+          <div class="filter-pills" id="datePills">
+            <span class="fpill fpill-date active" data-dt="all"       onclick="setDateFilter(this,'all')">All Time</span>
+            <span class="fpill fpill-date"         data-dt="today"     onclick="setDateFilter(this,'today')">Today</span>
+            <span class="fpill fpill-date"         data-dt="yesterday" onclick="setDateFilter(this,'yesterday')">Yesterday</span>
+            <span class="fpill fpill-date"         data-dt="week"      onclick="setDateFilter(this,'week')">This Week</span>
+            <span class="fpill fpill-date"         data-dt="month"     onclick="setDateFilter(this,'month')">This Month</span>
+            <span class="fpill fpill-date"         data-dt="custom"    onclick="setDateFilter(this,'custom')">Custom</span>
+          </div>
+          <div id="customDateWrap" style="display:none;align-items:center;gap:.35rem">
+            <input type="date" id="ordFrom" style="font-size:.78rem;padding:.3rem .55rem;border:1px solid var(--border);border-radius:var(--r-s);outline:none;font-family:inherit;color:var(--text)"/>
+            <span style="font-size:.78rem;color:var(--text-s)">to</span>
+            <input type="date" id="ordTo"   style="font-size:.78rem;padding:.3rem .55rem;border:1px solid var(--border);border-radius:var(--r-s);outline:none;font-family:inherit;color:var(--text)"/>
+            <button class="btn-primary btn-sm btn-pill" onclick="loadOrders()">Apply</button>
+          </div>
         </div>
       </div>
+
+      <!-- Status filter pills -->
+      <div class="filter-row" style="margin-bottom:.85rem">
+        <div class="filter-pills" id="statusPills">
+          <span class="fpill fpill-status active" data-st="" onclick="setStatusFilter(this,'')">All</span>
+          <span class="fpill fpill-status" data-st="pending"          onclick="setStatusFilter(this,'pending')">Pending</span>
+          <span class="fpill fpill-status" data-st="waiting_approval" onclick="setStatusFilter(this,'waiting_approval')">Waiting Approval</span>
+          <span class="fpill fpill-status" data-st="completed"        onclick="setStatusFilter(this,'completed')">Completed</span>
+          <span class="fpill fpill-status" data-st="cancelled"        onclick="setStatusFilter(this,'cancelled')">Cancelled</span>
+          <span class="fpill fpill-status" data-st="rejected"         onclick="setStatusFilter(this,'rejected')">Rejected</span>
+        </div>
+      </div>
+
       <div class="table-card">
         <div class="tc-hdr">
           <h3>Orders</h3>
@@ -848,12 +871,56 @@ function drawWeekChart(labels, data) {
 // ORDERS
 // ══════════════════════════════════════════
 let _ordStatusFilter = '';
+let _ordDateFilter   = 'all';
+
+function getOrderDateRange() {
+  const t    = today();
+  const now  = t + 'T23:59:59';
+  if (_ordDateFilter === 'today') {
+    return { from: t + 'T00:00:00', to: now };
+  }
+  if (_ordDateFilter === 'yesterday') {
+    const y = dateOffset(-1);
+    return { from: y + 'T00:00:00', to: y + 'T23:59:59' };
+  }
+  if (_ordDateFilter === 'week') {
+    const d = new Date();
+    const day = d.getDay(); // 0=Sun
+    const diff = (day === 0 ? 6 : day - 1); // days since Monday
+    d.setDate(d.getDate() - diff);
+    const mon = d.toISOString().slice(0,10);
+    return { from: mon + 'T00:00:00', to: now };
+  }
+  if (_ordDateFilter === 'month') {
+    return { from: t.slice(0,7) + '-01T00:00:00', to: now };
+  }
+  if (_ordDateFilter === 'custom') {
+    const from = document.getElementById('ordFrom').value;
+    const to   = document.getElementById('ordTo').value;
+    if (from && to) return { from: from + 'T00:00:00', to: to + 'T23:59:59' };
+  }
+  return null; // all time
+}
+
+function getDateLabel() {
+  const labels = { all:'', today:' · today', yesterday:' · yesterday', week:' · this week', month:' · this month', custom:' · custom range' };
+  return labels[_ordDateFilter] || '';
+}
 
 function setStatusFilter(el, st) {
   _ordStatusFilter = st;
-  document.querySelectorAll('.fpill').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#statusPills .fpill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   loadOrders();
+}
+
+function setDateFilter(el, dt) {
+  _ordDateFilter = dt;
+  document.querySelectorAll('#datePills .fpill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  const wrap = document.getElementById('customDateWrap');
+  wrap.style.display = dt === 'custom' ? 'flex' : 'none';
+  if (dt !== 'custom') loadOrders();
 }
 
 async function loadOrders() {
@@ -863,13 +930,16 @@ async function loadOrders() {
   try {
     let q = sb.from('orders')
       .select('id,user_id,username,product_name,amount,status,created_at')
-      .order('created_at',{ascending:false}).limit(50);
-    if (_ordStatusFilter) q = q.eq('status',_ordStatusFilter);
+      .order('created_at',{ascending:false}).limit(200);
+    if (_ordStatusFilter) q = q.eq('status', _ordStatusFilter);
+    const range = getOrderDateRange();
+    if (range) {
+      q = q.gte('created_at', range.from).lte('created_at', range.to);
+    }
     const {data,error} = await q;
     if (error) throw error;
     _allOrders = data||[];
-    renderOrders(_allOrders);
-    document.getElementById('ordCount').textContent = _allOrders.length + ' orders';
+    filterOrders();
     markUpdated();
   } catch(e) {
     tbody.innerHTML = `<tr class="empty-r"><td colspan="6">⚠️ ${e.message}</td></tr>`;
@@ -877,12 +947,15 @@ async function loadOrders() {
 }
 
 function filterOrders() {
-  const q = document.getElementById('ordSearch').value.toLowerCase();
-  if (!q) { renderOrders(_allOrders); return; }
-  renderOrders(_allOrders.filter(o=>
-    String(o.id||'').toLowerCase().includes(q)||
-    (o.username||'').toLowerCase().includes(q)
-  ));
+  const q = (document.getElementById('ordSearch').value||'').toLowerCase().trim();
+  const filtered = q
+    ? _allOrders.filter(o=>
+        String(o.id||'').toLowerCase().includes(q) ||
+        (o.username||'').toLowerCase().includes(q)
+      )
+    : _allOrders;
+  renderOrders(filtered);
+  document.getElementById('ordCount').textContent = filtered.length + ' orders' + getDateLabel();
 }
 
 function renderOrders(rows) {
