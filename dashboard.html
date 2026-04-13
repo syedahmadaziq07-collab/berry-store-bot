@@ -897,38 +897,36 @@ function setDateFilter(el, dt) {
 async function loadOrders() {
   if (!sb) { console.warn('Supabase not ready'); return; }
   const tbody = document.getElementById('ordBody');
+  if (!tbody) return;
   tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
+
   try {
     let q = sb.from('orders')
       .select('id,user_id,username,product_name,quantity,amount,status,created_at')
-      .order('created_at',{ascending:false})
+      .order('created_at', { ascending: false })
       .limit(200);
 
-    const sf = window.orderStatusFilter || 'all';
+    const sf  = window.orderStatusFilter || 'all';
+    const df  = window.orderDateFilter   || 'all';
+    const now = new Date();
+    const Y = now.getFullYear(), M = now.getMonth(), D = now.getDate();
+
     if (sf !== 'all') q = q.eq('status', sf);
 
-    const df  = window.orderDateFilter || 'all';
-    const now = new Date();
-
     if (df === 'today') {
-      const s = new Date(now); s.setHours(0,0,0,0);
-      q = q.gte('created_at', s.toISOString());
+      q = q.gte('created_at', new Date(Y, M, D).toISOString());
 
     } else if (df === 'yesterday') {
-      const s = new Date(now); s.setDate(s.getDate()-1); s.setHours(0,0,0,0);
-      const e = new Date(now); e.setHours(0,0,0,0);
-      q = q.gte('created_at', s.toISOString()).lt('created_at', e.toISOString());
+      q = q.gte('created_at', new Date(Y, M, D - 1).toISOString())
+           .lt('created_at',  new Date(Y, M, D).toISOString());
 
     } else if (df === 'week') {
-      const s = new Date(now);
-      const day = s.getDay();
-      s.setDate(s.getDate() + (day === 0 ? -6 : 1 - day));
-      s.setHours(0,0,0,0);
-      q = q.gte('created_at', s.toISOString());
+      const day  = now.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      q = q.gte('created_at', new Date(Y, M, D + diff).toISOString());
 
     } else if (df === 'month') {
-      const s = new Date(now.getFullYear(), now.getMonth(), 1);
-      q = q.gte('created_at', s.toISOString());
+      q = q.gte('created_at', new Date(Y, M, 1).toISOString());
 
     } else if (df === 'custom') {
       const fromVal = document.getElementById('ordFrom').value;
@@ -936,41 +934,57 @@ async function loadOrders() {
       if (fromVal) q = q.gte('created_at', new Date(fromVal).toISOString());
       if (toVal)   { const e = new Date(toVal); e.setHours(23,59,59,999); q = q.lte('created_at', e.toISOString()); }
     }
-    // df === 'all' → no date filter applied
+    // df === 'all' → no date filter at all
 
-    const {data,error} = await q;
+    const { data, error } = await q;
     if (error) throw error;
-    _allOrders = data||[];
-    filterOrders();
+
+    _allOrders = data || [];
+    renderFilteredOrders();
     markUpdated();
-  } catch(e) {
-    tbody.innerHTML = `<tr class="empty-r"><td colspan="6">⚠️ ${e.message}</td></tr>`;
+
+  } catch(err) {
+    console.error('loadOrders:', err);
+    tbody.innerHTML = `<tr class="empty-r"><td colspan="6">⚠️ ${err.message}</td></tr>`;
   }
 }
 
+// Called on search input oninput — re-filters cached results without a DB round-trip
 function filterOrders() {
-  const q = (document.getElementById('order-search').value||'').toLowerCase().trim();
-  const filtered = q
-    ? _allOrders.filter(o=>
-        String(o.id||'').toLowerCase().includes(q) ||
-        (o.username||'').toLowerCase().includes(q) ||
-        (o.product_name||'').toLowerCase().includes(q)
-      )
-    : _allOrders;
-  renderOrders(filtered);
-  document.getElementById('ordCount').textContent = filtered.length + ' orders' + getDateLabel();
+  renderFilteredOrders();
 }
 
-function renderOrders(rows) {
-  const tb = document.getElementById('ordBody');
-  if (!rows.length) { tb.innerHTML='<tr class="empty-r"><td colspan="6">No orders found.</td></tr>'; return; }
-  tb.innerHTML = rows.map(o=>{
-    const cust = o.username?'@'+o.username:(o.user_id||'—');
-    const oid  = String(o.id||'').slice(0,12);
+function renderFilteredOrders() {
+  const tbody = document.getElementById('ordBody');
+  const countEl = document.getElementById('ordCount');
+  const sv = (document.getElementById('order-search').value || '').toLowerCase().trim();
+
+  const rows = sv
+    ? _allOrders.filter(o =>
+        String(o.id || '').toLowerCase().includes(sv) ||
+        (o.username     || '').toLowerCase().includes(sv) ||
+        (o.product_name || '').toLowerCase().includes(sv)
+      )
+    : _allOrders;
+
+  if (countEl) {
+    const df = window.orderDateFilter || 'all';
+    const label = df === 'all' ? 'orders' : `orders · ${df}`;
+    countEl.textContent = rows.length + ' ' + label;
+  }
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty-r"><td colspan="6">No orders found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(o => {
+    const cust = o.username ? '@' + o.username : (o.user_id || '—');
+    const oid  = String(o.id || '').slice(0, 12);
     return `<tr>
       <td style="font-family:monospace;font-size:.76rem;color:var(--text-s)">${oid}</td>
       <td>${cust}</td>
-      <td>${o.product_name||'—'}</td>
+      <td>${o.product_name || '—'}</td>
       <td><strong>${rm(o.amount)}</strong></td>
       <td>${statusBadge(o.status)}</td>
       <td style="font-size:.76rem;white-space:nowrap">${fmtDT(o.created_at)}</td>
