@@ -10,18 +10,55 @@ import random
 import logging
 import threading
 import asyncio
+import json
+import urllib.error
+import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# ─── Kill Any Other Running Bot Instance ──────────────────────────────────────
+# Runs BEFORE polling starts. Forces Telegram to drop any existing session
+# (other Replit tab, old Render deploy, etc.) so this instance takes over cleanly.
+
+import httpx as _httpx_early
+import os as _os_early
+
+_EARLY_TOKEN = (
+    (_os_early.getenv("BOT_TOKEN") or "").strip() or
+    (_os_early.getenv("TOKEN") or "").strip() or
+    (_os_early.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+)
+
+if _EARLY_TOKEN:
+    try:
+        _httpx_early.get(
+            f"https://api.telegram.org/bot{_EARLY_TOKEN}/close",
+            timeout=10,
+        )
+        print("✅ Old sessions closed")
+    except Exception as _e:
+        print(f"⚠️ Could not close old session: {_e}")
+
+    try:
+        _httpx_early.get(
+            f"https://api.telegram.org/bot{_EARLY_TOKEN}/deleteWebhook?drop_pending_updates=true",
+            timeout=10,
+        )
+        print("✅ Webhook cleared, pending updates dropped")
+    except Exception as _e:
+        print(f"⚠️ Could not clear webhook: {_e}")
+
+    print("🚀 This instance is now the ONLY running bot!")
+
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 # Logs to console AND to bot.log file for debugging
 
 logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -43,6 +80,18 @@ SUPABASE_URL = _get_env("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY = _get_env("SUPABASE_KEY")
 ADMIN_ID     = 0
 PORT         = int(_get_env("PORT", "8000"))
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
+
+def _redact(text: object) -> str:
+    value = str(text)
+    for secret in (BOT_TOKEN, SUPABASE_KEY):
+        if secret:
+            value = value.replace(secret, "[REDACTED]")
+    return value[:500]
+
+def _safe_error(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {_redact(exc)}"
 
 try:
     ADMIN_ID = int(_get_env("ADMIN_ID", "0"))
@@ -51,98 +100,157 @@ except ValueError:
 
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
-log.info("=" * 60)
-log.info("DEBUG STARTUP — ENVIRONMENT VARIABLES")
-log.info("=" * 60)
-log.info(f"BOT_TOKEN        : {'✅ set' if BOT_TOKEN else '❌ MISSING'}")
-log.info(f"SUPABASE_URL     : {SUPABASE_URL[:30] + '...' if SUPABASE_URL else '❌ MISSING'}")
-log.info(f"SUPABASE_URL len : {len(SUPABASE_URL)} chars")
-log.info(f"SUPABASE_KEY len : {len(SUPABASE_KEY)} chars")
-log.info(f"SUPABASE_KEY ok  : {'✅ starts with eyJ' if SUPABASE_KEY.startswith('eyJ') else '❌ does NOT start with eyJ'}")
-log.info(f"ADMIN_ID         : {ADMIN_ID if ADMIN_ID else '❌ MISSING or 0'}")
-log.info(f"PORT             : {PORT}")
-log.info("=" * 60)
+log.info("=" * 50)
+log.info(f"BOT_TOKEN    : {'✅ set' if BOT_TOKEN else '❌ MISSING'}")
+log.info(f"SUPABASE_URL : {'✅ ' + SUPABASE_URL[:35] if SUPABASE_URL else '❌ MISSING'}")
+log.info(f"SUPABASE_KEY : {'✅ set (len=' + str(len(SUPABASE_KEY)) + ')' if SUPABASE_KEY else '❌ MISSING'}")
+log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
+log.info("=" * 50)
 
 if not BOT_TOKEN:
     log.critical("BOT_TOKEN tidak ditetapkan. Set dalam Replit Secrets → BOT_TOKEN")
     sys.exit(1)
 
+def _validate_telegram_token() -> bool:
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        bot = payload.get("result") or {}
+        username = bot.get("username") or "unknown"
+        log.info(f"Telegram token ✅ valid for @{username}")
+        return True
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            log.critical("Telegram token rejected by Telegram API. Update the TELEGRAM_BOT_TOKEN secret, then restart the workflow.")
+            return False
+        log.warning(f"Telegram token precheck HTTP error code={exc.code}; polling will still try to start.")
+        return True
+    except Exception as exc:
+        log.warning(f"Telegram token precheck skipped due to network/error: {_safe_error(exc)}")
+        return True
+
 # Validate Supabase config
 _supabase_ready = False
+log.info(f"[SUPABASE] SUPABASE_URL set={bool(SUPABASE_URL)} value_prefix={SUPABASE_URL[:30]!r}")
+log.info(f"[SUPABASE] SUPABASE_KEY set={bool(SUPABASE_KEY)} len={len(SUPABASE_KEY)} starts_with_eyJ={SUPABASE_KEY.startswith('eyJ')}")
 if SUPABASE_URL and SUPABASE_KEY:
     if not SUPABASE_URL.startswith("https://"):
-        log.warning(f"SUPABASE_URL tidak valid (mesti https://): {SUPABASE_URL[:40]}")
+        log.warning(f"[SUPABASE] ❌ SUPABASE_URL mesti bermula 'https://' — got: {SUPABASE_URL[:40]!r}")
         SUPABASE_URL = ""
-    elif not (SUPABASE_KEY.startswith("eyJ") and len(SUPABASE_KEY) > 100):
-        log.warning(f"SUPABASE_KEY format salah (len={len(SUPABASE_KEY)}). Guna anon/public key dari Supabase.")
+    elif not SUPABASE_KEY.startswith("eyJ"):
+        log.warning(f"[SUPABASE] ❌ SUPABASE_KEY tidak bermula 'eyJ' (len={len(SUPABASE_KEY)}) — guna anon/public key dari Supabase dashboard")
+        SUPABASE_KEY = ""
+    elif len(SUPABASE_KEY) <= 100:
+        log.warning(f"[SUPABASE] ❌ SUPABASE_KEY terlalu pendek len={len(SUPABASE_KEY)} — pastikan key penuh disalin")
         SUPABASE_KEY = ""
     else:
         _supabase_ready = True
+        log.info("[SUPABASE] ✅ URL dan KEY lulus semakan format")
 else:
-    log.warning("Supabase tidak dikonfigurasi — fungsi kedai tidak aktif")
+    missing = []
+    if not SUPABASE_URL: missing.append("SUPABASE_URL")
+    if not SUPABASE_KEY: missing.append("SUPABASE_KEY")
+    log.warning(f"[SUPABASE] ❌ Supabase tidak dikonfigurasi — pemboleh ubah hilang: {', '.join(missing)}")
+log.info(f"[SUPABASE] _supabase_ready={_supabase_ready}")
 
-# ─── Supabase Client ──────────────────────────────────────────────────────────
+# ─── Supabase REST Helpers (direct httpx, no library) ────────────────────────
 
-_sb_client = None
+import httpx as _httpx
+
 _products_cache = {"data": [], "updated_at": 0.0}
+_supabase_ok    = False
 
-def _init_supabase():
-    """Create (or recreate) Supabase client. Returns True on success."""
-    global _sb_client
-    log.debug(f"[SUPABASE INIT] _supabase_ready={_supabase_ready}")
-    if not _supabase_ready:
-        log.warning("[SUPABASE INIT] Skipped — _supabase_ready is False. Check SUPABASE_URL and SUPABASE_KEY.")
-        return False
+
+def _sb_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def sb_get(table: str, params: str = "") -> list:
+    """SELECT rows. Returns list of dicts."""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if params:
+        url += "?" + params
+    r = _httpx.get(url, headers=_sb_headers(), timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    log.debug(f"[SB GET] {table}?{params} → {len(data) if isinstance(data, list) else data}")
+    return data
+
+
+def sb_post(table: str, data: dict) -> list:
+    """INSERT a row. Returns list of inserted rows."""
+    r = _httpx.post(
+        f"{SUPABASE_URL}/rest/v1/{table}",
+        headers={**_sb_headers(), "Prefer": "return=representation"},
+        json=data, timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def sb_upsert(table: str, data: dict) -> list:
+    """UPSERT (insert or update). Returns list of rows."""
+    r = _httpx.post(
+        f"{SUPABASE_URL}/rest/v1/{table}",
+        headers={**_sb_headers(), "Prefer": "return=representation,resolution=merge-duplicates"},
+        json=data, timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def sb_patch(table: str, params: str, data: dict) -> list:
+    """UPDATE rows matching params. Returns list of updated rows."""
+    r = _httpx.patch(
+        f"{SUPABASE_URL}/rest/v1/{table}?{params}",
+        headers={**_sb_headers(), "Prefer": "return=representation"},
+        json=data, timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _test_supabase() -> tuple:
+    """Quick connectivity check. Returns (ok: bool, detail: str)."""
     try:
-        from supabase import create_client
-        import httpx
-        transport = httpx.HTTPTransport()
-        _sb_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        log.info("[SUPABASE INIT] ✅ Client berjaya dibuat")
-        return True
-    except TypeError as exc:
-        if 'proxy' in str(exc):
-            log.warning("[SUPABASE INIT] Proxy error detected, trying alternative...")
-            try:
-                import supabase
-                _sb_client = supabase.Client(SUPABASE_URL, SUPABASE_KEY)
-                log.info("[SUPABASE INIT] ✅ Client berjaya dibuat (alternative)")
-                return True
-            except Exception as exc2:
-                log.error(f"[SUPABASE INIT] ❌ Alternative failed: {exc2}")
-                _sb_client = None
-                return False
-        log.error(f"[SUPABASE INIT] ❌ TypeError: {exc}")
-        _sb_client = None
-        return False
+        rows = sb_get("products", "select=id&limit=1")
+        return True, f"test data={rows}"
+    except _httpx.HTTPStatusError as exc:
+        return False, f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
     except Exception as exc:
-        log.error(f"[SUPABASE INIT] ❌ create_client failed: {exc}")
-        _sb_client = None
-        return False
+        return False, f"{type(exc).__name__}: {exc}"
 
-def get_sb():
-    """Return Supabase client, auto-reconnect once if None."""
-    global _sb_client
-    if _sb_client is None:
-        _init_supabase()
-    if _sb_client is None:
-        raise RuntimeError("Supabase tidak tersedia")
-    return _sb_client
 
-_init_supabase()
+# ── Startup connectivity test — 3 attempts ────────────────────────────────────
+for _attempt in range(1, 4):
+    log.info(f"[SUPABASE] Startup test attempt {_attempt}/3 — URL={SUPABASE_URL[:40]!r} KEY_len={len(SUPABASE_KEY)}")
+    _ok, _detail = _test_supabase()
+    if _ok:
+        log.info(f"[SUPABASE] ✅ Sambungan berjaya — {_detail}")
+        _supabase_ok = True
+        break
+    log.warning(f"[SUPABASE] ❌ Attempt {_attempt} gagal — {_detail}")
+    if _attempt < 3:
+        log.info("[SUPABASE] Retry dalam 2 saat...")
+        time.sleep(2)
+else:
+    log.error("[SUPABASE] ❌ Semua 3 percubaan gagal. Bot akan cuba semula apabila diperlukan.")
 
-def _reset_supabase(reason: str):
-    global _sb_client
-    log.warning(f"Supabase client reset: {reason}")
-    _sb_client = None
 
 async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int = 12):
+    """Run a zero-arg callable in a thread with retry logic."""
     last_exc = None
     for attempt in range(1, attempts + 1):
         started = time.monotonic()
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(lambda: operation(get_sb())),
+                asyncio.to_thread(operation),
                 timeout=timeout,
             )
             elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -153,9 +261,8 @@ async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int =
             elapsed_ms = int((time.monotonic() - started) * 1000)
             log.warning(
                 f"Supabase {label} failed attempt={attempt}/{attempts} duration_ms={elapsed_ms} "
-                f"type={type(exc).__name__} error={str(exc)[:300]}"
+                f"error={_safe_error(exc)}"
             )
-            _reset_supabase(f"{label} attempt {attempt} failed")
             if attempt < attempts:
                 await asyncio.sleep(min(0.4 * (2 ** (attempt - 1)) + random.uniform(0, 0.3), 3))
     raise last_exc
@@ -163,14 +270,34 @@ async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int =
 def _cache_products(products):
     _products_cache["data"] = products or []
     _products_cache["updated_at"] = time.time()
+    try:
+        with open(PRODUCTS_CACHE_FILE, "w", encoding="utf-8") as cache_file:
+            json.dump(_products_cache, cache_file, ensure_ascii=False)
+    except Exception as exc:
+        log.warning(f"Product cache write failed: {_safe_error(exc)}")
 
-def _cached_products(max_age: int = 300):
+def _load_products_cache_from_disk():
+    try:
+        if not os.path.exists(PRODUCTS_CACHE_FILE):
+            return
+        with open(PRODUCTS_CACHE_FILE, "r", encoding="utf-8") as cache_file:
+            cached = json.load(cache_file)
+        if isinstance(cached, dict) and isinstance(cached.get("data"), list):
+            _products_cache["data"] = cached.get("data") or []
+            _products_cache["updated_at"] = float(cached.get("updated_at") or 0)
+            log.info(f"Product cache loaded from disk count={len(_products_cache['data'])}")
+    except Exception as exc:
+        log.warning(f"Product cache load failed: {_safe_error(exc)}")
+
+def _cached_products(max_age: int | None = 300):
     products = _products_cache.get("data") or []
     updated_at = float(_products_cache.get("updated_at") or 0)
     age = time.time() - updated_at if updated_at else 999999
-    if products and age <= max_age:
+    if products and (max_age is None or age <= max_age):
         return products, int(age)
     return [], int(age)
+
+_load_products_cache_from_disk()
 
 # ─── Flask Keep-Alive Server ──────────────────────────────────────────────────
 
@@ -187,7 +314,7 @@ def _health():
     cached, age = _cached_products()
     return jsonify(
         status="ok",
-        supabase=_sb_client is not None,
+        supabase=_supabase_ok,
         cached_products=len(cached),
         products_cache_age_seconds=age if cached else None,
     ), 200
@@ -200,8 +327,12 @@ threading.Thread(target=_start_flask, daemon=True).start()
 
 # ─── Telegram Imports ─────────────────────────────────────────────────────────
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import Conflict
+from telegram import (
+    Update,
+    InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+)
+from telegram.error import Conflict, InvalidToken
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -227,6 +358,20 @@ def back_home():
 def back_shop():
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]])
 
+def build_product_keyboard(products: list) -> ReplyKeyboardMarkup:
+    """Number buttons in the keyboard tray, 3 per row, plus a Home button."""
+    buttons = []
+    row = []
+    for i, _ in enumerate(products, 1):
+        row.append(KeyboardButton(str(i)))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([KeyboardButton("🏠 Home")])
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
 # ─── /start ───────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -238,16 +383,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     total_users = total_sold = 0
     try:
-        sb = get_sb()
-        sb.table("users").upsert({
-            "id": user.id,
-            "username": user.username or "",
-            "first_name": user.first_name or "",
-        }).execute()
-        total_users = len(sb.table("users").select("id").execute().data)
-        total_sold  = len(sb.table("orders").select("id").eq("status", "completed").execute().data)
+        def start_stats():
+            sb_upsert("users", {
+                "id": user.id,
+                "username": user.username or "",
+                "first_name": user.first_name or "",
+            })
+            users = sb_get("users", "select=id")
+            sold  = sb_get("orders", "select=id&status=eq.completed")
+            return len(users), len(sold)
+        total_users, total_sold = await _run_supabase("start.stats", start_stats)
     except Exception as exc:
-        log.warning(f"Supabase /start: {exc}")
+        log.warning(f"Supabase /start: {_safe_error(exc)}")
 
     now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%A, %d %B %Y %H:%M:%S")
     await update.message.reply_text(
@@ -267,21 +414,27 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Shop ─────────────────────────────────────────────────────────────────────
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ── Instant loading feedback ───────────────────────────────────────────────
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text("⏳ Memuatkan produk...")
+        except Exception:
+            pass
+
     try:
-        result = await _run_supabase(
+        products = await _run_supabase(
             "products.list",
-            lambda sb: sb.table("products").select("id, name, stock, price, duration").order("id").execute(),
-        )
-        products = result.data or []
+            lambda: sb_get("products", "select=id,name,stock,price,duration&order=id"),
+        ) or []
         _cache_products(products)
         log.info(f"Products loaded: {len(products)} items source=supabase")
     except Exception as exc:
-        products, age = _cached_products()
+        products, age = _cached_products(max_age=None)
         if products:
-            log.error(f"Shop error using cached products age_s={age}: {exc}", exc_info=True)
+            log.error(f"Shop error using cached products age_s={age}: {_safe_error(exc)}", exc_info=True)
         else:
-            log.error(f"Shop error no cache available: {exc}", exc_info=True)
-            msg = f"⚠️ Gagal muatkan produk. Cuba lagi.\nError: {str(exc)[:100]}"
+            log.error(f"Shop error no cache available: {_safe_error(exc)}", exc_info=True)
+            msg = "⚠️ Gagal muatkan produk. Sila cuba lagi atau hubungi @berryrc"
             if update.callback_query:
                 await update.callback_query.edit_message_text(msg, reply_markup=back_home())
             else:
@@ -290,21 +443,30 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not products:
         text = "⚠️ Tiada produk tersedia."
-        kb = back_home()
-    else:
-        text = "╭─────────────────────╮\n┊  LIST PRODUCT\n┊─────────────────────\n"
-        rows = []
-        for i, p in enumerate(products, 1):
-            text += f"┊ {i}. {p['name']} ( {p['stock']} )\n"
-            rows.append([InlineKeyboardButton(str(i), callback_data=f"product_{p['id']}")])
-        text += "╰─────────────────────╯"
-        rows.append([InlineKeyboardButton("🏠 Home", callback_data="home")])
-        kb = InlineKeyboardMarkup(rows)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=back_home())
+        else:
+            await update.message.reply_text(text, reply_markup=back_home())
+        return
 
+    # Save product list so handle_message can resolve number → product
+    context.user_data["shop_products"] = products
+
+    text = "╭─────────────────────╮\n┊  LIST PRODUCT\n┊─────────────────────\n"
+    for i, p in enumerate(products, 1):
+        text += f"┊ {i}. {p['name']} ( {p['stock']} )\n"
+    text += "╰─────────────────────╯\n\nTaip nombor atau tekan butang di bawah 👇"
+
+    # ReplyKeyboardMarkup cannot go on edit_message_text — must use send_message.
+    # When triggered via inline button: the loading message stays; new message has the keyboard.
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=kb)
+        await context.bot.send_message(
+            chat_id=update.callback_query.message.chat_id,
+            text=text,
+            reply_markup=build_product_keyboard(products),
+        )
     else:
-        await update.message.reply_text(text, reply_markup=kb)
+        await update.message.reply_text(text, reply_markup=build_product_keyboard(products))
 
 # ─── Product Detail ───────────────────────────────────────────────────────────
 
@@ -313,42 +475,54 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     qty = max(1, min(qty, 10))   # clamp between 1–10
 
     try:
-        result = await _run_supabase(
+        rows = await _run_supabase(
             f"products.detail id={product_id}",
-            lambda sb: sb.table("products").select("*").eq("id", product_id).single().execute(),
+            lambda: sb_get("products", f"select=*&id=eq.{product_id}&limit=1"),
         )
-        p = result.data
+        p = rows[0] if rows else None
     except Exception as exc:
-        cached, age = _cached_products()
+        cached, age = _cached_products(max_age=None)
         p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
         if p:
-            log.warning(f"Supabase product detail fallback id={product_id} cache_age_s={age}: {exc}")
+            log.warning(f"Supabase product detail fallback id={product_id} cache_age_s={age}: {_safe_error(exc)}")
         else:
-            log.warning(f"Supabase product detail failed id={product_id}: {exc}", exc_info=True)
-            await update.callback_query.edit_message_text("⚠️ Gagal muatkan produk. Cuba lagi.", reply_markup=back_shop())
+            log.warning(f"Supabase product detail failed id={product_id}: {_safe_error(exc)}", exc_info=True)
+            err_msg = "⚠️ Gagal muatkan produk. Cuba lagi."
+            if update.callback_query:
+                await update.callback_query.edit_message_text(err_msg, reply_markup=back_shop())
+            else:
+                await update.message.reply_text(err_msg, reply_markup=back_shop())
             return
 
     total = round(p["price"] * qty, 2)
     stock = p.get("stock", 0)
 
-    await update.callback_query.edit_message_text(
+    product_text = (
         f"📦 {p['name']}\n"
         f"├─ Stock   : {stock} units\n"
         f"├─ Price   : RM {p['price']}\n"
         f"├─ Duration: {p.get('duration', '-')}\n"
         f"└─ Total   : RM {total}\n\n"
         f"• Akaun diberikan selepas bayar.\n"
-        f"• Akaun peribadi, tidak dikongsi.",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("➖", callback_data=f"qty_minus_{product_id}_{qty}"),
-                InlineKeyboardButton(f"  {qty}  ",  callback_data="qty_display"),
-                InlineKeyboardButton("➕", callback_data=f"qty_plus_{product_id}_{qty}"),
-            ],
-            [InlineKeyboardButton(f"🛒 Buy Now  x{qty}  (RM {total})", callback_data=f"buy_{product_id}_{qty}")],
-            [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")],
-        ]),
+        f"• Akaun peribadi, tidak dikongsi."
     )
+    product_kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("➖", callback_data=f"qty_minus_{product_id}_{qty}"),
+            InlineKeyboardButton(f"  {qty}  ",  callback_data="qty_display"),
+            InlineKeyboardButton("➕", callback_data=f"qty_plus_{product_id}_{qty}"),
+        ],
+        [InlineKeyboardButton(f"🛒 Buy Now  x{qty}  (RM {total})", callback_data=f"buy_{product_id}_{qty}")],
+        [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")],
+    ])
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(product_text, reply_markup=product_kb)
+    else:
+        # ReplyKeyboardRemove and InlineKeyboardMarkup cannot share one message.
+        # First message dismisses the reply keyboard; second shows the product detail.
+        await update.message.reply_text("🔍 Memuatkan produk...", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(product_text, reply_markup=product_kb)
 
 # ─── Quantity ─────────────────────────────────────────────────────────────────
 
@@ -361,20 +535,31 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 
 async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int):
     user = update.effective_user
-    print(f"[CREATE_ORDER] product_id={product_id} qty={qty} user={user.id}")
+    log.info(f"[CREATE_ORDER] product_id={product_id} qty={qty} user={user.id}")
+
+    # ── Instant loading feedback ───────────────────────────────────────────────
     try:
-        product_result = await _run_supabase(
+        await update.callback_query.edit_message_text("⏳ Memproses order...")
+    except Exception:
+        pass
+
+    try:
+        rows = await _run_supabase(
             f"products.order_fetch id={product_id}",
-            lambda sb: sb.table("products").select("*").eq("id", product_id).single().execute(),
+            lambda: sb_get("products", f"select=*&id=eq.{product_id}&limit=1"),
         )
-        p = product_result.data
+        p = rows[0] if rows else None
     except Exception as exc:
-        log.warning(f"Supabase create_order fetch product_id={product_id}: {exc}", exc_info=True)
-        print(f"[CREATE_ORDER] ERROR fetching product: {exc}")
-        # answer() already called in on_button — use edit instead
-        await update.callback_query.edit_message_text(
-            "⚠️ Ralat sambungan. Cuba lagi.", reply_markup=back_shop())
-        return
+        cached, age = _cached_products(max_age=None)
+        p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
+        if p:
+            log.warning(f"Supabase create_order product fallback id={product_id} cache_age_s={age}: {_safe_error(exc)}")
+        else:
+            log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
+            await update.callback_query.edit_message_text(
+                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
+                reply_markup=back_shop())
+            return
 
     if p["stock"] < qty:
         await update.callback_query.edit_message_text(
@@ -387,18 +572,17 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     try:
         await _run_supabase(
             f"orders.insert id={order_id}",
-            lambda sb: sb.table("orders").insert({
+            lambda: sb_post("orders", {
                 "id": order_id, "user_id": user.id, "username": user.username or "",
                 "product_id": product_id, "product_name": p["name"],
                 "quantity": qty, "amount": total, "status": "pending",
-            }).execute(),
+            }),
             attempts=1,
         )
     except Exception as exc:
-        log.warning(f"Supabase create_order insert: {exc}")
-        print(f"[CREATE_ORDER] ERROR inserting order: {exc}")
+        log.warning(f"Supabase create_order insert: {_safe_error(exc)}")
         await update.callback_query.edit_message_text(
-            f"⚠️ Gagal buat order.\n\nRalat: {exc}\n\nSila hubungi admin.",
+            "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
             reply_markup=back_shop())
         return
 
@@ -422,49 +606,80 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     # answer() already called in on_button — do NOT call query.answer() here
     query = update.callback_query
+
+    # ── FIX 1: Immediate loading indicator so user knows the bot is working ─────
     try:
-        order = get_sb().table("orders").select("*").eq("id", order_id).single().execute().data
+        await query.edit_message_text("⏳ Memuatkan butiran pembayaran...")
     except Exception as exc:
-        log.warning(f"Supabase payment: {exc}")
+        log.warning(f"[PAYMENT] edit_loading failed: {_safe_error(exc)}")
+
+    # ── FIX 2: Order fetch with null-check guard ────────────────────────────────
+    try:
+        rows = await _run_supabase(
+            f"orders.payment id={order_id}",
+            lambda: sb_get("orders", f"select=*&id=eq.{order_id}&limit=1"),
+        )
+        order = rows[0] if rows else None
+        if not order:
+            log.warning(f"[PAYMENT] order {order_id} not found in DB")
+            await query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            return
+    except Exception as exc:
+        log.warning(f"[PAYMENT] Supabase fetch failed: {_safe_error(exc)}", exc_info=True)
         await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
         return
 
+    # ── FIX 5: Log the exact QR path so we can see it in logs ──────────────────
     qr = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payment_qr.png")
+    log.info(f"[PAYMENT] QR path={qr} | exists={os.path.exists(qr)}")
 
-    # Send QR photo with order details as caption
+    # ── FIX 3: send_photo with proper context manager + its own try/except ──────
+    qr_sent = False
     if os.path.exists(qr):
-        await context.bot.send_photo(
-            chat_id=query.message.chat_id,
-            photo=open(qr, "rb"),
-            caption=(
-                f"💳 PAYMENT DETAILS\n\n"
-                f"Order ID: {order_id}\n"
-                f"Amount: RM {order['amount']}\n\n"
-                f"Scan QR code below to pay 👇"
-            ),
-        )
-    else:
-        log.warning("payment_qr.png not found — skipping QR photo")
+        try:
+            with open(qr, "rb") as qr_file:
+                await context.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=qr_file,
+                    caption=(
+                        f"💳 PAYMENT DETAILS\n\n"
+                        f"Order ID: {order_id}\n"
+                        f"Amount: RM {order['amount']}\n\n"
+                        f"Scan QR code below to pay 👇"
+                    ),
+                )
+            qr_sent = True
+        except Exception as exc:
+            log.warning(f"[PAYMENT] send_photo failed, falling back to text: {_safe_error(exc)}")
+
+    if not qr_sent:
+        try:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=(
+                    f"💳 PAYMENT DETAILS\n\n"
+                    f"Order ID: {order_id}\n"
+                    f"Amount: RM {order['amount']}\n\n"
+                    f"⚠️ QR code tidak tersedia. Hubungi admin."
+                ),
+            )
+        except Exception as exc:
+            log.warning(f"[PAYMENT] text fallback also failed: {_safe_error(exc)}")
+
+    # ── FIX 4: Action buttons in its own try/except — user must always see these ─
+    try:
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=(
-                f"💳 PAYMENT DETAILS\n\n"
-                f"Order ID: {order_id}\n"
-                f"Amount: RM {order['amount']}\n\n"
-                f"⚠️ QR code tidak tersedia. Hubungi admin."
-            ),
+            text="After payment, click the button below:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
+                [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
+            ]),
         )
+    except Exception as exc:
+        log.error(f"[PAYMENT] send action buttons failed — user may be stuck: {_safe_error(exc)}")
 
-    # Send separate message with action buttons
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text="After payment, click the button below:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
-            [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
-        ]),
-    )
-
+    # Admin notify is already safe inside _admin_notify (has its own try/except) ─
     await _admin_notify(context,
         f"🔔 ORDER BARU!\n• Order: {order_id}\n• User: @{order.get('username','')}\n"
         f"• Produk: {order.get('product_name','')}\n• RM {order['amount']}")
@@ -486,11 +701,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user    = update.effective_user
     file_id = update.message.photo[-1].file_id
     try:
-        sb    = get_sb()
-        sb.table("orders").update({"receipt_file_id": file_id, "status": "waiting_approval"}).eq("id", order_id).execute()
-        order = sb.table("orders").select("*").eq("id", order_id).single().execute().data
+        def save_receipt():
+            sb_patch("orders", f"id=eq.{order_id}", {"receipt_file_id": file_id, "status": "waiting_approval"})
+            rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
+            return rows[0] if rows else {}
+        order = await _run_supabase(f"orders.receipt id={order_id}", save_receipt)
     except Exception as exc:
-        log.warning(f"Supabase receipt: {exc}")
+        log.warning(f"Supabase receipt: {_safe_error(exc)}", exc_info=True)
         await update.message.reply_text("⚠️ Gagal simpan resit. Cuba lagi.")
         return
 
@@ -513,15 +730,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]]),
         )
     except Exception as exc:
-        log.warning(f"Admin photo notify: {exc}")
+        log.warning(f"Admin photo notify: {_safe_error(exc)}")
 
 # ─── Cancel Order ─────────────────────────────────────────────────────────────
 
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     try:
-        get_sb().table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
+        await _run_supabase(
+            f"orders.cancel id={order_id}",
+            lambda: sb_patch("orders", f"id=eq.{order_id}", {"status": "cancelled"}),
+        )
     except Exception as exc:
-        log.warning(f"Supabase cancel: {exc}")
+        log.warning(f"Supabase cancel: {_safe_error(exc)}")
     await update.callback_query.edit_message_text(
         f"❌ Order {order_id} dibatalkan.",
         reply_markup=back_home(),
@@ -531,10 +751,21 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 
 async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+
+    # ── Instant loading feedback ───────────────────────────────────────────────
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text("⏳ Memuatkan orders...")
+        except Exception:
+            pass
+
     try:
-        orders = get_sb().table("orders").select("*").eq("user_id", user.id).order("id", desc=True).execute().data
+        orders = await _run_supabase(
+            f"orders.user user={user.id}",
+            lambda: sb_get("orders", f"select=*&user_id=eq.{user.id}&order=id.desc"),
+        ) or []
     except Exception as exc:
-        log.warning(f"Supabase my_orders: {exc}")
+        log.warning(f"Supabase my_orders: {_safe_error(exc)}", exc_info=True)
         msg = "⚠️ Gagal muatkan orders. Cuba lagi."
         if update.callback_query:
             await update.callback_query.edit_message_text(msg, reply_markup=back_home())
@@ -562,18 +793,30 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
         await update.callback_query.edit_message_caption(
             caption="⛔ Bukan admin.", reply_markup=None)
         return
+
+    # ── Instant loading feedback ───────────────────────────────────────────────
     try:
-        sb    = get_sb()
-        order = sb.table("orders").select("*").eq("id", order_id).single().execute().data
-        sb.table("orders").update({"status": "completed"}).eq("id", order_id).execute()
-        if order.get("product_id"):
-            p = sb.table("products").select("stock").eq("id", order["product_id"]).single().execute().data
-            sb.table("products").update({"stock": max(0, p["stock"] - order["quantity"])}).eq("id", order["product_id"]).execute()
-    except Exception as exc:
-        log.warning(f"Supabase approve: {exc}")
-        print(f"[APPROVE] ERROR: {exc}")
         await update.callback_query.edit_message_caption(
-            caption=f"⚠️ Ralat approve: {exc}", reply_markup=None)
+            caption="⏳ Memproses...", reply_markup=None)
+    except Exception:
+        pass
+
+    try:
+        def approve_tx():
+            rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
+            order_data = rows[0] if rows else {}
+            sb_patch("orders", f"id=eq.{order_id}", {"status": "completed"})
+            if order_data.get("product_id"):
+                prod_rows = sb_get("products", f"select=stock&id=eq.{order_data['product_id']}&limit=1")
+                if prod_rows:
+                    new_stock = max(0, prod_rows[0]["stock"] - order_data.get("quantity", 1))
+                    sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
+            return order_data
+        order = await _run_supabase(f"orders.approve id={order_id}", approve_tx, attempts=1, timeout=15)
+    except Exception as exc:
+        log.warning(f"Supabase approve: {_safe_error(exc)}", exc_info=True)
+        await update.callback_query.edit_message_caption(
+            caption="⚠️ Ralat approve. Sila cuba lagi.", reply_markup=None)
         return
 
     log.info(f"Order {order_id} approved by admin")
@@ -592,7 +835,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             ),
         )
     except Exception as exc:
-        log.warning(f"Notify user approve: {exc}")
+        log.warning(f"Notify user approve: {_safe_error(exc)}")
 
     # Message 2 → Admin (copy-paste /send command)
     try:
@@ -601,7 +844,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             text=f"/send {order_id}",
         )
     except Exception as exc:
-        log.warning(f"Notify admin send command: {exc}")
+        log.warning(f"Notify admin send command: {_safe_error(exc)}")
 
     # Message 3 → Admin (account template to fill in)
     try:
@@ -616,7 +859,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             ),
         )
     except Exception as exc:
-        log.warning(f"Notify admin template: {exc}")
+        log.warning(f"Notify admin template: {_safe_error(exc)}")
 
 
 async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
@@ -624,15 +867,25 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         await update.callback_query.edit_message_caption(
             caption="⛔ Bukan admin.", reply_markup=None)
         return
+
+    # ── Instant loading feedback ───────────────────────────────────────────────
     try:
-        sb    = get_sb()
-        order = sb.table("orders").select("*").eq("id", order_id).single().execute().data
-        sb.table("orders").update({"status": "rejected"}).eq("id", order_id).execute()
-    except Exception as exc:
-        log.warning(f"Supabase reject: {exc}")
-        print(f"[REJECT] ERROR: {exc}")
         await update.callback_query.edit_message_caption(
-            caption=f"⚠️ Ralat reject: {exc}", reply_markup=None)
+            caption="⏳ Memproses...", reply_markup=None)
+    except Exception:
+        pass
+
+    try:
+        def reject_tx():
+            rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
+            order_data = rows[0] if rows else {}
+            sb_patch("orders", f"id=eq.{order_id}", {"status": "rejected"})
+            return order_data
+        order = await _run_supabase(f"orders.reject id={order_id}", reject_tx, attempts=1)
+    except Exception as exc:
+        log.warning(f"Supabase reject: {_safe_error(exc)}", exc_info=True)
+        await update.callback_query.edit_message_caption(
+            caption="⚠️ Ralat reject. Sila cuba lagi.", reply_markup=None)
         return
 
     log.info(f"Order {order_id} rejected by admin")
@@ -642,17 +895,26 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         await context.bot.send_message(chat_id=order["user_id"],
             text=f"⚠️ Bayaran Order {order_id} ditolak.\nHubungi support untuk bantuan.")
     except Exception as exc:
-        log.warning(f"Notify user reject: {exc}")
+        log.warning(f"Notify user reject: {_safe_error(exc)}")
 
 # ─── Referral / Support / Home ────────────────────────────────────────────────
 
 async def show_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user    = update.effective_user
-    me      = await context.bot.get_me()
-    ref     = f"https://t.me/{me.username}?start=ref_{user.id}"
-    await update.callback_query.edit_message_text(
-        f"👥 REFERRAL\n─────────────────────\nLink referral anda:\n{ref}\n\nKongsi dan dapatkan reward!",
-        reply_markup=back_home())
+    user = update.effective_user
+    try:
+        me  = await context.bot.get_me()
+        ref = f"https://t.me/{me.username}?start=ref_{user.id}"
+        await update.callback_query.edit_message_text(
+            f"👥 REFERRAL\n─────────────────────\nLink referral anda:\n{ref}\n\nKongsi dan dapatkan reward!",
+            reply_markup=back_home())
+    except Exception as exc:
+        log.warning(f"show_referral error: {_safe_error(exc)}")
+        try:
+            await update.callback_query.edit_message_text(
+                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
+                reply_markup=back_home())
+        except Exception:
+            pass
 
 
 async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -664,12 +926,22 @@ async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     total_users = total_sold = 0
+
+    # ── Instant loading feedback ───────────────────────────────────────────────
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text("⏳ Memuatkan...")
+        except Exception:
+            pass
+
     try:
-        sb          = get_sb()
-        total_users = len(sb.table("users").select("id").execute().data)
-        total_sold  = len(sb.table("orders").select("id").eq("status", "completed").execute().data)
+        def home_stats():
+            users = sb_get("users", "select=id")
+            sold  = sb_get("orders", "select=id&status=eq.completed")
+            return len(users), len(sold)
+        total_users, total_sold = await _run_supabase("home.stats", home_stats)
     except Exception as exc:
-        log.warning(f"Supabase home: {exc}")
+        log.warning(f"Supabase home: {_safe_error(exc)}")
     await update.callback_query.edit_message_text(
         f"👋 Hi {user.first_name}!\nWelcome to My Store.\n\n"
         f"👤 Account\n• ID: {user.id}\n• Username: @{user.username or 'tiada'}\n\n"
@@ -685,7 +957,24 @@ async def _admin_notify(context: ContextTypes.DEFAULT_TYPE, text: str):
     try:
         await context.bot.send_message(chat_id=ADMIN_ID, text=text)
     except Exception as exc:
-        log.warning(f"Admin notify: {exc}")
+        log.warning(f"Admin notify: {_safe_error(exc)}")
+
+# ─── Rate Limiter ─────────────────────────────────────────────────────────────
+# Max 5 button presses per 3 seconds per user.
+
+_rate_data: dict[int, list] = {}
+_RATE_WINDOW = 3.0
+_RATE_MAX    = 5
+
+def _is_rate_limited(user_id: int) -> bool:
+    now = time.monotonic()
+    stamps = [t for t in _rate_data.get(user_id, []) if now - t < _RATE_WINDOW]
+    if len(stamps) >= _RATE_MAX:
+        _rate_data[user_id] = stamps
+        return True
+    stamps.append(now)
+    _rate_data[user_id] = stamps
+    return False
 
 # ─── Button Router ────────────────────────────────────────────────────────────
 
@@ -695,8 +984,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Answer FIRST — dismisses the Telegram loading spinner immediately.
     # Never call q.answer() again inside any sub-handler.
     await q.answer()
-    print(f"[BUTTON] Callback received: {q.data} from user {update.effective_user.id}")
     log.info(f"Button: {data} from {update.effective_user.id}")
+
+    # ── Rate limit check ──────────────────────────────────────────────────────
+    if _is_rate_limited(update.effective_user.id):
+        await q.answer("⏳ Terlalu laju! Sila tunggu sebentar.", show_alert=True)
+        return
 
     try:
         if   data == "home":               await show_home(update, context)
@@ -736,10 +1029,22 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("reject_"):
             await reject_order(update, context, data[len("reject_"):])
 
+        else:
+            log.warning(f"Unknown callback_data: {data!r}")
+            try:
+                await q.edit_message_text(
+                    "⚠️ Butang tidak dikenali. Sila mulakan semula.",
+                    reply_markup=back_home(),
+                )
+            except Exception:
+                pass
+
     except Exception as exc:
-        log.error(f"Button handler error [{data}]: {exc}", exc_info=True)
+        log.error(f"Button handler error [{data}]: {_safe_error(exc)}", exc_info=True)
         try:
-            await q.message.reply_text("⚠️ Ralat berlaku. Cuba lagi.")
+            await q.message.reply_text(
+                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc"
+            )
         except Exception:
             pass
 
@@ -759,10 +1064,17 @@ async def send_account_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     order_id = context.args[0]
     try:
-        order = get_sb().table("orders").select("user_id,product_name,status").eq("id", order_id).single().execute().data
+        rows = await _run_supabase(
+            f"orders.send_fetch id={order_id}",
+            lambda: sb_get("orders", f"select=user_id,product_name,status&id=eq.{order_id}&limit=1"),
+        )
+        if not rows:
+            await update.message.reply_text(f"⚠️ Order {order_id} tidak dijumpai.")
+            return
+        order = rows[0]
     except Exception as exc:
-        log.warning(f"Supabase /send fetch: {exc}")
-        await update.message.reply_text(f"⚠️ Order {order_id} not found.")
+        log.warning(f"Supabase /send fetch: {_safe_error(exc)}", exc_info=True)
+        await update.message.reply_text(f"⚠️ Ralat ambil order. Cuba lagi.")
         return
 
     pending_send[ADMIN_ID] = {"order_id": order_id, "user_id": order["user_id"]}
@@ -775,9 +1087,41 @@ async def send_account_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Captures admin's next text message and forwards it as account details to the buyer."""
+    """Handle text messages: reply keyboard numbers, Home button, and admin account delivery."""
     user_id = update.effective_user.id
+    text    = (update.message.text or "").strip()
 
+    # ── Reply keyboard: "🏠 Home" button ──────────────────────────────────────
+    if text == "🏠 Home":
+        await update.message.reply_text(
+            f"👋 Hi {update.effective_user.first_name}!\nWelcome to Berry Store.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        await update.message.reply_text(
+            "Pilih menu di bawah:",
+            reply_markup=main_kb(),
+        )
+        return
+
+    # ── Reply keyboard: number selects a product ───────────────────────────────
+    if text.isdigit():
+        products = context.user_data.get("shop_products") or []
+        if products:
+            idx = int(text) - 1
+            if 0 <= idx < len(products):
+                product_id = products[idx]["id"]
+                log.info(f"Keyboard product select: user={user_id} number={text} product_id={product_id}")
+                await show_product(update, context, product_id)
+                return
+            else:
+                await update.message.reply_text(
+                    f"⚠️ Nombor '{text}' tidak wujud. Pilih 1–{len(products)}.",
+                )
+                return
+
+    # ── Admin: pending_receipt (customer uploading receipt text — not used but kept) ─
+
+    # ── Admin: account delivery flow ──────────────────────────────────────────
     if user_id != ADMIN_ID or ADMIN_ID not in pending_send:
         return
 
@@ -789,13 +1133,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Fetch product duration from order → product
     duration = "-"
     try:
-        sb    = get_sb()
-        order = sb.table("orders").select("product_id").eq("id", order_id).single().execute().data
-        if order.get("product_id"):
-            p        = sb.table("products").select("duration").eq("id", order["product_id"]).single().execute().data
-            duration = p.get("duration") or "-"
+        def duration_lookup():
+            o_rows = sb_get("orders", f"select=product_id&id=eq.{order_id}&limit=1")
+            if not o_rows or not o_rows[0].get("product_id"):
+                return "-"
+            p_rows = sb_get("products", f"select=duration&id=eq.{o_rows[0]['product_id']}&limit=1")
+            return p_rows[0].get("duration") or "-" if p_rows else "-"
+        duration = await _run_supabase(f"orders.duration id={order_id}", duration_lookup)
     except Exception as exc:
-        log.warning(f"Could not fetch duration for order {order_id}: {exc}")
+        log.warning(f"Could not fetch duration for order {order_id}: {_safe_error(exc)}")
 
     try:
         await context.bot.send_message(
@@ -812,8 +1158,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Maklumat akaun berjaya dihantar kepada pembeli (Order: {order_id})")
         log.info(f"Account details sent for order {order_id} → buyer {buyer_id}")
     except Exception as exc:
-        log.warning(f"Send account details error: {exc}")
-        await update.message.reply_text(f"⚠️ Gagal hantar kepada pembeli: {exc}")
+        log.warning(f"Send account details error: {_safe_error(exc)}")
+        await update.message.reply_text(f"⚠️ Gagal hantar kepada pembeli: {_safe_error(exc)}")
 
 
 # ─── /stock ───────────────────────────────────────────────────────────────────
@@ -824,14 +1170,13 @@ async def cmd_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        result = await _run_supabase(
+        products = await _run_supabase(
             "products.stock_list",
-            lambda sb: sb.table("products").select("id, name, stock").order("id").execute(),
-        )
-        products = result.data or []
+            lambda: sb_get("products", "select=id,name,stock&order=id"),
+        ) or []
     except Exception as exc:
-        log.warning(f"stock fetch error: {exc}", exc_info=True)
-        await update.message.reply_text(f"⚠️ Gagal muatkan produk: {exc}")
+        log.warning(f"stock fetch error: {_safe_error(exc)}", exc_info=True)
+        await update.message.reply_text("⚠️ Gagal muatkan produk. Cuba lagi.")
         return
 
     # No args → show product list with IDs
@@ -871,10 +1216,15 @@ async def cmd_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        sb.table("products").update({"stock": new_stock}).eq("id", product_id).execute()
+        await _run_supabase(
+            f"products.stock_update id={product_id}",
+            lambda: sb_patch("products", f"id=eq.{product_id}", {"stock": new_stock}),
+        )
+        refreshed = [{**p, "stock": new_stock} if p["id"] == product_id else p for p in products]
+        _cache_products(refreshed)
     except Exception as exc:
-        log.warning(f"stock update error: {exc}")
-        await update.message.reply_text(f"⚠️ Gagal update stok: {exc}")
+        log.warning(f"stock update error: {_safe_error(exc)}", exc_info=True)
+        await update.message.reply_text("⚠️ Gagal update stok. Cuba lagi.")
         return
 
     log.info(f"Stock updated: product {product_id} → {new_stock} by admin")
@@ -900,10 +1250,13 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        users = get_sb().table("users").select("id").execute().data
+        users = await _run_supabase(
+            "broadcast.users",
+            lambda: sb_get("users", "select=id"),
+        ) or []
     except Exception as exc:
-        log.warning(f"broadcast fetch users error: {exc}")
-        await update.message.reply_text(f"⚠️ Gagal ambil senarai pengguna: {exc}")
+        log.warning(f"broadcast fetch users error: {_safe_error(exc)}", exc_info=True)
+        await update.message.reply_text("⚠️ Gagal ambil senarai pengguna. Cuba lagi.")
         return
 
     if not users:
@@ -916,7 +1269,7 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=u["id"], text=message)
             sent += 1
         except Exception as exc:
-            log.warning(f"broadcast failed for user {u['id']}: {exc}")
+            log.warning(f"broadcast failed for user {u['id']}: {_safe_error(exc)}")
             failed += 1
 
     log.info(f"Broadcast done: {sent} sent, {failed} failed")
@@ -934,19 +1287,13 @@ async def cmd_adminorders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        sb     = get_sb()
-        orders = (
-            sb.table("orders")
-            .select("id, user_id, username, product_name, amount, status")
-            .in_("status", ["pending", "waiting_approval"])
-            .order("id", desc=True)
-            .limit(10)
-            .execute()
-            .data
-        )
+        orders = await _run_supabase(
+            "admin.orders_pending",
+            lambda: sb_get("orders", "select=id,user_id,username,product_name,amount,status&status=in.(pending,waiting_approval)&order=id.desc&limit=10"),
+        ) or []
     except Exception as exc:
-        log.warning(f"adminorders error: {exc}")
-        await update.message.reply_text(f"⚠️ Gagal muatkan orders: {exc}")
+        log.warning(f"adminorders error: {_safe_error(exc)}", exc_info=True)
+        await update.message.reply_text("⚠️ Gagal muatkan orders. Cuba lagi.")
         return
 
     if not orders:
@@ -1011,8 +1358,8 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         low_stock      = [p for p in products if p.get("stock", 0) <= 3]
 
     except Exception as exc:
-        log.warning(f"Admin dashboard error: {exc}", exc_info=True)
-        await update.message.reply_text(f"⚠️ Gagal muatkan data: {exc}")
+        log.warning(f"Admin dashboard error: {_safe_error(exc)}", exc_info=True)
+        await update.message.reply_text(f"⚠️ Gagal muatkan data: {_safe_error(exc)}")
         return
 
     now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
@@ -1048,7 +1395,10 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
             "Stop the old Replit/deployment/session that uses this bot token."
         )
         return
-    log.error(f"Telegram error: {context.error}", exc_info=True)
+    if isinstance(context.error, InvalidToken):
+        log.error("Telegram token rejected by Telegram API. Check the TELEGRAM_BOT_TOKEN secret.")
+        return
+    log.error(f"Telegram error: {_safe_error(context.error)}", exc_info=True)
 
 # ─── Build Application ────────────────────────────────────────────────────────
 
@@ -1072,6 +1422,9 @@ def build_app() -> Application:
 # ─── Auto-Restart Polling Loop ────────────────────────────────────────────────
 
 def main():
+    if not _validate_telegram_token():
+        sys.exit(1)
+
     retry_delay = 5          # seconds before first retry
     max_delay   = 120        # cap at 2 minutes
     attempt     = 0
@@ -1084,6 +1437,7 @@ def main():
             app.run_polling(
                 drop_pending_updates=True,
                 allowed_updates=Update.ALL_TYPES,
+                close_loop=False,
             )
             log.info("Bot berhenti dengan bersih.")
             break
@@ -1092,8 +1446,12 @@ def main():
             log.info("Bot dihenti oleh pengguna (Ctrl+C).")
             break
 
+        except InvalidToken:
+            log.critical("Telegram token rejected by Telegram API. Update the TELEGRAM_BOT_TOKEN secret, then restart the workflow.")
+            sys.exit(1)
+
         except Exception as exc:
-            log.error(f"Bot crash: {exc}", exc_info=True)
+            log.error(f"Bot crash: {_safe_error(exc)}", exc_info=True)
             log.info(f"Restart dalam {retry_delay}s...")
             time.sleep(retry_delay)
             retry_delay = min(retry_delay * 2, max_delay)   # exponential backoff
