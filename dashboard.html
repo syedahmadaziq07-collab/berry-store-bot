@@ -143,6 +143,24 @@ tbody td{padding:.7rem 1rem;vertical-align:middle}
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(80px);background:#1e293b;color:#fff;padding:.6rem 1.2rem;border-radius:var(--radius-s);font-size:.86rem;transition:transform .3s;z-index:999;pointer-events:none;max-width:90vw;text-align:center}
 #toast.show{transform:translateX(-50%) translateY(0)}
 
+/* ── Credentials grid ── */
+.cred-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
+.cred-card{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.1rem;border:1px solid var(--grey-m);display:flex;flex-direction:column;gap:.6rem}
+.cred-card-name{font-size:1rem;font-weight:800;color:var(--text)}
+.cred-card-type{display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:.18rem .6rem;border-radius:999px}
+.cred-card-type.auto{background:var(--blue-l);color:var(--blue)}
+.cred-card-type.manual{background:var(--grey-l);color:var(--grey)}
+.cred-rows{display:flex;flex-direction:column;gap:.3rem;margin-top:.25rem}
+.cred-row{display:flex;justify-content:space-between;align-items:center;font-size:.86rem}
+.cred-row .lbl{color:var(--text-s);font-weight:500}
+.cred-row .val{font-weight:800;color:var(--text)}
+.cred-row .val.avail-ok{color:var(--green)}
+.cred-row .val.avail-low{color:var(--red)}
+.cred-status{margin-top:.35rem;font-size:.82rem;font-weight:700}
+.cred-status.ok{color:var(--green)}
+.cred-status.empty{color:var(--red)}
+.cred-manual-note{font-size:.82rem;color:var(--text-s);font-style:italic}
+
 /* ── Responsive ── */
 @media(max-width:640px){
   .page{padding:1rem}
@@ -187,6 +205,7 @@ tbody td{padding:.7rem 1rem;vertical-align:middle}
   <div class="tab" onclick="switchTab('products',this)">📦 Products</div>
   <div class="tab" onclick="switchTab('orders',this)">🛒 Orders</div>
   <div class="tab" onclick="switchTab('stock',this)">🗄️ Stock</div>
+  <div class="tab" onclick="switchTab('credentials',this)">🔑 Credentials</div>
 </div>
 
 <!-- ══════════════ TODAY SALES ══════════════ -->
@@ -289,6 +308,14 @@ tbody td{padding:.7rem 1rem;vertical-align:middle}
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════ CREDENTIALS ══════════════ -->
+<div class="page" id="page-credentials">
+  <div class="sec-hdr"><h2>Credentials / Auto Delivery</h2></div>
+  <div class="cred-grid" id="credGrid">
+    <div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--text-s)"><span class="spinner"></span>Loading…</div>
   </div>
 </div>
 
@@ -459,10 +486,11 @@ function switchTab(name, el) {
 }
 
 function loadTab(name) {
-  if (name === 'sales')    { loadSales(); }
-  if (name === 'products') { loadProducts(); }
-  if (name === 'orders')   { loadOrders(); }
-  if (name === 'stock')    { loadStock(); }
+  if (name === 'sales')       { loadSales(); }
+  if (name === 'products')    { loadProducts(); }
+  if (name === 'orders')      { loadOrders(); }
+  if (name === 'stock')       { loadStock(); }
+  if (name === 'credentials') { loadCredentials(); }
 }
 
 // ─────────────────────────────────────────────────────
@@ -683,6 +711,88 @@ async function loadStock() {
   } catch(e) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="6">⚠️ ${e.message}</td></tr>`;
     toast('⚠️ Stock: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+//  CREDENTIALS
+// ─────────────────────────────────────────────────────
+async function loadCredentials() {
+  if (!sb) return;
+  const grid = document.getElementById('credGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--text-s)"><span class="spinner"></span>Loading…</div>';
+
+  try {
+    // Fetch all products with their auto_delivery flag
+    const { data: products, error: pErr } = await sb
+      .from('products')
+      .select('id, name, auto_delivery')
+      .order('name');
+    if (pErr) throw pErr;
+    if (!products || !products.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--text-s)">No products found.</div>';
+      return;
+    }
+
+    // For auto_delivery products fetch credential counts in parallel
+    const cards = await Promise.all(products.map(async p => {
+      if (!boolVal(p.auto_delivery)) {
+        // Manual product — simple card
+        return `<div class="cred-card">
+          <div>
+            <div class="cred-card-name">${p.name}</div>
+            <span class="cred-card-type manual">⚙️ Manual</span>
+          </div>
+          <div class="cred-manual-note">Admin menghantar akaun secara manual.</div>
+        </div>`;
+      }
+
+      // Auto delivery — fetch used + available counts
+      let total = 0, used = 0, available = 0;
+      try {
+        const [resUsed, resAvail] = await Promise.all([
+          sb.from('credentials').select('id', { count: 'exact', head: true })
+            .eq('product_id', p.id).eq('is_used', true),
+          sb.from('credentials').select('id', { count: 'exact', head: true })
+            .eq('product_id', p.id).eq('is_used', false),
+        ]);
+        used      = resUsed.count  ?? 0;
+        available = resAvail.count ?? 0;
+        total     = used + available;
+      } catch (_) { /* counts stay 0 */ }
+
+      const availClass = available > 0 ? 'avail-ok' : 'avail-low';
+      const statusCls  = available > 0 ? 'ok'       : 'empty';
+      const statusTxt  = available > 0 ? '✅ Ada stok' : '⚠️ Stok Habis';
+
+      return `<div class="cred-card">
+        <div>
+          <div class="cred-card-name">${p.name}</div>
+          <span class="cred-card-type auto">🤖 Auto Delivery</span>
+        </div>
+        <div class="cred-rows">
+          <div class="cred-row">
+            <span class="lbl">Total</span>
+            <span class="val">${total}</span>
+          </div>
+          <div class="cred-row">
+            <span class="lbl">Digunakan</span>
+            <span class="val">${used}</span>
+          </div>
+          <div class="cred-row">
+            <span class="lbl">Tersedia</span>
+            <span class="val ${availClass}">${available}</span>
+          </div>
+        </div>
+        <div class="cred-status ${statusCls}">${statusTxt}</div>
+      </div>`;
+    }));
+
+    grid.innerHTML = cards.join('');
+    markUpdated();
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--red)">⚠️ ${e.message}</div>`;
+    toast('⚠️ Credentials: ' + e.message);
   }
 }
 
