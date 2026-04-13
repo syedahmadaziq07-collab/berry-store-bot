@@ -71,14 +71,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ══ STAT CARDS ══ */
 .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.4rem}
-.stat-card{background:var(--white);border-radius:var(--r);padding:1.1rem 1.15rem 1rem;box-shadow:var(--shadow)}
+.stat-card{background:var(--white);border-radius:var(--r);padding:1.1rem 1.15rem 1rem;box-shadow:var(--shadow);min-height:140px;max-height:180px;overflow:hidden}
 .sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.6rem}
 .sc-label{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s)}
 .sc-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;flex-shrink:0}
 .sc-icon.amber{background:#fbbc04}
 .sc-icon.blue{background:#1a73e8}
 .sc-icon.green{background:#34a853}
-.sc-spark{height:46px;margin:-2px -4px .55rem}
+.sc-spark{display:block;width:100%!important;height:50px!important;max-height:50px;margin:-2px -4px .55rem}
 .sc-val{font-size:1.75rem;font-weight:800;line-height:1;color:var(--text);margin-bottom:.28rem}
 .sc-trend{font-size:.73rem;font-weight:600}
 .sc-trend.up{color:var(--success)}
@@ -325,7 +325,7 @@ button:active{transform:scale(.97)}
           </div>
           <canvas class="sc-spark" id="spkRev"></canvas>
           <div class="sc-val" id="dRev">—</div>
-          <div class="sc-trend up" id="dRevTrend"></div>
+          <div id="dRevTrend"></div>
         </div>
 
         <!-- Approved 7D -->
@@ -336,7 +336,7 @@ button:active{transform:scale(.97)}
           </div>
           <canvas class="sc-spark" id="spkApp"></canvas>
           <div class="sc-val" id="dApp">—</div>
-          <div class="sc-trend up" id="dAppTrend"></div>
+          <div id="dAppTrend"></div>
         </div>
 
       </div>
@@ -710,11 +710,30 @@ function loadPage(p) {
 function drawSpark(id, data, color) {
   const ctx = document.getElementById(id);
   if (!ctx) return;
-  if (_spkCharts[id]) _spkCharts[id].destroy();
+  if (_spkCharts[id]) { _spkCharts[id].destroy(); _spkCharts[id] = null; }
+  const safeData = (data && data.length) ? data : [0,0,0,0,0,0,0];
+  ctx.style.height = '50px';
+  ctx.style.maxHeight = '50px';
   _spkCharts[id] = new Chart(ctx, {
     type:'line',
-    data:{ labels:data.map((_,i)=>i), datasets:[{data, borderColor:color, borderWidth:2, pointRadius:0, fill:false, tension:.4}]},
-    options:{plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false,responsive:true,maintainAspectRatio:false}
+    data:{
+      labels: safeData.map((_,i)=>i),
+      datasets:[{
+        data: safeData,
+        borderColor: color,
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        tension: .4
+      }]
+    },
+    options:{
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false,beginAtZero:true}},
+      animation:false,
+      responsive:true,
+      maintainAspectRatio:false
+    }
   });
 }
 
@@ -745,11 +764,11 @@ async function loadDashboard() {
     const revT  = appT.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
     const revP  = appP.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
 
-    document.getElementById('dUsers').textContent = totalUsers;
-    document.getElementById('dRev').textContent   = rm(revT);
-    document.getElementById('dApp').textContent   = appT.length;
-    document.getElementById('dRevTrend').outerHTML = pctStr(revT, revP);
-    document.getElementById('dAppTrend').outerHTML = pctStr(appT.length, appP.length);
+    document.getElementById('dUsers').textContent  = totalUsers ?? 0;
+    document.getElementById('dRev').textContent    = rm(revT);
+    document.getElementById('dApp').textContent    = appT.length;
+    document.getElementById('dRevTrend').innerHTML = pctStr(revT, revP);
+    document.getElementById('dAppTrend').innerHTML = pctStr(appT.length, appP.length);
 
     const labels=[], revDay=[], appDay=[];
     for (let i=6;i>=0;i--) {
@@ -790,14 +809,16 @@ async function loadDashboard() {
 function drawWeekChart(labels, data) {
   const ctx = document.getElementById('weekChart');
   if (!ctx) return;
-  if (_weekChart) _weekChart.destroy();
+  if (_weekChart) { _weekChart.destroy(); _weekChart = null; }
+  const safeLabels = (labels && labels.length) ? labels : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const safeData   = (data   && data.length)   ? data   : [0,0,0,0,0,0,0];
   _weekChart = new Chart(ctx, {
     type:'line',
     data:{
-      labels,
+      labels: safeLabels,
       datasets:[{
         label:'Revenue',
-        data,
+        data: safeData,
         borderColor:'#1a73e8',
         backgroundColor:'rgba(26,115,232,.08)',
         borderWidth:2.5,
@@ -841,7 +862,7 @@ async function loadOrders() {
   tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
   try {
     let q = sb.from('orders')
-      .select('id,order_id,user_id,username,product_name,amount,status,created_at')
+      .select('id,user_id,username,product_name,amount,status,created_at')
       .order('created_at',{ascending:false}).limit(50);
     if (_ordStatusFilter) q = q.eq('status',_ordStatusFilter);
     const {data,error} = await q;
@@ -860,7 +881,6 @@ function filterOrders() {
   if (!q) { renderOrders(_allOrders); return; }
   renderOrders(_allOrders.filter(o=>
     String(o.id||'').toLowerCase().includes(q)||
-    String(o.order_id||'').toLowerCase().includes(q)||
     (o.username||'').toLowerCase().includes(q)
   ));
 }
@@ -870,7 +890,7 @@ function renderOrders(rows) {
   if (!rows.length) { tb.innerHTML='<tr class="empty-r"><td colspan="6">No orders found.</td></tr>'; return; }
   tb.innerHTML = rows.map(o=>{
     const cust = o.username?'@'+o.username:(o.user_id||'—');
-    const oid  = o.order_id || String(o.id||'').slice(0,8)+'…';
+    const oid  = String(o.id||'').slice(0,12);
     return `<tr>
       <td style="font-family:monospace;font-size:.76rem;color:var(--text-s)">${oid}</td>
       <td>${cust}</td>
@@ -1185,7 +1205,7 @@ document.querySelectorAll('.overlay').forEach(o=>{
   o.addEventListener('click', e=>{ if(e.target===o && o.id!=='connectOverlay') o.classList.remove('open'); });
 });
 
-(function init(){
+document.addEventListener('DOMContentLoaded', function init(){
   const t = today();
   document.getElementById('salFrom').value = t;
   document.getElementById('salTo').value   = t;
@@ -1201,7 +1221,7 @@ document.querySelectorAll('.overlay').forEach(o=>{
   } else {
     openConnect();
   }
-})();
+});
 </script>
 </body>
 </html>
