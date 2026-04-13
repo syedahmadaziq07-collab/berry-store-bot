@@ -834,22 +834,100 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
             order_data = rows[0] if rows else {}
             sb_patch("orders", f"id=eq.{order_id}", {"status": "completed"})
+            product_data = {}
+            cred = None
             if order_data.get("product_id"):
-                prod_rows = sb_get("products", f"select=stock&id=eq.{order_data['product_id']}&limit=1")
+                prod_rows = sb_get("products", f"select=*&id=eq.{order_data['product_id']}&limit=1")
                 if prod_rows:
-                    new_stock = max(0, prod_rows[0]["stock"] - order_data.get("quantity", 1))
+                    product_data = prod_rows[0]
+                    new_stock = max(0, product_data.get("stock", 0) - order_data.get("quantity", 1))
                     sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
-            return order_data
-        order = await _run_supabase(f"orders.approve id={order_id}", approve_tx, attempts=1, timeout=15)
+                    if product_data.get("auto_delivery"):
+                        cred_rows = sb_get(
+                            "credentials",
+                            f"select=*&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
+                        )
+                        if cred_rows:
+                            cred = cred_rows[0]
+                            sb_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
+            return order_data, product_data, cred
+
+        result = await _run_supabase(f"orders.approve id={order_id}", approve_tx, attempts=1, timeout=15)
+        order, product, cred = result if isinstance(result, tuple) else (result, {}, None)
     except Exception as exc:
         log.warning(f"Supabase approve: {_safe_error(exc)}", exc_info=True)
         await update.callback_query.edit_message_caption(
             caption="⚠️ Ralat approve. Sila cuba lagi.", reply_markup=None)
         return
 
-    log.info(f"Order {order_id} approved by admin")
+    log.info(f"Order {order_id} approved by admin (auto_delivery={bool(product.get('auto_delivery'))})")
     await update.callback_query.edit_message_caption(
         caption=(update.callback_query.message.caption or "") + "\n\n✅ APPROVED", reply_markup=None)
+
+    # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
+    if product.get("auto_delivery"):
+        if cred:
+            # Send credential to customer
+            try:
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=(
+                        "✅ Pembayaran anda telah disahkan!\n\n"
+                        "🎉 Berikut adalah maklumat akaun anda:\n\n"
+                        f"📦 Produk: {order.get('product_name', '-')}\n"
+                        f"📧 Email: {cred['email']}\n"
+                        f"🔑 Password: {cred['password']}\n"
+                        f"📅 Tempoh: {product.get('duration', '-')}\n\n"
+                        "⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
+                        "💬 Ada masalah? Hubungi: @berryrc 🙌"
+                    ),
+                )
+            except Exception as exc:
+                log.warning(f"Auto delivery send to user: {_safe_error(exc)}")
+            # Notify admin: auto delivery success
+            try:
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"✅ Auto delivery berjaya!\n"
+                        f"• Order: {order_id}\n"
+                        f"• Customer: @{order.get('username', '-')}\n"
+                        f"• Produk: {order.get('product_name', '-')}\n"
+                        f"• Credentials dihantar automatik ✅"
+                    ),
+                )
+            except Exception as exc:
+                log.warning(f"Auto delivery admin notify: {_safe_error(exc)}")
+        else:
+            # No credentials available — fallback + alert admin
+            try:
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=(
+                        "✅ Pembayaran anda telah disahkan!\n\n"
+                        "Akaun akan dihantar secepat mungkin 🚀\n"
+                        "(biasanya dalam masa 1 jam)\n\n"
+                        "Ada masalah? DM admin: @berryrc 🙌"
+                    ),
+                )
+            except Exception as exc:
+                log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
+            try:
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"⚠️ STOK CREDENTIALS HABIS!\n"
+                        f"Produk: {order.get('product_name', '-')}\n"
+                        f"Tiada credentials tersedia.\n"
+                        f"Tambah: /addcred {product.get('id', '')}\n"
+                        f"Atau hantar manual: /send {order_id}"
+                    ),
+                )
+            except Exception as exc:
+                log.warning(f"Auto delivery no-cred admin alert: {_safe_error(exc)}")
+        return
+
+    # ── MANUAL DELIVERY path (existing flow, unchanged) ────────────────────────
     # Message 1 → Customer
     try:
         await context.bot.send_message(
@@ -1078,7 +1156,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Admin: Send Account Details ─────────────────────────────────────────────
 
-pending_send: dict[int, str] = {}   # {admin_user_id: order_id}
+pending_send: dict[int, str] = {}        # {admin_user_id: order_id}
+pending_addcred: dict[int, dict] = {}   # {admin_user_id: {product_id, product_name}}
 
 async def send_account_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin uses /send ORDER_ID then types account details to forward to buyer."""
@@ -1148,6 +1227,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     # ── Admin: pending_receipt (customer uploading receipt text — not used but kept) ─
+
+    # ── Admin: addcred flow — receive credential lines ─────────────────────────
+    if user_id == ADMIN_ID and ADMIN_ID in pending_addcred:
+        info = pending_addcred.pop(ADMIN_ID)
+        product_id   = info["product_id"]
+        product_name = info["product_name"]
+        lines = [l.strip() for l in text.split("\n") if ":" in l.strip()]
+        if not lines:
+            await update.message.reply_text(
+                "⚠️ Tiada credentials valid ditemui.\n"
+                "Format betul: email:password (satu per baris)"
+            )
+            return
+        items = []
+        for line in lines:
+            parts = line.split(":", 1)
+            if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                items.append({
+                    "product_id": product_id,
+                    "email":      parts[0].strip(),
+                    "password":   parts[1].strip(),
+                    "is_used":    False,
+                })
+        if not items:
+            await update.message.reply_text("⚠️ Tiada credentials valid untuk disimpan.")
+            return
+        try:
+            def insert_creds(items=items):
+                for item in items:
+                    sb_post("credentials", item)
+            await _run_supabase(f"credentials.insert product={product_id}", insert_creds)
+            await update.message.reply_text(
+                f"✅ {len(items)} credentials berjaya ditambah untuk {product_name}"
+            )
+            log.info(f"[ADDCRED] {len(items)} credentials added for product {product_id}")
+        except Exception as exc:
+            log.warning(f"[ADDCRED] insert failed: {_safe_error(exc)}", exc_info=True)
+            await update.message.reply_text(f"❌ Gagal simpan: {_safe_error(exc)}")
+        return
 
     # ── Admin: account delivery flow ──────────────────────────────────────────
     if user_id != ADMIN_ID or ADMIN_ID not in pending_send:
@@ -1428,7 +1546,90 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
         return
     log.error(f"Telegram error: {_safe_error(context.error)}", exc_info=True)
 
-# ─── Build Application ────────────────────────────────────────────────────────
+# ─── /addcred ─────────────────────────────────────────────────────────────────
+
+async def cmd_addcred(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /addcred PRODUCT_ID — then send email:password lines."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Not allowed")
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /addcred PRODUCT_ID\n"
+            "Example: /addcred 3\n\n"
+            "Then send credentials one per line:\n"
+            "email@example.com:mypassword"
+        )
+        return
+    try:
+        product_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ Product ID mestilah nombor.")
+        return
+    try:
+        rows = await _run_supabase(
+            f"products.addcred id={product_id}",
+            lambda: sb_get("products", f"select=id,name&id=eq.{product_id}&limit=1"),
+        )
+        if not rows:
+            await update.message.reply_text(f"⚠️ Produk ID {product_id} tidak dijumpai.")
+            return
+        product_name = rows[0]["name"]
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Ralat: {_safe_error(exc)}")
+        return
+    pending_addcred[ADMIN_ID] = {"product_id": product_id, "product_name": product_name}
+    await update.message.reply_text(
+        f"📦 Produk: {product_name} (ID: {product_id})\n\n"
+        f"Hantar credentials sekarang, satu per baris:\n"
+        f"email:password\n"
+        f"email2:password2\n\n"
+        f"Contoh:\n"
+        f"user@netflix.com:pass123\n"
+        f"user2@netflix.com:pass456"
+    )
+
+
+# ─── /credstock ───────────────────────────────────────────────────────────────
+
+async def cmd_credstock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: show count of unused credentials per product."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Not allowed")
+        return
+    try:
+        products = await _run_supabase(
+            "products.credstock",
+            lambda: sb_get("products", "select=id,name,auto_delivery&order=name"),
+        ) or []
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Ralat: {_safe_error(exc)}")
+        return
+    if not products:
+        await update.message.reply_text("Tiada produk dijumpai.")
+        return
+    lines = ["📦 STOK CREDENTIALS:", "━━━━━━━━━━━━━━━━━━"]
+    for p in products:
+        try:
+            pid = p["id"]
+            cred_rows = await _run_supabase(
+                f"credentials.count pid={pid}",
+                lambda pid=pid: sb_get("credentials", f"select=id&product_id=eq.{pid}&is_used=eq.false"),
+            ) or []
+            count = len(cred_rows)
+        except Exception:
+            count = "?"
+        auto_tag = " 🤖" if p.get("auto_delivery") else ""
+        if isinstance(count, int) and count > 0:
+            status = f"{count} ✅"
+        elif count == 0:
+            status = "0 ⚠️ HABIS"
+        else:
+            status = f"{count} ❓"
+        lines.append(f"• {p['name']}{auto_tag}: {status}")
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    await update.message.reply_text("\n".join(lines))
+
 
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
@@ -1440,7 +1641,9 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("broadcast",   cmd_broadcast))
     app.add_handler(CommandHandler("shop",   show_shop))
     app.add_handler(CommandHandler("orders", my_orders))
-    app.add_handler(CommandHandler("send",   send_account_command))
+    app.add_handler(CommandHandler("send",      send_account_command))
+    app.add_handler(CommandHandler("addcred",   cmd_addcred))
+    app.add_handler(CommandHandler("credstock", cmd_credstock))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
