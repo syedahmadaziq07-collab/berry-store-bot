@@ -319,6 +319,20 @@ def _health():
         products_cache_age_seconds=age if cached else None,
     ), 200
 
+@_app.route("/dashboard")
+def dashboard():
+    import os
+    dashboard_paths = [
+        "dashboard.html",
+        "telegram-bot/dashboard.html",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html"),
+    ]
+    for path in dashboard_paths:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read(), 200, {"Content-Type": "text/html"}
+    return "Dashboard not found", 404
+
 def _start_flask():
     log.info(f"Flask keep-alive berjalan di port {PORT}")
     _app.run(host="0.0.0.0", port=PORT, use_reloader=False, threaded=True)
