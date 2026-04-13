@@ -949,6 +949,22 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
+            # Extra message for private/semi/crumbs slot products
+            try:
+                _pname = (order.get("product_name") or "").lower()
+                if any(kw in _pname for kw in ("private", "semi", "crumbs")):
+                    await context.bot.send_message(
+                        chat_id=order["user_id"],
+                        text=(
+                            "📋 Untuk slot ini, sila PM admin @berryrc dengan maklumat berikut:\n\n"
+                            "✦ 𝗣𝗥𝗜𝗩𝗔𝗧𝗘 𝗦𝗟𝗢𝗧 𝗣𝗥𝗢𝗙𝗜𝗟𝗘 𝗢𝗡𝗟𝗬 ✦\n"
+                            "┆𑣲 name : \n"
+                            "┆𑣲 pin 4 digit : \n"
+                            "> pin for netflix only"
+                        ),
+                    )
+            except Exception as exc:
+                log.warning(f"Extra slot message failed: {_safe_error(exc)}")
             try:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
