@@ -396,8 +396,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot hidup ✅")
 
     total_users = total_sold = 0
+    is_new_user = False
     try:
         def start_stats():
+            # STEP 1: Check if user is new BEFORE saving to database
+            try:
+                existing = sb_get("users", f"select=id&id=eq.{user.id}")
+                is_new = len(existing) == 0
+            except Exception:
+                is_new = False
+            # STEP 2: Save user to database as usual (existing code)
             sb_upsert("users", {
                 "id": user.id,
                 "username": user.username or "",
@@ -405,8 +413,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
             users = sb_get("users", "select=id")
             sold  = sb_get("orders", "select=id&status=eq.completed")
-            return len(users), len(sold)
-        total_users, total_sold = await _run_supabase("start.stats", start_stats)
+            return len(users), len(sold), is_new
+        total_users, total_sold, is_new_user = await _run_supabase("start.stats", start_stats)
     except Exception as exc:
         log.warning(f"Supabase /start: {_safe_error(exc)}")
 
@@ -424,6 +432,35 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Tekan butang di bawah untuk mula!",
         reply_markup=main_kb(),
     )
+
+    # STEP 3: Send notification to admin after saving
+    try:
+        now_str = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
+        if is_new_user:
+            notif_text = (
+                "👤 PELANGGAN BARU MASUK!\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"• Nama: {user.first_name}\n"
+                f"• Username: @{user.username or 'tiada'}\n"
+                f"• ID: {user.id}\n"
+                f"• Masa: {now_str}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "🆕 Pengguna baru!"
+            )
+        else:
+            notif_text = (
+                "👤 PELANGGAN AKTIF!\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"• Nama: {user.first_name}\n"
+                f"• Username: @{user.username or 'tiada'}\n"
+                f"• ID: {user.id}\n"
+                f"• Masa: {now_str}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "🔄 Pengguna lama"
+            )
+        await context.bot.send_message(chat_id=ADMIN_ID, text=notif_text)
+    except Exception as e:
+        log.warning(f"Admin start notify failed: {e}")
 
 # ─── Shop ─────────────────────────────────────────────────────────────────────
 
