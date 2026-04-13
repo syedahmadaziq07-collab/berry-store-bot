@@ -603,6 +603,21 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
+def get_qr_path():
+    possible_paths = [
+        "payment_qr.png",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "payment_qr.png"),
+        "/opt/render/project/src/payment_qr.png",
+        "telegram-bot/payment_qr.png",
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            log.info(f"[QR] Found at: {path}")
+            return path
+    log.warning(f"[QR] Not found. Checked: {possible_paths}")
+    return None
+
+
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     # answer() already called in on_button — do NOT call query.answer() here
     query = update.callback_query
@@ -629,13 +644,12 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
         return
 
-    # ── FIX 5: Log the exact QR path so we can see it in logs ──────────────────
-    qr = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payment_qr.png")
-    log.info(f"[PAYMENT] QR path={qr} | exists={os.path.exists(qr)}")
+    # ── QR path: check multiple locations ──────────────────────────────────────
+    qr = get_qr_path()
 
     # ── FIX 3: send_photo with proper context manager + its own try/except ──────
     qr_sent = False
-    if os.path.exists(qr):
+    if qr:
         try:
             with open(qr, "rb") as qr_file:
                 await context.bot.send_photo(
