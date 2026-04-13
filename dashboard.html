@@ -378,7 +378,7 @@ button:active{transform:scale(.97)}
 
       <!-- Search + Date filter row -->
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem">
-        <input type="text" id="ordSearch" placeholder="Search by Order ID or username…" oninput="filterOrders()" style="width:300px;min-width:220px;padding:.4rem .75rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.8rem;background:var(--white);outline:none;color:var(--text);font-family:inherit"/>
+        <input type="text" id="order-search" value="" autocomplete="off" placeholder="Search by Order ID or username…" oninput="filterOrders()" style="width:300px;min-width:220px;padding:.4rem .75rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.8rem;background:var(--white);outline:none;color:var(--text);font-family:inherit"/>
         <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
           <div class="filter-pills" id="datePills">
             <span class="fpill fpill-date active" data-dt="all"       onclick="setDateFilter(this,'all')">All Time</span>
@@ -873,35 +873,6 @@ function drawWeekChart(labels, data) {
 let _ordStatusFilter = '';
 let _ordDateFilter   = 'all';
 
-function getOrderDateRange() {
-  const t    = today();
-  const now  = t + 'T23:59:59';
-  if (_ordDateFilter === 'today') {
-    return { from: t + 'T00:00:00', to: now };
-  }
-  if (_ordDateFilter === 'yesterday') {
-    const y = dateOffset(-1);
-    return { from: y + 'T00:00:00', to: y + 'T23:59:59' };
-  }
-  if (_ordDateFilter === 'week') {
-    const d = new Date();
-    const day = d.getDay(); // 0=Sun
-    const diff = (day === 0 ? 6 : day - 1); // days since Monday
-    d.setDate(d.getDate() - diff);
-    const mon = d.toISOString().slice(0,10);
-    return { from: mon + 'T00:00:00', to: now };
-  }
-  if (_ordDateFilter === 'month') {
-    return { from: t.slice(0,7) + '-01T00:00:00', to: now };
-  }
-  if (_ordDateFilter === 'custom') {
-    const from = document.getElementById('ordFrom').value;
-    const to   = document.getElementById('ordTo').value;
-    if (from && to) return { from: from + 'T00:00:00', to: to + 'T23:59:59' };
-  }
-  return null; // all time
-}
-
 function getDateLabel() {
   const labels = { all:'', today:' · today', yesterday:' · yesterday', week:' · this week', month:' · this month', custom:' · custom range' };
   return labels[_ordDateFilter] || '';
@@ -929,13 +900,39 @@ async function loadOrders() {
   tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
   try {
     let q = sb.from('orders')
-      .select('id,user_id,username,product_name,amount,status,created_at')
-      .order('created_at',{ascending:false}).limit(200);
+      .select('id,user_id,username,product_name,quantity,amount,status,created_at')
+      .order('created_at',{ascending:false})
+      .limit(200);
+
     if (_ordStatusFilter) q = q.eq('status', _ordStatusFilter);
-    const range = getOrderDateRange();
-    if (range) {
-      q = q.gte('created_at', range.from).lte('created_at', range.to);
+
+    if (_ordDateFilter === 'today') {
+      const start = new Date(); start.setHours(0,0,0,0);
+      q = q.gte('created_at', start.toISOString());
+
+    } else if (_ordDateFilter === 'yesterday') {
+      const start = new Date(); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
+      const end   = new Date(); end.setHours(0,0,0,0);
+      q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
+
+    } else if (_ordDateFilter === 'week') {
+      const start = new Date();
+      start.setDate(start.getDate() - (start.getDay()===0 ? 6 : start.getDay()-1));
+      start.setHours(0,0,0,0);
+      q = q.gte('created_at', start.toISOString());
+
+    } else if (_ordDateFilter === 'month') {
+      const start = new Date(); start.setDate(1); start.setHours(0,0,0,0);
+      q = q.gte('created_at', start.toISOString());
+
+    } else if (_ordDateFilter === 'custom') {
+      const fromVal = document.getElementById('ordFrom').value;
+      const toVal   = document.getElementById('ordTo').value;
+      if (fromVal) q = q.gte('created_at', new Date(fromVal).toISOString());
+      if (toVal)   { const e = new Date(toVal); e.setHours(23,59,59,999); q = q.lte('created_at', e.toISOString()); }
     }
+    // _ordDateFilter === 'all' → no date filter applied
+
     const {data,error} = await q;
     if (error) throw error;
     _allOrders = data||[];
@@ -947,7 +944,7 @@ async function loadOrders() {
 }
 
 function filterOrders() {
-  const q = (document.getElementById('ordSearch').value||'').toLowerCase().trim();
+  const q = (document.getElementById('order-search').value||'').toLowerCase().trim();
   const filtered = q
     ? _allOrders.filter(o=>
         String(o.id||'').toLowerCase().includes(q) ||
