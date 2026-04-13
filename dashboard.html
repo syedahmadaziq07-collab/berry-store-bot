@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Berry Store — Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:       #2563eb;
+      --blue-dark:  #1d4ed8;
+      --blue-light: #eff6ff;
+      --green:      #16a34a;
+      --green-bg:   #f0fdf4;
+      --red:        #dc2626;
+      --red-bg:     #fef2f2;
+      --yellow:     #d97706;
+      --yellow-bg:  #fffbeb;
+      --grey:       #6b7280;
+      --grey-light: #f3f4f6;
+      --border:     #e5e7eb;
+      --white:      #ffffff;
+      --text:       #111827;
+      --text-light: #6b7280;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f1f5f9;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--blue);
+      color: #fff;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      box-shadow: 0 2px 8px rgba(37,99,235,.35);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.3px; }
+    header span { font-size: .8rem; opacity: .8; }
+
+    #refreshBtn {
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.3);
+      color: #fff;
+      padding: .4rem .9rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: .85rem;
+      transition: background .2s;
+    }
+    #refreshBtn:hover { background: rgba(255,255,255,.25); }
+
+    /* ── Layout ── */
+    main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+    section { margin-bottom: 2rem; }
+    section h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    section h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 1rem;
+      background: var(--blue);
+      border-radius: 2px;
+    }
+
+    /* ── Config Panel ── */
+    .config-panel {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1.75rem;
+    }
+    .config-panel h2 { margin-bottom: .75rem; }
+    .config-row {
+      display: flex;
+      gap: .75rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .config-row label {
+      display: flex;
+      flex-direction: column;
+      gap: .3rem;
+      flex: 1;
+      min-width: 200px;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .config-row input {
+      padding: .55rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: .9rem;
+      outline: none;
+      transition: border .15s;
+      background: var(--grey-light);
+    }
+    .config-row input:focus { border-color: var(--blue); background: #fff; }
+    #connectBtn {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: .6rem 1.4rem;
+      border-radius: 7px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+    }
+    #connectBtn:hover { background: var(--blue-dark); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      font-size: .78rem;
+      font-weight: 600;
+      padding: .25rem .7rem;
+      border-radius: 999px;
+      margin-left: .5rem;
+    }
+    .status-badge.connected { background: var(--green-bg); color: var(--green); }
+    .status-badge.disconnected { background: var(--red-bg); color: var(--red); }
+    .status-badge::before {
+      content: '';
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* ── Date Filter ── */
+    .filter-row {
+      display: flex;
+      gap: .75rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+    }
+    .filter-row label {
+      display: flex;
+      flex-direction: column;
+      gap: .3rem;
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .filter-row input[type="date"] {
+      padding: .5rem .7rem;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: .88rem;
+      outline: none;
+    }
+    .filter-row input[type="date"]:focus { border-color: var(--blue); }
+    #filterBtn {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: .55rem 1.1rem;
+      border-radius: 7px;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #filterBtn:hover { background: var(--blue-dark); }
+
+    /* ── Stat Cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+    .stat-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+    }
+    .stat-card .label {
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .stat-card .value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--blue);
+      line-height: 1;
+    }
+    .stat-card .sub {
+      font-size: .78rem;
+      color: var(--text-light);
+    }
+    .stat-card.green .value { color: var(--green); }
+    .stat-card.orange .value { color: var(--yellow); }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .88rem;
+    }
+    thead { background: var(--blue-light); }
+    thead th {
+      padding: .75rem 1rem;
+      text-align: left;
+      font-size: .75rem;
+      font-weight: 700;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      white-space: nowrap;
+    }
+    tbody tr { border-top: 1px solid var(--border); transition: background .1s; }
+    tbody tr:hover { background: #f8faff; }
+    tbody td { padding: .75rem 1rem; vertical-align: middle; }
+
+    .badge {
+      display: inline-block;
+      padding: .2rem .6rem;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+    }
+    .badge.active    { background: var(--green-bg);  color: var(--green); }
+    .badge.inactive  { background: var(--grey-light); color: var(--grey); }
+    .badge.approved  { background: var(--green-bg);  color: var(--green); }
+    .badge.pending   { background: var(--yellow-bg); color: var(--yellow); }
+    .badge.cancelled { background: var(--red-bg);    color: var(--red); }
+    .badge.enabled   { background: var(--blue-light); color: var(--blue); }
+    .badge.disabled  { background: var(--grey-light); color: var(--grey); }
+
+    /* ── Empty / Loading ── */
+    .empty {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--text-light);
+      font-size: .9rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 3px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+      margin-right: .5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1e293b;
+      color: #fff;
+      padding: .6rem 1.2rem;
+      border-radius: 8px;
+      font-size: .88rem;
+      transition: transform .3s;
+      z-index: 999;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      main { padding: 1rem; }
+      .stat-card .value { font-size: 1.6rem; }
+      thead th, tbody td { padding: .6rem .75rem; font-size: .8rem; }
+    }
+    .overflow-x { overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🫐 Berry Store</h1>
+  <button id="refreshBtn" onclick="loadAll()">⟳ Refresh</button>
+</header>
+
+<main>
+
+  <!-- ── Config ── -->
+  <div class="config-panel">
+    <h2>
+      Supabase Connection
+      <span id="connStatus" class="status-badge disconnected">Disconnected</span>
+    </h2>
+    <div class="config-row">
+      <label>
+        Supabase URL
+        <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" />
+      </label>
+      <label>
+        Anon / Service Key
+        <input id="sbKey" type="password" placeholder="eyJhbGci..." />
+      </label>
+      <button id="connectBtn" onclick="connect()">Connect</button>
+    </div>
+  </div>
+
+  <!-- ── Today Sales ── -->
+  <section id="salesSection">
+    <h2>Today Sales</h2>
+    <div class="filter-row">
+      <label>From <input type="date" id="dateFrom" /></label>
+      <label>To   <input type="date" id="dateTo"   /></label>
+      <button id="filterBtn" onclick="loadSales()">Apply</button>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Total Orders</div>
+        <div class="value" id="statOrders">—</div>
+        <div class="sub">Approved orders</div>
+      </div>
+      <div class="stat-card green">
+        <div class="label">Total Revenue</div>
+        <div class="value" id="statRevenue">—</div>
+        <div class="sub">RM (approved only)</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="label">Pending Orders</div>
+        <div class="value" id="statPending">—</div>
+        <div class="sub">Awaiting approval</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Products & Stock ── -->
+  <section>
+    <h2>Products &amp; Stock</h2>
+    <div class="table-wrap">
+      <div class="overflow-x">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Price (RM)</th>
+              <th>Stock</th>
+              <th>Status</th>
+              <th>Login Delivery</th>
+            </tr>
+          </thead>
+          <tbody id="productsBody">
+            <tr><td colspan="6" class="empty"><span class="spinner"></span> Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Recent Orders ── -->
+  <section>
+    <h2>Recent Orders <span style="font-weight:400;color:var(--text-light);font-size:.85rem;">(last 20)</span></h2>
+    <div class="table-wrap">
+      <div class="overflow-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Order ID</th>
+              <th>Customer</th>
+              <th>Product</th>
+              <th>Amount (RM)</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody">
+            <tr><td colspan="6" class="empty"><span class="spinner"></span> Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+  let sb = null;
+
+  /* ── Helpers ── */
+  function toast(msg, dur = 2800) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), dur);
+  }
+
+  function today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function fmt(dt) {
+    if (!dt) return '—';
+    const d = new Date(dt);
+    return d.toLocaleDateString('en-MY', { day:'2-digit', month:'short', year:'numeric' })
+      + ' ' + d.toLocaleTimeString('en-MY', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function statusBadge(s) {
+    if (!s) return '<span class="badge inactive">—</span>';
+    const map = { approved:'approved', pending:'pending', cancelled:'cancelled',
+                  active:'active', inactive:'inactive' };
+    const cls = map[s.toLowerCase()] || 'inactive';
+    return `<span class="badge ${cls}">${s}</span>`;
+  }
+
+  /* ── localStorage ── */
+  function saveConfig() {
+    localStorage.setItem('bs_url', document.getElementById('sbUrl').value.trim());
+    localStorage.setItem('bs_key', document.getElementById('sbKey').value.trim());
+  }
+
+  function loadConfig() {
+    const url = localStorage.getItem('bs_url') || '';
+    const key = localStorage.getItem('bs_key') || '';
+    document.getElementById('sbUrl').value = url;
+    document.getElementById('sbKey').value = key;
+    return { url, key };
+  }
+
+  /* ── Connect ── */
+  function connect() {
+    const url = document.getElementById('sbUrl').value.trim();
+    const key = document.getElementById('sbKey').value.trim();
+    if (!url || !key) { toast('⚠️ Please enter Supabase URL and Key'); return; }
+    saveConfig();
+    try {
+      sb = supabase.createClient(url, key);
+      document.getElementById('connStatus').textContent = 'Connected';
+      document.getElementById('connStatus').className = 'status-badge connected';
+      toast('✅ Connected to Supabase');
+      loadAll();
+    } catch (e) {
+      toast('❌ Failed to connect: ' + e.message);
+    }
+  }
+
+  /* ── Date defaults ── */
+  function initDates() {
+    const t = today();
+    document.getElementById('dateFrom').value = t;
+    document.getElementById('dateTo').value   = t;
+  }
+
+  /* ── Load All ── */
+  async function loadAll() {
+    if (!sb) { toast('⚠️ Connect to Supabase first'); return; }
+    await Promise.all([loadSales(), loadProducts(), loadOrders()]);
+  }
+
+  /* ── Sales ── */
+  async function loadSales() {
+    if (!sb) return;
+    const from = document.getElementById('dateFrom').value || today();
+    const to   = document.getElementById('dateTo').value   || today();
+
+    const fromISO = from + 'T00:00:00';
+    const toISO   = to   + 'T23:59:59';
+
+    try {
+      const { data, error } = await sb
+        .from('orders')
+        .select('id, amount, status, created_at')
+        .gte('created_at', fromISO)
+        .lte('created_at', toISO);
+
+      if (error) throw error;
+
+      const approved = (data || []).filter(o => (o.status || '').toLowerCase() === 'approved');
+      const pending  = (data || []).filter(o => (o.status || '').toLowerCase() === 'pending');
+      const revenue  = approved.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+      document.getElementById('statOrders').textContent  = approved.length;
+      document.getElementById('statRevenue').textContent = 'RM ' + revenue.toFixed(2);
+      document.getElementById('statPending').textContent = pending.length;
+    } catch (e) {
+      toast('⚠️ Sales error: ' + e.message);
+      document.getElementById('statOrders').textContent  = 'Err';
+      document.getElementById('statRevenue').textContent = 'Err';
+      document.getElementById('statPending').textContent = 'Err';
+    }
+  }
+
+  /* ── Products ── */
+  async function loadProducts() {
+    if (!sb) return;
+    const tbody = document.getElementById('productsBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="empty"><span class="spinner"></span> Loading…</td></tr>';
+
+    try {
+      const { data, error } = await sb
+        .from('products')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No products found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map((p, i) => {
+        const active = (p.is_active || p.status === 'active' || p.active) ? true : false;
+        const delivery = (p.auto_delivery === true || p.auto_delivery === 1) ? true : false;
+        const stock = p.stock !== undefined ? p.stock : (p.quantity !== undefined ? p.quantity : '—');
+        const price = p.price !== undefined ? 'RM ' + parseFloat(p.price).toFixed(2) : '—';
+        return `<tr>
+          <td style="color:var(--text-light)">${i + 1}</td>
+          <td><strong>${p.name || '—'}</strong></td>
+          <td>${price}</td>
+          <td>${stock}</td>
+          <td>${active
+            ? '<span class="badge active">Active</span>'
+            : '<span class="badge inactive">Inactive</span>'}</td>
+          <td>${delivery
+            ? '<span class="badge enabled">Enabled</span>'
+            : '<span class="badge disabled">Disabled</span>'}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">⚠️ ${e.message}</td></tr>`;
+      toast('⚠️ Products error: ' + e.message);
+    }
+  }
+
+  /* ── Orders ── */
+  async function loadOrders() {
+    if (!sb) return;
+    const tbody = document.getElementById('ordersBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="empty"><span class="spinner"></span> Loading…</td></tr>';
+
+    try {
+      const { data, error } = await sb
+        .from('orders')
+        .select('id, user_id, username, product_name, amount, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No orders found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map(o => {
+        const customer = o.username ? '@' + o.username : (o.user_id || '—');
+        const shortId  = String(o.id || '').slice(0, 8) + '…';
+        return `<tr>
+          <td style="font-family:monospace;font-size:.8rem;color:var(--text-light)" title="${o.id}">${shortId}</td>
+          <td>${customer}</td>
+          <td>${o.product_name || '—'}</td>
+          <td><strong>RM ${parseFloat(o.amount || 0).toFixed(2)}</strong></td>
+          <td>${statusBadge(o.status)}</td>
+          <td style="white-space:nowrap">${fmt(o.created_at)}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">⚠️ ${e.message}</td></tr>`;
+      toast('⚠️ Orders error: ' + e.message);
+    }
+  }
+
+  /* ── Init ── */
+  (function init() {
+    initDates();
+    const { url, key } = loadConfig();
+    if (url && key) {
+      try {
+        sb = supabase.createClient(url, key);
+        document.getElementById('connStatus').textContent = 'Connected';
+        document.getElementById('connStatus').className = 'status-badge connected';
+        loadAll();
+      } catch (e) {
+        console.warn('Auto-connect failed:', e.message);
+      }
+    }
+  })();
+</script>
+</body>
+</html>
