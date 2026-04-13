@@ -870,23 +870,23 @@ function drawWeekChart(labels, data) {
 // ══════════════════════════════════════════
 // ORDERS
 // ══════════════════════════════════════════
-let _ordStatusFilter = '';
-let _ordDateFilter   = 'all';
+window.orderStatusFilter = 'all';
+window.orderDateFilter   = 'all';
 
 function getDateLabel() {
   const labels = { all:'', today:' · today', yesterday:' · yesterday', week:' · this week', month:' · this month', custom:' · custom range' };
-  return labels[_ordDateFilter] || '';
+  return labels[window.orderDateFilter] || '';
 }
 
 function setStatusFilter(el, st) {
-  _ordStatusFilter = st;
+  window.orderStatusFilter = st || 'all';
   document.querySelectorAll('#statusPills .fpill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   loadOrders();
 }
 
 function setDateFilter(el, dt) {
-  _ordDateFilter = dt;
+  window.orderDateFilter = dt;
   document.querySelectorAll('#datePills .fpill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   const wrap = document.getElementById('customDateWrap');
@@ -895,7 +895,7 @@ function setDateFilter(el, dt) {
 }
 
 async function loadOrders() {
-  if (!sb) return;
+  if (!sb) { console.warn('Supabase not ready'); return; }
   const tbody = document.getElementById('ordBody');
   tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
   try {
@@ -904,34 +904,39 @@ async function loadOrders() {
       .order('created_at',{ascending:false})
       .limit(200);
 
-    if (_ordStatusFilter) q = q.eq('status', _ordStatusFilter);
+    const sf = window.orderStatusFilter || 'all';
+    if (sf !== 'all') q = q.eq('status', sf);
 
-    if (_ordDateFilter === 'today') {
-      const start = new Date(); start.setHours(0,0,0,0);
-      q = q.gte('created_at', start.toISOString());
+    const df  = window.orderDateFilter || 'all';
+    const now = new Date();
 
-    } else if (_ordDateFilter === 'yesterday') {
-      const start = new Date(); start.setDate(start.getDate()-1); start.setHours(0,0,0,0);
-      const end   = new Date(); end.setHours(0,0,0,0);
-      q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
+    if (df === 'today') {
+      const s = new Date(now); s.setHours(0,0,0,0);
+      q = q.gte('created_at', s.toISOString());
 
-    } else if (_ordDateFilter === 'week') {
-      const start = new Date();
-      start.setDate(start.getDate() - (start.getDay()===0 ? 6 : start.getDay()-1));
-      start.setHours(0,0,0,0);
-      q = q.gte('created_at', start.toISOString());
+    } else if (df === 'yesterday') {
+      const s = new Date(now); s.setDate(s.getDate()-1); s.setHours(0,0,0,0);
+      const e = new Date(now); e.setHours(0,0,0,0);
+      q = q.gte('created_at', s.toISOString()).lt('created_at', e.toISOString());
 
-    } else if (_ordDateFilter === 'month') {
-      const start = new Date(); start.setDate(1); start.setHours(0,0,0,0);
-      q = q.gte('created_at', start.toISOString());
+    } else if (df === 'week') {
+      const s = new Date(now);
+      const day = s.getDay();
+      s.setDate(s.getDate() + (day === 0 ? -6 : 1 - day));
+      s.setHours(0,0,0,0);
+      q = q.gte('created_at', s.toISOString());
 
-    } else if (_ordDateFilter === 'custom') {
+    } else if (df === 'month') {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      q = q.gte('created_at', s.toISOString());
+
+    } else if (df === 'custom') {
       const fromVal = document.getElementById('ordFrom').value;
       const toVal   = document.getElementById('ordTo').value;
       if (fromVal) q = q.gte('created_at', new Date(fromVal).toISOString());
       if (toVal)   { const e = new Date(toVal); e.setHours(23,59,59,999); q = q.lte('created_at', e.toISOString()); }
     }
-    // _ordDateFilter === 'all' → no date filter applied
+    // df === 'all' → no date filter applied
 
     const {data,error} = await q;
     if (error) throw error;
@@ -948,7 +953,8 @@ function filterOrders() {
   const filtered = q
     ? _allOrders.filter(o=>
         String(o.id||'').toLowerCase().includes(q) ||
-        (o.username||'').toLowerCase().includes(q)
+        (o.username||'').toLowerCase().includes(q) ||
+        (o.product_name||'').toLowerCase().includes(q)
       )
     : _allOrders;
   renderOrders(filtered);
@@ -1110,48 +1116,58 @@ async function loadStocks() {
   const grid = document.getElementById('stockGrid');
   grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading…</div>';
   try {
-    const {data:prods,error} = await sb.from('products').select('id,name,auto_delivery,price').order('name');
+    const {data:prods,error} = await sb.from('products').select('id,name,auto_delivery,price,stock,is_active').order('name');
     if (error) throw error;
     if (!prods||!prods.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products.</div>';
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products found.</div>';
       return;
     }
     const cards = await Promise.all(prods.map(async p=>{
-      if (!bool(p.auto_delivery)) return null;
-      let total=0,used=0,avail=0;
-      try {
-        const [rU,rA] = await Promise.all([
-          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
-          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
-        ]);
-        used=rU.count??0; avail=rA.count??0; total=used+avail;
-      } catch(_){}
+      const isAuto  = bool(p.auto_delivery);
+      const price   = p.price!=null ? 'RM '+parseFloat(p.price).toFixed(2) : '';
+      const active  = bool(p.is_active);
+      let total=0, used=0, avail=0;
+
+      if (isAuto) {
+        try {
+          const [rU,rA] = await Promise.all([
+            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
+            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
+          ]);
+          used=rU.count??0; avail=rA.count??0; total=used+avail;
+        } catch(_){}
+      } else {
+        avail = p.stock??0; total = avail;
+      }
+
       const low = avail<=2;
-      const price = p.price!=null?'RM '+parseFloat(p.price).toFixed(2):'';
       return `<div class="stock-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.3rem">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.35rem">
           <div>
             <div class="card-name">${p.name}</div>
-            <div class="card-chips">
+            <div class="card-chips" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.25rem">
               ${price?`<span class="chip price">${price}</span>`:''}
+              <span class="badge ${isAuto?'b-green':'b-grey'}">${isAuto?'Auto Delivery':'Manual'}</span>
               ${low?'<span class="badge b-amber">Needs Stock</span>':''}
             </div>
           </div>
+          <span class="badge ${active?'b-green':'b-grey'}" style="flex-shrink:0">${active?'Active':'Inactive'}</span>
         </div>
         <div class="stat-boxes">
-          <div class="stat-box"><div class="sb-lbl">Total Entries</div><div class="sb-val">${total}</div></div>
+          <div class="stat-box"><div class="sb-lbl">${isAuto?'Total Entries':'Total Stock'}</div><div class="sb-val">${total}</div></div>
           <div class="stat-box"><div class="sb-lbl">Available</div><div class="sb-val ${avail>2?'ok':'bad'}">${avail}</div></div>
-          <div class="stat-box"><div class="sb-lbl">Delivered</div><div class="sb-val">${used}</div></div>
+          <div class="stat-box"><div class="sb-lbl">${isAuto?'Delivered':'Reserved'}</div><div class="sb-val">${used}</div></div>
         </div>
-        <div style="font-size:.76rem;color:var(--text-s)">
-          ${avail===0?'<span style="color:var(--danger)">⛔ Out of stock — add via /addcred</span>':avail<=2?`<span style="color:var(--warning)">⚠️ ${avail} left — restock soon</span>`:`<span style="color:var(--success)">✅ ${avail} credentials ready</span>`}
+        <div style="font-size:.76rem;margin-top:.2rem">
+          ${avail===0
+            ? '<span style="color:var(--danger)">⛔ Out of stock</span>'
+            : avail<=2
+              ? `<span style="color:var(--warning)">⚠️ ${avail} left — restock soon</span>`
+              : `<span style="color:var(--success)">✅ ${avail} available</span>`}
         </div>
       </div>`;
     }));
-    const valid = cards.filter(Boolean);
-    grid.innerHTML = valid.length
-      ? valid.join('')
-      : '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No auto-delivery products.</div>';
+    grid.innerHTML = cards.join('');
     markUpdated();
   } catch(e) {
     grid.innerHTML = `<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--danger)">⚠️ ${e.message}</div>`;
