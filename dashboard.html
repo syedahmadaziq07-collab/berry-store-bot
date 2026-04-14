@@ -9,7 +9,7 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --sb-w:164px;
+  --sb-w:200px;
   --sb-bg:#ffffff;
   --bg:#f0f4ff;
   --white:#ffffff;
@@ -21,97 +21,98 @@
   --text:#1f2937;
   --text-s:#6b7280;
   --border:#e5e7eb;
-  --shadow:0 1px 3px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
+  --shadow:0 1px 4px rgba(0,0,0,.07),0 2px 8px rgba(0,0,0,.05);
   --r:12px;--r-s:8px;--r-pill:999px;
 }
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
 
 /* ══ SIDEBAR ══ */
 .sb{width:var(--sb-w);background:var(--sb-bg);min-height:100vh;border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:300;transition:transform .25s}
-.sb-brand{padding:1.25rem .85rem 1rem;display:flex;flex-direction:column;align-items:center;text-align:center;border-bottom:1px solid var(--border)}
-.sb-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a73e8,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.85rem;font-weight:800;margin-bottom:.5rem;flex-shrink:0}
-.sb-name{font-size:.88rem;font-weight:800;color:var(--text)}
-.sb-sub{font-size:.68rem;color:var(--text-s);margin-top:.1rem}
-.sb-section{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.9px;color:var(--text-s);padding:.85rem .85rem .3rem}
-.sb-nav{flex:1;padding:.2rem .5rem}
-.nb{display:flex;align-items:center;gap:.5rem;padding:.48rem .65rem;border-radius:var(--r-pill);color:var(--text-s);font-size:.8rem;font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:1px;white-space:nowrap}
+.sb-brand{padding:1.5rem 1rem 1rem;display:flex;flex-direction:column;align-items:center;text-align:center;border-bottom:1px solid var(--border)}
+.sb-avatar{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#1a73e8,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.95rem;font-weight:800;margin-bottom:.6rem}
+.sb-name{font-size:.95rem;font-weight:800;color:var(--text)}
+.sb-sub{font-size:.72rem;color:var(--text-s);margin-top:.15rem}
+.sb-section{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-s);padding:.9rem 1rem .35rem}
+.sb-nav{flex:1;padding:.25rem .6rem}
+.nb{display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-radius:var(--r-pill);color:var(--text-s);font-size:.84rem;font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:2px}
 .nb:hover{background:#f3f4f6;color:var(--text)}
 .nb.active{background:var(--primary-bg);color:var(--primary);font-weight:600}
-.nb .ic{font-size:.88rem;width:17px;text-align:center;flex-shrink:0}
-.sb-bottom{padding:.6rem .5rem .85rem;border-top:1px solid var(--border)}
+.nb .ic{font-size:.95rem;width:18px;text-align:center;flex-shrink:0}
+.sb-bottom{padding:.75rem .6rem 1rem;border-top:1px solid var(--border)}
+.nb-signout{color:var(--text-s)!important}
 .nb-signout:hover{color:var(--danger)!important;background:#fef2f2!important}
 
 /* ══ MAIN ══ */
 .main{margin-left:var(--sb-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
-.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:.65rem 1.4rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
-.topbar-left{display:flex;align-items:center;gap:.65rem}
-.hamburger{display:none;background:none;border:none;font-size:1.15rem;cursor:pointer;color:var(--text);padding:.1rem .3rem}
-.breadcrumb{font-size:.8rem;color:var(--text-s)}
-.breadcrumb strong{color:var(--text);font-weight:600}
-.topbar-right{display:flex;align-items:center;gap:.65rem}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.topbar-left{display:flex;align-items:center;gap:.75rem}
+.hamburger{display:none;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text)}
+.breadcrumb{font-size:.82rem;color:var(--text-s)}
+.breadcrumb strong{color:var(--text)}
+.topbar-right{display:flex;align-items:center;gap:.75rem}
 .period-tabs{display:flex;background:#f3f4f6;border-radius:var(--r-pill);padding:3px;gap:2px}
-.ptab{padding:.27rem .75rem;border-radius:var(--r-pill);font-size:.76rem;font-weight:600;color:var(--text-s);cursor:pointer;border:none;background:none;transition:all .15s;font-family:inherit}
+.ptab{padding:.3rem .8rem;border-radius:var(--r-pill);font-size:.78rem;font-weight:600;color:var(--text-s);cursor:pointer;border:none;background:none;transition:all .15s}
 .ptab.active{background:var(--white);color:var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.conn-badge{display:flex;align-items:center;gap:.35rem;font-size:.73rem;font-weight:500;padding:.22rem .6rem;background:#f3f4f6;border-radius:var(--r-pill);color:var(--text-s)}
-.cdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.conn-badge{display:flex;align-items:center;gap:.4rem;font-size:.75rem;font-weight:500;padding:.25rem .65rem;background:#f3f4f6;border-radius:var(--r-pill)}
+.cdot{width:8px;height:8px;border-radius:50%}
 .cdot.on{background:var(--success);box-shadow:0 0 0 3px rgba(52,168,83,.2);animation:pulse 2s infinite}
 .cdot.off{background:var(--danger)}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(52,168,83,.2)}50%{box-shadow:0 0 0 5px rgba(52,168,83,.08)}}
-.updated{font-size:.7rem;color:var(--text-s)}
+.updated{font-size:.73rem;color:var(--text-s)}
 
 /* ══ CONTENT ══ */
-.content{padding:1.4rem;flex:1}
+.content{padding:1.5rem;flex:1}
 .page{display:none}.page.active{display:block}
 
 /* ══ SECTION HEADER ══ */
-.sec-label{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-s);margin-bottom:.5rem}
-.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem}
-.sec-title{font-size:.97rem;font-weight:800;color:var(--text)}
-.sec-pill{display:inline-flex;align-items:center;padding:.22rem .72rem;background:var(--primary);color:#fff;font-size:.73rem;font-weight:700;border-radius:var(--r-pill)}
+.sec-label{font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-s);margin-bottom:.6rem}
+.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
+.sec-title{font-size:1rem;font-weight:800;color:var(--text)}
+.sec-pill{display:inline-flex;align-items:center;padding:.25rem .75rem;background:var(--primary);color:#fff;font-size:.75rem;font-weight:700;border-radius:var(--r-pill)}
 
 /* ══ STAT CARDS ══ */
-.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.4rem}
-.stat-card{background:var(--white);border-radius:var(--r);padding:1.1rem 1.15rem 1rem;box-shadow:var(--shadow);min-height:140px;max-height:180px;overflow:hidden}
-.sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.6rem}
-.sc-label{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s)}
-.sc-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;flex-shrink:0}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--white);border-radius:var(--r);padding:1.15rem 1.25rem;box-shadow:var(--shadow);position:relative}
+.sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.75rem}
+.sc-label{font-size:.63rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s)}
+.sc-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:#fff;flex-shrink:0}
 .sc-icon.amber{background:#fbbc04}
 .sc-icon.blue{background:#1a73e8}
 .sc-icon.green{background:#34a853}
-.sc-spark{display:block;width:100%!important;height:50px!important;max-height:50px;margin:-2px -4px .55rem}
-.sc-val{font-size:1.75rem;font-weight:800;line-height:1;color:var(--text);margin-bottom:.28rem}
-.sc-trend{font-size:.73rem;font-weight:600}
+.sc-spark{height:48px;margin:-4px -4px .5rem}
+.sc-val{font-size:1.9rem;font-weight:800;line-height:1;color:var(--text);margin-bottom:.3rem}
+.sc-trend{font-size:.75rem;font-weight:600}
 .sc-trend.up{color:var(--success)}
 .sc-trend.dn{color:var(--danger)}
-.sc-sub{font-size:.73rem;color:var(--text-s)}
+.sc-sub{font-size:.75rem;color:var(--text-s)}
 
 /* ══ CHART CARD ══ */
-.chart-card{background:var(--white);border-radius:var(--r);padding:1.15rem 1.2rem;box-shadow:var(--shadow);margin-bottom:1.4rem}
-.chart-wrap{position:relative;height:195px}
+.chart-card{background:var(--white);border-radius:var(--r);padding:1.25rem;box-shadow:var(--shadow);margin-bottom:1.5rem}
+.chart-wrap{position:relative;height:200px}
 
 /* ══ CLEAN TABLE ══ */
-.clean-table{width:100%;border-collapse:collapse;font-size:.83rem}
-.clean-table thead th{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s);padding:.45rem 0;border-bottom:1px solid var(--border);text-align:left}
+.clean-table{width:100%;border-collapse:collapse;font-size:.84rem}
+.clean-table thead th{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s);padding:.5rem 0;border-bottom:1px solid var(--border);text-align:left}
 .clean-table tbody tr{border-bottom:1px solid #f3f4f6}
 .clean-table tbody tr:last-child{border-bottom:none}
-.clean-table tbody td{padding:.55rem 0;vertical-align:middle}
+.clean-table tbody td{padding:.6rem 0;vertical-align:middle}
 
 /* ══ BOX TABLE ══ */
-.table-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:1.4rem}
-.tc-hdr{padding:.8rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.tc-hdr h3{font-size:.86rem;font-weight:700}
+.table-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:1.5rem}
+.tc-hdr{padding:.85rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.tc-hdr h3{font-size:.88rem;font-weight:700}
 .overflow-x{overflow-x:auto}
-.box-table{width:100%;border-collapse:collapse;font-size:.83rem}
+.box-table{width:100%;border-collapse:collapse;font-size:.84rem}
 .box-table thead{background:#f9fafb}
-.box-table thead th{padding:.55rem 1rem;text-align:left;font-size:.6rem;font-weight:800;color:var(--text-s);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:1px solid var(--border)}
+.box-table thead th{padding:.6rem 1rem;text-align:left;font-size:.63rem;font-weight:800;color:var(--text-s);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:1px solid var(--border)}
 .box-table tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
 .box-table tbody tr:last-child{border-bottom:none}
 .box-table tbody tr:hover{background:#f9fafb}
-.box-table tbody td{padding:.6rem 1rem;vertical-align:middle}
-.empty-r td{text-align:center;padding:2rem;color:var(--text-s);font-size:.84rem}
+.box-table tbody td{padding:.65rem 1rem;vertical-align:middle}
+.empty-r td{text-align:center;padding:2rem;color:var(--text-s);font-size:.86rem}
 
 /* ══ BADGES ══ */
-.badge{display:inline-flex;align-items:center;padding:.18rem .55rem;border-radius:var(--r-pill);font-size:.67rem;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;padding:.2rem .6rem;border-radius:var(--r-pill);font-size:.69rem;font-weight:700;letter-spacing:.2px;white-space:nowrap}
 .b-green{background:#e6f4ea;color:#1e7e34}
 .b-blue{background:#e8f0fe;color:#1a73e8}
 .b-amber{background:#fef3c7;color:#92400e}
@@ -122,101 +123,100 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ══ FILTER ROW ══ */
 .filter-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
-.filter-row input,.filter-row select{padding:.4rem .72rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.8rem;background:var(--white);outline:none;color:var(--text);font-family:inherit}
+.filter-row input,.filter-row select{padding:.42rem .75rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.82rem;background:var(--white);outline:none;color:var(--text);font-family:inherit}
 .filter-row input:focus,.filter-row select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,.12)}
-.filter-row input[type=text]{min-width:210px}
+.filter-row input[type=text]{min-width:220px}
 .filter-pills{display:flex;gap:.3rem;flex-wrap:wrap}
-.fpill{padding:.28rem .75rem;border-radius:var(--r-pill);font-size:.75rem;font-weight:600;border:1px solid var(--border);background:var(--white);color:var(--text-s);cursor:pointer;transition:all .12s}
+.fpill{padding:.3rem .8rem;border-radius:var(--r-pill);font-size:.77rem;font-weight:600;border:1px solid var(--border);background:var(--white);color:var(--text-s);cursor:pointer;transition:all .12s}
 .fpill:hover{border-color:var(--primary);color:var(--primary)}
 .fpill.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 
 /* ══ PRODUCT GRID ══ */
 .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1rem}
-.prod-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1.05rem;border:1px solid var(--border)}
-.pc-name{font-size:.93rem;font-weight:800;margin-bottom:.4rem;color:var(--text)}
-.pc-chips{display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem}
-.chip{font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:var(--r-pill);border:1px solid var(--border);color:var(--text-s)}
+.prod-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1.1rem;border:1px solid var(--border)}
+.pc-name{font-size:.95rem;font-weight:800;margin-bottom:.45rem}
+.pc-chips{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem}
+.chip{font-size:.72rem;font-weight:600;padding:.18rem .55rem;border-radius:var(--r-pill);border:1px solid var(--border);color:var(--text-s)}
 .chip.price{color:var(--primary);border-color:rgba(26,115,232,.3);background:var(--primary-bg)}
 .chip.low{color:var(--danger);border-color:rgba(234,67,53,.3);background:#fce8e6}
-.pc-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;font-size:.81rem}
-.pc-btns{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.5rem}
+.pc-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem;font-size:.83rem}
+.pc-btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
 
 /* ══ CRED & STOCK GRIDS ══ */
 .cred-grid,.stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
-.cred-card,.stock-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1.05rem;border:1px solid var(--border)}
-.card-name{font-size:.93rem;font-weight:800;margin-bottom:.3rem;color:var(--text)}
-.card-chips{display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.6rem}
-.stat-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem;margin:.6rem 0}
-.stat-box{background:var(--bg);border-radius:var(--r-s);padding:.5rem .35rem;text-align:center}
-.sb-lbl{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-s)}
-.sb-val{font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.1}
+.cred-card,.stock-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1.1rem;border:1px solid var(--border)}
+.card-name{font-size:.95rem;font-weight:800;margin-bottom:.35rem}
+.card-chips{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.65rem}
+.stat-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin:.65rem 0}
+.stat-box{background:var(--bg);border-radius:var(--r-s);padding:.55rem .4rem;text-align:center}
+.sb-lbl{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-s)}
+.sb-val{font-size:1.4rem;font-weight:800;color:var(--text);line-height:1.1}
 .sb-val.ok{color:var(--success)}
 .sb-val.bad{color:var(--danger)}
-.prog-bar-wrap{margin:.4rem 0}
+.prog-bar-wrap{margin:.45rem 0}
 .prog-bg{height:5px;background:#f3f4f6;border-radius:var(--r-pill);overflow:hidden}
 .prog-fill{height:100%;background:var(--primary);border-radius:var(--r-pill);transition:width .4s}
 .prog-fill.warn{background:var(--warning)}
 .prog-fill.danger{background:var(--danger)}
-.prog-lbl{font-size:.7rem;color:var(--text-s);margin-top:.22rem}
+.prog-lbl{font-size:.72rem;color:var(--text-s);margin-top:.25rem}
 
 /* ══ BROADCAST ══ */
-.bcast-wrap{max-width:600px}
-.bcast-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1.4rem}
-.bcast-card h3{font-size:.93rem;font-weight:800;margin-bottom:.22rem;color:var(--text)}
-.bcast-meta{font-size:.79rem;color:var(--text-s);margin-bottom:1rem;display:flex;align-items:center;gap:.45rem}
-.bcast-count-badge{background:var(--primary-bg);color:var(--primary);padding:.18rem .6rem;border-radius:var(--r-pill);font-size:.73rem;font-weight:700}
-.field-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);display:block;margin-bottom:.28rem}
-.bcast-card textarea{width:100%;min-height:105px;padding:.65rem .75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.86rem;font-family:inherit;resize:vertical;outline:none;color:var(--text);transition:border-color .15s}
+.bcast-wrap{max-width:620px}
+.bcast-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1.5rem}
+.bcast-card h3{font-size:.95rem;font-weight:800;margin-bottom:.25rem}
+.bcast-meta{font-size:.8rem;color:var(--text-s);margin-bottom:1rem}
+.field-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);display:block;margin-bottom:.3rem}
+.bcast-card textarea{width:100%;min-height:110px;padding:.7rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.88rem;font-family:inherit;resize:vertical;outline:none;color:var(--text)}
 .bcast-card textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,.12)}
-.char-count{font-size:.7rem;color:var(--text-s);text-align:right;margin-top:.22rem}
-.bcast-preview{background:var(--bg);border-radius:var(--r-s);padding:.75rem;min-height:52px;font-size:.84rem;white-space:pre-wrap;color:var(--text-s);border:1px dashed var(--border);margin:.7rem 0}
+.char-count{font-size:.72rem;color:var(--text-s);text-align:right;margin-top:.25rem}
+.bcast-preview{background:var(--bg);border-radius:var(--r-s);padding:.8rem;min-height:55px;font-size:.86rem;white-space:pre-wrap;color:var(--text-s);border:1px dashed var(--border);margin:.75rem 0}
 
 /* ══ BUTTONS ══ */
-button{cursor:pointer;border:none;border-radius:var(--r-s);font-size:.8rem;font-weight:600;padding:.4rem .82rem;transition:opacity .15s,transform .1s;font-family:inherit}
+button{cursor:pointer;border:none;border-radius:var(--r-s);font-size:.81rem;font-weight:600;padding:.42rem .85rem;transition:opacity .15s,transform .1s;font-family:inherit}
 button:active{transform:scale(.97)}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{opacity:.88}
 .btn-success{background:var(--success);color:#fff}.btn-success:hover{opacity:.88}
 .btn-ghost{background:#f3f4f6;color:var(--text);border:1px solid var(--border)}.btn-ghost:hover{background:var(--border)}
-.btn-sm{padding:.28rem .62rem;font-size:.73rem}
+.btn-sm{padding:.3rem .65rem;font-size:.75rem}
 .btn-pill{border-radius:var(--r-pill)}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{opacity:.88}
 
 /* ══ SALES SUMMARY ══ */
-.sales-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:1rem;margin:1rem 0 1.2rem}
-.sales-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:.95rem 1.05rem}
-.sales-lbl{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-s);margin-bottom:.3rem}
-.sales-val{font-size:1.6rem;font-weight:800;color:var(--text)}
+.sales-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin:1rem 0 1.25rem}
+.sales-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:1rem 1.1rem}
+.sales-lbl{font-size:.63rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-s);margin-bottom:.35rem}
+.sales-val{font-size:1.7rem;font-weight:800;color:var(--text)}
 
 /* ══ SPINNER ══ */
-.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.3rem}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.35rem}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ══ MODAL OVERLAY ══ */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem}
 .overlay.open{display:flex}
-.modal{background:var(--white);border-radius:var(--r);padding:1.4rem;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.16);display:flex;flex-direction:column;gap:.8rem}
-.modal h3{font-size:.97rem;font-weight:800}
-.modal-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);display:block;margin-bottom:.28rem}
-.modal input,.modal select{width:100%;padding:.52rem .72rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.86rem;outline:none;font-family:inherit}
+.modal{background:var(--white);border-radius:var(--r);padding:1.5rem;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:.85rem}
+.modal h3{font-size:1rem;font-weight:800}
+.modal-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);display:block;margin-bottom:.3rem}
+.modal input,.modal select{width:100%;padding:.55rem .75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.88rem;outline:none;font-family:inherit}
 .modal input:focus,.modal select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,.12)}
-.modal-btns{display:flex;gap:.45rem;justify-content:flex-end;margin-top:.2rem}
+.modal-btns{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.25rem}
 
 /* ══ CONNECT SCREEN ══ */
 .connect-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
-.connect-card{background:var(--white);border-radius:var(--r);padding:2rem;width:100%;max-width:440px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:.95rem}
-.connect-card h2{font-size:1.05rem;font-weight:800}
-.connect-card p{font-size:.82rem;color:var(--text-s)}
-.cf{display:flex;flex-direction:column;gap:.28rem}
-.cf label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s)}
-.cf input{padding:.58rem .72rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.86rem;outline:none;font-family:inherit}
+.connect-card{background:var(--white);border-radius:var(--r);padding:2rem;width:100%;max-width:440px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:1rem}
+.connect-card h2{font-size:1.1rem;font-weight:800}
+.connect-card p{font-size:.84rem;color:var(--text-s)}
+.cf{display:flex;flex-direction:column;gap:.3rem}
+.cf label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s)}
+.cf input{padding:.6rem .75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.88rem;outline:none;font-family:inherit}
 .cf input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,.12)}
 
 /* ══ TOAST ══ */
-#toast{position:fixed;bottom:1.4rem;left:50%;transform:translateX(-50%) translateY(80px);background:#1f2937;color:#fff;padding:.55rem 1.2rem;border-radius:var(--r-pill);font-size:.82rem;transition:transform .3s;z-index:999;pointer-events:none;max-width:90vw;text-align:center}
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(80px);background:#1f2937;color:#fff;padding:.6rem 1.25rem;border-radius:var(--r-pill);font-size:.84rem;transition:transform .3s;z-index:999;pointer-events:none;max-width:90vw;text-align:center}
 #toast.show{transform:translateX(-50%) translateY(0)}
 
 /* ══ SIDEBAR OVERLAY (mobile) ══ */
-.sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:290}
+.sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:290}
 
 /* ══ RESPONSIVE ══ */
 @media(max-width:768px){
@@ -273,7 +273,7 @@ button:active{transform:scale(.97)}
   </div>
   <div class="sb-bottom">
     <div class="nb nb-signout" onclick="openConnect()">
-      <span class="ic">↪</span>Sign Out
+      <span class="ic">⚙</span>Settings
     </div>
   </div>
 </nav>
@@ -301,12 +301,9 @@ button:active{transform:scale(.97)}
 
   <div class="content">
 
-    <!-- ══ PAGE: DASHBOARD ══ -->
+    <!-- ══ DASHBOARD ══ -->
     <div class="page active" id="page-dashboard">
-
-      <!-- Stat Cards -->
       <div class="stat-row">
-
         <!-- Total Users -->
         <div class="stat-card">
           <div class="sc-top">
@@ -316,18 +313,16 @@ button:active{transform:scale(.97)}
           <div class="sc-val" id="dUsers">—</div>
           <div class="sc-sub">All-time unique buyers</div>
         </div>
-
         <!-- Revenue 7D -->
         <div class="stat-card">
           <div class="sc-top">
             <div class="sc-label">Revenue · 7D</div>
-            <div class="sc-icon blue" style="font-size:.6rem;letter-spacing:-.5px">RM</div>
+            <div class="sc-icon blue" style="font-size:.65rem">RM</div>
           </div>
           <canvas class="sc-spark" id="spkRev"></canvas>
           <div class="sc-val" id="dRev">—</div>
-          <div id="dRevTrend"></div>
+          <div class="sc-trend up" id="dRevTrend"></div>
         </div>
-
         <!-- Approved 7D -->
         <div class="stat-card">
           <div class="sc-top">
@@ -336,9 +331,8 @@ button:active{transform:scale(.97)}
           </div>
           <canvas class="sc-spark" id="spkApp"></canvas>
           <div class="sc-val" id="dApp">—</div>
-          <div id="dAppTrend"></div>
+          <div class="sc-trend up" id="dAppTrend"></div>
         </div>
-
       </div>
 
       <!-- Weekly Revenue Chart -->
@@ -357,7 +351,7 @@ button:active{transform:scale(.97)}
 
       <!-- Top Products Table -->
       <div class="chart-card">
-        <div class="sec-label" style="margin-bottom:.6rem">Top Products</div>
+        <div class="sec-label" style="margin-bottom:.65rem">Top Products</div>
         <table class="clean-table">
           <thead>
             <tr>
@@ -367,52 +361,51 @@ button:active{transform:scale(.97)}
             </tr>
           </thead>
           <tbody id="topProdBody">
-            <tr><td colspan="3" style="padding:.75rem 0;color:var(--text-s)"><span class="spin"></span>Loading…</td></tr>
+            <tr><td colspan="3" style="padding:.8rem 0;color:var(--text-s);font-size:.84rem"><span class="spin"></span>Loading…</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- ══ PAGE: ORDERS ══ -->
+    <!-- ══ ORDERS ══ -->
     <div class="page" id="page-orders">
-
-      <!-- Search + Date filter row -->
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem">
-        <input type="text" id="order-search" value="" autocomplete="off" placeholder="Search by Order ID or username…" oninput="filterOrders()" style="width:300px;min-width:220px;padding:.4rem .75rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.8rem;background:var(--white);outline:none;color:var(--text);font-family:inherit"/>
-        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
-          <div class="filter-pills" id="datePills">
-            <span class="fpill fpill-date active" data-dt="all"       onclick="setDateFilter(this,'all')">All Time</span>
-            <span class="fpill fpill-date"         data-dt="today"     onclick="setDateFilter(this,'today')">Today</span>
-            <span class="fpill fpill-date"         data-dt="yesterday" onclick="setDateFilter(this,'yesterday')">Yesterday</span>
-            <span class="fpill fpill-date"         data-dt="week"      onclick="setDateFilter(this,'week')">This Week</span>
-            <span class="fpill fpill-date"         data-dt="month"     onclick="setDateFilter(this,'month')">This Month</span>
-            <span class="fpill fpill-date"         data-dt="custom"    onclick="setDateFilter(this,'custom')">Custom</span>
-          </div>
-          <div id="customDateWrap" style="display:none;align-items:center;gap:.35rem">
-            <input type="date" id="ordFrom" style="font-size:.78rem;padding:.3rem .55rem;border:1px solid var(--border);border-radius:var(--r-s);outline:none;font-family:inherit;color:var(--text)"/>
-            <span style="font-size:.78rem;color:var(--text-s)">to</span>
-            <input type="date" id="ordTo"   style="font-size:.78rem;padding:.3rem .55rem;border:1px solid var(--border);border-radius:var(--r-s);outline:none;font-family:inherit;color:var(--text)"/>
-            <button class="btn-primary btn-sm btn-pill" onclick="loadOrders()">Apply</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Status filter pills -->
-      <div class="filter-row" style="margin-bottom:.85rem">
+      <div class="filter-row">
+        <input type="text" id="ordSearch" placeholder="🔍 Order ID or @username" oninput="filterOrders()"/>
         <div class="filter-pills" id="statusPills">
-          <span class="fpill fpill-status active" data-st="" onclick="setStatusFilter(this,'')">All</span>
-          <span class="fpill fpill-status" data-st="pending"          onclick="setStatusFilter(this,'pending')">Pending</span>
-          <span class="fpill fpill-status" data-st="waiting_approval" onclick="setStatusFilter(this,'waiting_approval')">Waiting Approval</span>
-          <span class="fpill fpill-status" data-st="completed"        onclick="setStatusFilter(this,'completed')">Completed</span>
-          <span class="fpill fpill-status" data-st="cancelled"        onclick="setStatusFilter(this,'cancelled')">Cancelled</span>
-          <span class="fpill fpill-status" data-st="rejected"         onclick="setStatusFilter(this,'rejected')">Rejected</span>
+          <span class="fpill active" data-st="" onclick="setStatusFilter(this,'')">All</span>
+          <span class="fpill" data-st="pending" onclick="setStatusFilter(this,'pending')">Pending</span>
+          <span class="fpill" data-st="waiting_approval" onclick="setStatusFilter(this,'waiting_approval')">Waiting</span>
+          <span class="fpill" data-st="completed" onclick="setStatusFilter(this,'completed')">Completed</span>
+          <span class="fpill" data-st="approved" onclick="setStatusFilter(this,'approved')">Approved</span>
+          <span class="fpill" data-st="cancelled" onclick="setStatusFilter(this,'cancelled')">Cancelled</span>
+          <span class="fpill" data-st="rejected" onclick="setStatusFilter(this,'rejected')">Rejected</span>
         </div>
       </div>
+      <div class="filter-row" style="margin-top:.5rem">
+        <div class="filter-pills" id="datePills">
+          <span class="fpill active" data-df="all"       onclick="setDateFilter(this,'all')">All Time</span>
+          <span class="fpill"        data-df="today"     onclick="setDateFilter(this,'today')">Today</span>
+          <span class="fpill"        data-df="yesterday" onclick="setDateFilter(this,'yesterday')">Yesterday</span>
+          <span class="fpill"        data-df="week"      onclick="setDateFilter(this,'week')">This Week</span>
+          <span class="fpill"        data-df="month"     onclick="setDateFilter(this,'month')">This Month</span>
+          <span class="fpill"        data-df="custom"    onclick="setDateFilter(this,'custom')">Custom</span>
+        </div>
+        <span id="ordCustomRange" style="display:none;align-items:center;gap:.4rem;font-size:.82rem">
+          <input type="date" id="ordFrom" onchange="loadOrders()"/>
+          <span style="color:var(--text-s)">→</span>
+          <input type="date" id="ordTo" onchange="loadOrders()"/>
+        </span>
+      </div>
+      <div id="ordTestBox" style="display:none;margin-bottom:.75rem;background:#1e293b;color:#e2e8f0;border-radius:8px;padding:1rem;font-family:monospace;font-size:.75rem;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow-y:auto"></div>
+      <div id="ordDebugBox" style="display:none;margin-bottom:.75rem;background:#fefce8;border:1.5px solid #eab308;color:#713f12;border-radius:8px;padding:1rem;font-family:monospace;font-size:.75rem;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto"></div>
 
       <div class="table-card">
         <div class="tc-hdr">
           <h3>Orders</h3>
-          <span class="badge b-grey" id="ordCount">—</span>
+          <div style="display:flex;align-items:center;gap:.5rem">
+            <button onclick="testOrdersApi()" style="font-size:.72rem;padding:.25rem .7rem;border-radius:999px;border:1px solid var(--border);background:#f3f4f6;color:var(--text-s);cursor:pointer;font-weight:600">🔬 Test API</button>
+            <span class="badge b-grey" id="ordCount">—</span>
+          </div>
         </div>
         <div class="overflow-x">
           <table class="box-table">
@@ -423,19 +416,19 @@ button:active{transform:scale(.97)}
       </div>
     </div>
 
-    <!-- ══ PAGE: PRODUCTS ══ -->
+    <!-- ══ PRODUCTS ══ -->
     <div class="page" id="page-products">
       <div class="prod-grid" id="prodGrid">
         <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading…</div>
       </div>
     </div>
 
-    <!-- ══ PAGE: SALES ══ -->
+    <!-- ══ SALES ══ -->
     <div class="page" id="page-sales">
       <div class="filter-row">
-        <span style="font-size:.8rem;color:var(--text-s)">From</span>
+        <span style="font-size:.82rem;color:var(--text-s)">From</span>
         <input type="date" id="salFrom"/>
-        <span style="font-size:.8rem;color:var(--text-s)">To</span>
+        <span style="font-size:.82rem;color:var(--text-s)">To</span>
         <input type="date" id="salTo"/>
         <button class="btn-primary btn-sm btn-pill" onclick="loadSales()">Apply</button>
       </div>
@@ -455,39 +448,36 @@ button:active{transform:scale(.97)}
       </div>
     </div>
 
-    <!-- ══ PAGE: STOCKS ══ -->
+    <!-- ══ STOCKS ══ -->
     <div class="page" id="page-stocks">
       <div class="stock-grid" id="stockGrid">
         <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading…</div>
       </div>
     </div>
 
-    <!-- ══ PAGE: CREDENTIALS ══ -->
+    <!-- ══ CREDENTIALS ══ -->
     <div class="page" id="page-credentials">
       <div class="cred-grid" id="credGrid">
         <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading…</div>
       </div>
     </div>
 
-    <!-- ══ PAGE: BROADCAST ══ -->
+    <!-- ══ BROADCAST ══ -->
     <div class="page" id="page-broadcast">
       <div class="bcast-wrap">
         <div class="bcast-card">
-          <h3>Broadcast Message</h3>
-          <div class="bcast-meta">
-            Total Users:
-            <span class="bcast-count-badge" id="bcastCount">—</span>
-          </div>
+          <h3>📢 Broadcast Message</h3>
+          <div class="bcast-meta">Send to <strong id="bcastCount">—</strong> registered users.</div>
           <label class="field-label">Message</label>
           <textarea id="bcastMsg" placeholder="Type your message here…" oninput="bcastInput()"></textarea>
           <div class="char-count"><span id="bcastChars">0</span> characters</div>
-          <label class="field-label" style="margin-top:.6rem">Preview</label>
+          <label class="field-label" style="margin-top:.65rem">Preview</label>
           <div class="bcast-preview" id="bcastPreview">Your message will appear here…</div>
-          <div style="display:flex;gap:.55rem;align-items:center">
+          <div style="display:flex;gap:.6rem;align-items:center">
             <button class="btn-primary btn-pill" id="bcastBtn" onclick="confirmBroadcast()">📤 Send to All Users</button>
             <button class="btn-ghost btn-sm btn-pill" onclick="document.getElementById('bcastMsg').value='';bcastInput()">Clear</button>
           </div>
-          <div id="bcastRes" style="margin-top:.6rem;font-size:.8rem"></div>
+          <div id="bcastRes" style="margin-top:.65rem;font-size:.82rem"></div>
         </div>
       </div>
     </div>
@@ -505,10 +495,11 @@ button:active{transform:scale(.97)}
       <input id="cfgUrl" type="text" placeholder="https://xxxx.supabase.co"/>
     </div>
     <div class="cf">
-      <label>Anon / Service Key</label>
-      <input id="cfgKey" type="password" placeholder="eyJhbGci…"/>
+      <label>Service Role Key <span style="color:var(--danger);font-weight:700">*</span></label>
+      <input id="cfgKey" type="password" placeholder="eyJhbGci… (service_role key only)"/>
+      <div style="font-size:.75rem;color:var(--text-s);margin-top:.3rem">⚠️ Must use <strong>service_role</strong> key (Supabase → Settings → API → service_role). Anon key is blocked by RLS.</div>
     </div>
-    <div id="cfgErr" style="font-size:.8rem;color:var(--danger)"></div>
+    <div id="cfgErr" style="font-size:.82rem;color:var(--danger);margin-top:.3rem"></div>
     <button class="btn-primary btn-pill" onclick="doConnect()">Connect</button>
   </div>
 </div>
@@ -536,7 +527,7 @@ button:active{transform:scale(.97)}
 <div class="overlay" id="confirmOverlay">
   <div class="modal" style="max-width:360px">
     <h3>Confirm Broadcast</h3>
-    <p style="font-size:.84rem;color:var(--text-s)" id="confirmMsg"></p>
+    <p style="font-size:.86rem;color:var(--text-s)" id="confirmMsg"></p>
     <div class="modal-btns">
       <button class="btn-ghost" onclick="closeOverlay('confirmOverlay')">Cancel</button>
       <button class="btn-primary" onclick="sendBroadcast()">Yes, Send</button>
@@ -551,6 +542,8 @@ button:active{transform:scale(.97)}
 // STATE
 // ══════════════════════════════════════════
 let sb = null;
+let _sbUrl = '';
+let _sbKey = '';
 let _page = 'dashboard';
 let _period = 'today';
 let _ordStatus = '';
@@ -608,7 +601,7 @@ const statusBadge = s => {
     cancelled:'b-grey', rejected:'b-red'
   };
   const key = (s||'').toLowerCase();
-  return `<span class="badge ${map[key]||'b-grey'}">${(s||'—').replace(/_/g,' ')}</span>`;
+  return `<span class="badge ${map[key]||'b-grey'}">${(s||'—').replace('_',' ')}</span>`;
 };
 
 const pctStr = (a,b) => {
@@ -636,7 +629,9 @@ const closeSb = () => {
 };
 
 function nav(el) {
+  const prevPage = _page;
   _page = el.dataset.page;
+  if (prevPage === 'orders' && _page !== 'orders') unsubscribeOrders();
   document.querySelectorAll('.nb').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -666,11 +661,17 @@ function periodRange() {
 // ══════════════════════════════════════════
 // CONNECT
 // ══════════════════════════════════════════
+
+function jwtRole(key) {
+  try {
+    const payload = JSON.parse(atob(key.split('.')[1]));
+    return payload.role || '';
+  } catch(_) { return ''; }
+}
+
 function openConnect() {
-  const u = localStorage.getItem('bs_url')||'';
-  const k = localStorage.getItem('bs_key')||'';
-  document.getElementById('cfgUrl').value = u;
-  document.getElementById('cfgKey').value = k;
+  document.getElementById('cfgUrl').value = '';
+  document.getElementById('cfgKey').value = '';
   document.getElementById('cfgErr').textContent = '';
   document.getElementById('connectOverlay').classList.add('open');
 }
@@ -680,13 +681,18 @@ function doConnect() {
   const key = document.getElementById('cfgKey').value.trim();
   const err = document.getElementById('cfgErr');
   if (!url||!key) { err.textContent='⚠️ Both fields required'; return; }
+  const role = jwtRole(key);
+  if (role === 'anon') {
+    err.textContent = '❌ This is an anon key — RLS will block all admin reads. Use the service_role key instead (Supabase → Settings → API → service_role).';
+    return;
+  }
   try {
-    sb = supabase.createClient(url, key);
-    localStorage.setItem('bs_url', url);
-    localStorage.setItem('bs_key', key);
+    sb = supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    _sbUrl = url;
+    _sbKey = key;
     setConn(true);
     closeOverlay('connectOverlay');
-    toast('✅ Connected');
+    toast('✅ Connected' + (role === 'service_role' ? ' (service_role ✅)' : ''));
     startRefresh();
   } catch(e) {
     err.textContent = '❌ ' + e.message;
@@ -733,30 +739,11 @@ function loadPage(p) {
 function drawSpark(id, data, color) {
   const ctx = document.getElementById(id);
   if (!ctx) return;
-  if (_spkCharts[id]) { _spkCharts[id].destroy(); _spkCharts[id] = null; }
-  const safeData = (data && data.length) ? data : [0,0,0,0,0,0,0];
-  ctx.style.height = '50px';
-  ctx.style.maxHeight = '50px';
+  if (_spkCharts[id]) _spkCharts[id].destroy();
   _spkCharts[id] = new Chart(ctx, {
     type:'line',
-    data:{
-      labels: safeData.map((_,i)=>i),
-      datasets:[{
-        data: safeData,
-        borderColor: color,
-        borderWidth: 2,
-        pointRadius: 0,
-        fill: false,
-        tension: .4
-      }]
-    },
-    options:{
-      plugins:{legend:{display:false},tooltip:{enabled:false}},
-      scales:{x:{display:false},y:{display:false,beginAtZero:true}},
-      animation:false,
-      responsive:true,
-      maintainAspectRatio:false
-    }
+    data:{ labels:data.map((_,i)=>i), datasets:[{data, borderColor:color, borderWidth:2, pointRadius:0, fill:false, tension:.4}]},
+    options:{plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false,responsive:true,maintainAspectRatio:false}
   });
 }
 
@@ -766,9 +753,9 @@ function drawSpark(id, data, color) {
 async function loadDashboard() {
   if (!sb) return;
   try {
-    const t   = today();
-    const w0  = dateOffset(-6);
-    const pw0 = dateOffset(-13);
+    const t       = today();
+    const w0      = dateOffset(-6);
+    const pw0     = dateOffset(-13);
 
     const [uRes, oRes] = await Promise.all([
       sb.from('users').select('id',{count:'exact',head:true}),
@@ -787,12 +774,13 @@ async function loadDashboard() {
     const revT  = appT.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
     const revP  = appP.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
 
-    document.getElementById('dUsers').textContent  = totalUsers ?? 0;
-    document.getElementById('dRev').textContent    = rm(revT);
-    document.getElementById('dApp').textContent    = appT.length;
-    document.getElementById('dRevTrend').innerHTML = pctStr(revT, revP);
-    document.getElementById('dAppTrend').innerHTML = pctStr(appT.length, appP.length);
+    document.getElementById('dUsers').textContent = totalUsers;
+    document.getElementById('dRev').textContent   = rm(revT);
+    document.getElementById('dApp').textContent   = appT.length;
+    document.getElementById('dRevTrend').outerHTML = pctStr(revT, revP);
+    document.getElementById('dAppTrend').outerHTML = pctStr(appT.length, appP.length);
 
+    // Daily data for sparklines + chart
     const labels=[], revDay=[], appDay=[];
     for (let i=6;i>=0;i--) {
       const d = dateOffset(-i);
@@ -808,6 +796,7 @@ async function loadDashboard() {
     document.getElementById('weekPill').textContent = rm(revT) + ' this week';
     drawWeekChart(labels, revDay);
 
+    // Top products (this week, all orders period)
     const byProd={};
     for (const o of thisW.filter(isOk)) {
       const k = o.product_name||'—';
@@ -821,9 +810,9 @@ async function loadDashboard() {
       ? topRows.map(([name,d])=>`<tr>
           <td><strong>${name}</strong></td>
           <td style="color:var(--text-s)">${d.count} units</td>
-          <td><strong>${rm(d.rev)}</strong></td>
+          <td>${rm(d.rev)}</td>
         </tr>`).join('')
-      : '<tr><td colspan="3" style="padding:.75rem 0;color:var(--text-s)">No sales data yet.</td></tr>';
+      : '<tr><td colspan="3" style="padding:.8rem 0;color:var(--text-s)">No sales data yet.</td></tr>';
 
     markUpdated();
   } catch(e) { toast('⚠️ Dashboard: '+e.message); }
@@ -832,18 +821,16 @@ async function loadDashboard() {
 function drawWeekChart(labels, data) {
   const ctx = document.getElementById('weekChart');
   if (!ctx) return;
-  if (_weekChart) { _weekChart.destroy(); _weekChart = null; }
-  const safeLabels = (labels && labels.length) ? labels : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const safeData   = (data   && data.length)   ? data   : [0,0,0,0,0,0,0];
+  if (_weekChart) _weekChart.destroy();
   _weekChart = new Chart(ctx, {
     type:'line',
     data:{
-      labels: safeLabels,
+      labels,
       datasets:[{
         label:'Revenue',
-        data: safeData,
+        data,
         borderColor:'#1a73e8',
-        backgroundColor:'rgba(26,115,232,.08)',
+        backgroundColor:'rgba(26,115,232,.09)',
         borderWidth:2.5,
         pointRadius:5,
         pointBackgroundColor:'#1a73e8',
@@ -858,6 +845,7 @@ function drawWeekChart(labels, data) {
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:c=>'RM '+c.parsed.y.toFixed(2)}},
+        // datalabels via manual afterDraw would need plugin; skip for clean look
       },
       scales:{
         x:{grid:{display:false},ticks:{font:{size:11},color:'#9ca3af'}},
@@ -870,124 +858,273 @@ function drawWeekChart(labels, data) {
 // ══════════════════════════════════════════
 // ORDERS
 // ══════════════════════════════════════════
-window.orderStatusFilter = 'all';
-window.orderDateFilter   = 'all';
-
-function getDateLabel() {
-  const labels = { all:'', today:' · today', yesterday:' · yesterday', week:' · this week', month:' · this month', custom:' · custom range' };
-  return labels[window.orderDateFilter] || '';
-}
+let _ordStatusFilter = '';
+let _ordDateFilter   = 'all';
+let _ordChannel      = null;
 
 function setStatusFilter(el, st) {
-  window.orderStatusFilter = st || 'all';
+  _ordStatusFilter = st;
   document.querySelectorAll('#statusPills .fpill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   loadOrders();
 }
 
-function setDateFilter(el, dt) {
-  window.orderDateFilter = dt;
+function setDateFilter(el, df) {
+  _ordDateFilter = df;
   document.querySelectorAll('#datePills .fpill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
-  const wrap = document.getElementById('customDateWrap');
-  wrap.style.display = dt === 'custom' ? 'flex' : 'none';
-  if (dt !== 'custom') loadOrders();
-}
-
-async function loadOrders() {
-  if (!sb) { console.warn('Supabase not ready'); return; }
-  const tbody = document.getElementById('ordBody');
-  if (!tbody) return;
-  tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
-
-  try {
-    let q = sb.from('orders')
-      .select('id,user_id,username,product_name,quantity,amount,status,created_at')
-      .order('created_at', { ascending: false })
-      .limit(200);
-
-    const sf  = window.orderStatusFilter || 'all';
-    const df  = window.orderDateFilter   || 'all';
-    const now = new Date();
-    const Y = now.getFullYear(), M = now.getMonth(), D = now.getDate();
-
-    if (sf !== 'all') q = q.eq('status', sf);
-
-    if (df === 'today') {
-      q = q.gte('created_at', new Date(Y, M, D).toISOString());
-
-    } else if (df === 'yesterday') {
-      q = q.gte('created_at', new Date(Y, M, D - 1).toISOString())
-           .lt('created_at',  new Date(Y, M, D).toISOString());
-
-    } else if (df === 'week') {
-      const day  = now.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      q = q.gte('created_at', new Date(Y, M, D + diff).toISOString());
-
-    } else if (df === 'month') {
-      q = q.gte('created_at', new Date(Y, M, 1).toISOString());
-
-    } else if (df === 'custom') {
-      const fromVal = document.getElementById('ordFrom').value;
-      const toVal   = document.getElementById('ordTo').value;
-      if (fromVal) q = q.gte('created_at', new Date(fromVal).toISOString());
-      if (toVal)   { const e = new Date(toVal); e.setHours(23,59,59,999); q = q.lte('created_at', e.toISOString()); }
-    }
-    // df === 'all' → no date filter at all
-
-    const { data, error } = await q;
-    if (error) throw error;
-
-    _allOrders = data || [];
-    renderFilteredOrders();
-    markUpdated();
-
-  } catch(err) {
-    console.error('loadOrders:', err);
-    tbody.innerHTML = `<tr class="empty-r"><td colspan="6">⚠️ ${err.message}</td></tr>`;
+  const customEl = document.getElementById('ordCustomRange');
+  if (df === 'custom') {
+    customEl.style.display = 'flex';
+    const t = today();
+    if (!document.getElementById('ordFrom').value) document.getElementById('ordFrom').value = t;
+    if (!document.getElementById('ordTo').value)   document.getElementById('ordTo').value   = t;
+  } else {
+    customEl.style.display = 'none';
+    loadOrders();
   }
 }
 
-// Called on search input oninput — re-filters cached results without a DB round-trip
-function filterOrders() {
-  renderFilteredOrders();
+function ordDateRange() {
+  const t = today();
+  if (_ordDateFilter === 'today')     return { from: t+'T00:00:00', to: t+'T23:59:59' };
+  if (_ordDateFilter === 'yesterday') {
+    const y = dateOffset(-1);
+    return { from: y+'T00:00:00', to: y+'T23:59:59' };
+  }
+  if (_ordDateFilter === 'week')  return { from: dateOffset(-6)+'T00:00:00', to: t+'T23:59:59' };
+  if (_ordDateFilter === 'month') return { from: dateOffset(-29)+'T00:00:00', to: t+'T23:59:59' };
+  if (_ordDateFilter === 'custom') {
+    const from = document.getElementById('ordFrom').value;
+    const to   = document.getElementById('ordTo').value;
+    if (from && to) return { from: from+'T00:00:00', to: to+'T23:59:59' };
+  }
+  return null;
 }
 
-function renderFilteredOrders() {
-  const tbody = document.getElementById('ordBody');
-  const countEl = document.getElementById('ordCount');
-  const sv = (document.getElementById('order-search').value || '').toLowerCase().trim();
+function subscribeOrders() {
+  if (!sb || _ordChannel) return;
+  _ordChannel = sb.channel('orders-rt')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+      if (_page === 'orders') loadOrders();
+    })
+    .subscribe();
+}
 
-  const rows = sv
-    ? _allOrders.filter(o =>
-        String(o.id || '').toLowerCase().includes(sv) ||
-        (o.username     || '').toLowerCase().includes(sv) ||
-        (o.product_name || '').toLowerCase().includes(sv)
-      )
-    : _allOrders;
-
-  if (countEl) {
-    const df = window.orderDateFilter || 'all';
-    const label = df === 'all' ? 'orders' : `orders · ${df}`;
-    countEl.textContent = rows.length + ' ' + label;
+function unsubscribeOrders() {
+  if (_ordChannel) {
+    sb.removeChannel(_ordChannel);
+    _ordChannel = null;
   }
+}
 
-  if (!rows.length) {
-    tbody.innerHTML = '<tr class="empty-r"><td colspan="6">No orders found.</td></tr>';
+async function testOrdersApi() {
+  const box = document.getElementById('ordTestBox');
+  box.style.display = 'block';
+  box.textContent = '⏳ Running direct fetch() to Supabase REST API…';
+
+  const sbUrl = _sbUrl.replace(/\/$/, '');
+  const sbKey = _sbKey;
+  const sbKeyRole = jwtRole(sbKey);
+
+  if (!sbUrl || !sbKey) {
+    box.textContent = '❌ ERROR: No URL or key set. Connect first (enter credentials in the Connect form).';
     return;
   }
 
-  tbody.innerHTML = rows.map(o => {
-    const cust = o.username ? '@' + o.username : (o.user_id || '—');
-    const oid  = String(o.id || '').slice(0, 12);
+  const endpoint = `${sbUrl}/rest/v1/orders?select=*&limit=5`;
+  const lines = [
+    `► URL:      ${sbUrl}`,
+    `► Key role: ${sbKeyRole || '(could not decode)'}`,
+    `► Endpoint: GET ${endpoint}`,
+    `► Headers:  apikey: ${sbKey.slice(0,12)}… | Authorization: Bearer ${sbKey.slice(0,12)}…`,
+    '',
+    '⏳ Fetching…',
+  ];
+  box.textContent = lines.join('\n');
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'apikey': sbKey,
+        'Authorization': `Bearer ${sbKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const statusLine = `► HTTP Status: ${res.status} ${res.statusText}`;
+    let body;
+    try { body = await res.json(); } catch(_) { body = await res.text(); }
+    const bodyStr = JSON.stringify(body, null, 2);
+
+    lines[lines.length - 1] = statusLine;
+    if (res.ok) {
+      const count = Array.isArray(body) ? body.length : '?';
+      lines.push(`► Rows returned: ${count}`);
+      lines.push('');
+      lines.push('✅ SUCCESS — raw response:');
+      lines.push(bodyStr);
+    } else {
+      lines.push('');
+      lines.push('❌ FAILED — raw error response:');
+      lines.push(bodyStr);
+    }
+    box.textContent = lines.join('\n');
+  } catch(e) {
+    lines[lines.length - 1] = `❌ fetch() threw an exception: ${e.message}`;
+    box.textContent = lines.join('\n');
+  }
+}
+
+async function loadOrders() {
+  const tbody = document.getElementById('ordBody');
+  const dbg = document.getElementById('ordDebugBox');
+  tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
+  dbg.style.display = 'none';
+  dbg.textContent = '';
+
+  const sbUrl = _sbUrl.replace(/\/$/, '');
+  const sbKey = _sbKey;
+  const sbKeyRole = jwtRole(sbKey);
+
+  // ── console ──────────────────────────────────────────────
+  console.log('[loadOrders] URL (exact):', sbUrl);
+  console.log('[loadOrders] Key first 20 chars:', sbKey.slice(0, 20));
+  console.log('[loadOrders] Key role:', sbKeyRole);
+  // ─────────────────────────────────────────────────────────
+
+  if (!sbUrl || !sbKey) {
+    tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem">
+      <strong style="color:var(--danger)">⚠️ Not connected. Open Settings and enter your Supabase credentials.</strong>
+    </td></tr>`;
+    return;
+  }
+
+  let adminSb;
+  try {
+    adminSb = supabase.createClient(sbUrl, sbKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  } catch(e) {
+    console.error('[loadOrders] createClient failed:', e);
+    tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem">
+      <strong style="color:var(--danger)">⚠️ Failed to create Supabase client: ${e.message}</strong>
+    </td></tr>`;
+    return;
+  }
+
+  subscribeOrders();
+
+  try {
+    const range = ordDateRange();
+    // Build the equivalent REST URL so we can print it exactly
+    let restUrl = `${sbUrl}/rest/v1/orders?select=id,user_id,username,product_name,amount,status,created_at&order=created_at.desc&limit=500`;
+    if (_ordStatusFilter) restUrl += `&status=eq.${_ordStatusFilter}`;
+    if (range) {
+      restUrl += `&created_at=gte.${range.from}&created_at=lte.${range.to}`;
+    }
+
+    // ── console ──────────────────────────────────────────────
+    console.log('[loadOrders] Equivalent REST query:', restUrl);
+    console.log('[loadOrders] Status filter:', _ordStatusFilter || '(none)');
+    console.log('[loadOrders] Date filter:', _ordDateFilter);
+    if (range) console.log('[loadOrders] Date range:', range.from, '→', range.to);
+    // ─────────────────────────────────────────────────────────
+
+    // Show debug box with pre-response info
+    dbg.style.display = 'block';
+    dbg.textContent = [
+      '🔍 loadOrders DEBUG',
+      `URL:        ${sbUrl}`,
+      `Key[0:20]:  ${sbKey.slice(0, 20)}`,
+      `Key role:   ${sbKeyRole || '(unknown)'}`,
+      `Query URL:  ${restUrl}`,
+      '',
+      '⏳ Awaiting Supabase response…',
+    ].join('\n');
+
+    let q = adminSb.from('orders')
+      .select('id,user_id,username,product_name,amount,status,created_at')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (_ordStatusFilter) q = q.eq('status', _ordStatusFilter);
+    if (range) q = q.gte('created_at', range.from).lte('created_at', range.to);
+
+    const { data, error } = await q;
+
+    // ── console ──────────────────────────────────────────────
+    console.log('[loadOrders] RAW data:', data);
+    console.log('[loadOrders] RAW error:', error);
+    // ─────────────────────────────────────────────────────────
+
+    // Update debug box with raw response
+    dbg.textContent = [
+      '🔍 loadOrders DEBUG',
+      `URL:        ${sbUrl}`,
+      `Key[0:20]:  ${sbKey.slice(0, 20)}`,
+      `Key role:   ${sbKeyRole || '(unknown)'}`,
+      `Query URL:  ${restUrl}`,
+      '',
+      `RAW error:  ${error ? JSON.stringify(error) : 'null'}`,
+      `RAW data (${Array.isArray(data) ? data.length : '?'} rows):`,
+      JSON.stringify(data, null, 2),
+    ].join('\n');
+
+    if (error) throw error;
+
+    _allOrders = data || [];
+    renderOrders(_allOrders);
+    document.getElementById('ordCount').textContent = _allOrders.length + ' orders';
+
+    if (_allOrders.length === 0) {
+      tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem;text-align:left">
+        <div style="font-size:.82rem;line-height:1.8">
+          <strong>No orders found.</strong><br>
+          Key role: <strong style="color:${sbKeyRole==='service_role'?'green':'red'}">${sbKeyRole||'unknown'}</strong>
+          ${sbKeyRole!=='service_role'?' ← must be service_role to bypass RLS':' ✅'}<br>
+          See yellow box above for full raw response.
+        </div>
+      </td></tr>`;
+      return;
+    }
+
+    // Hide debug box on success
+    dbg.style.display = 'none';
+    markUpdated();
+  } catch(e) {
+    console.error('[loadOrders] Exception:', e);
+    dbg.textContent += `\n\n❌ Exception: ${e.message}`;
+    tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem">
+      <strong style="color:var(--danger)">⚠️ Query failed: ${e.message} — see yellow box above.</strong>
+    </td></tr>`;
+  }
+}
+
+function filterOrders() {
+  const q = document.getElementById('ordSearch').value.toLowerCase();
+  if (!q) { renderOrders(_allOrders); return; }
+  renderOrders(_allOrders.filter(o=>
+    String(o.id||'').toLowerCase().includes(q)||
+    (o.username||'').toLowerCase().includes(q)||
+    (o.product_name||'').toLowerCase().includes(q)
+  ));
+}
+
+function renderOrders(rows) {
+  const tb = document.getElementById('ordBody');
+  if (!rows.length) {
+    tb.innerHTML = '<tr class="empty-r"><td colspan="6">No orders found.</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(o => {
+    const cust = o.username ? '@'+o.username : (o.user_id ? String(o.user_id) : '—');
+    const oid  = String(o.id||'').slice(0,8)+'…';
     return `<tr>
-      <td style="font-family:monospace;font-size:.76rem;color:var(--text-s)">${oid}</td>
+      <td style="font-family:monospace;font-size:.78rem;color:var(--text-s)">${oid}</td>
       <td>${cust}</td>
-      <td>${o.product_name || '—'}</td>
+      <td>${o.product_name||'—'}</td>
       <td><strong>${rm(o.amount)}</strong></td>
       <td>${statusBadge(o.status)}</td>
-      <td style="font-size:.76rem;white-space:nowrap">${fmtDT(o.created_at)}</td>
+      <td style="font-size:.78rem;white-space:nowrap">${fmtDT(o.created_at)}</td>
     </tr>`;
   }).join('');
 }
@@ -1015,15 +1152,15 @@ async function loadProducts() {
         <div class="pc-name">${p.name||'—'}</div>
         <div class="pc-chips">
           <span class="chip price">${price}</span>
-          <span class="badge ${delivery?'b-green':'b-grey'}">${delivery?'Auto Delivery':'Manual'}</span>
-          <span class="badge ${active?'b-green':'b-grey'}">${active?'Active':'Inactive'}</span>
+          <span class="chip ${stock<=0?'low':''}">${delivery?'🤖 Auto':'⚙️ Manual'}</span>
+          <span class="badge ${active?'b-green':'b-grey'} btn-sm">${active?'Active':'Inactive'}</span>
         </div>
         <div class="pc-row">
-          <span style="color:var(--text-s);font-size:.8rem">Stock: <strong style="color:var(--text)">${stock}</strong></span>
+          <span style="color:var(--text-s);font-size:.82rem">Stock: <strong style="color:var(--text)">${stock}</strong></span>
           ${stock<=2?'<span class="badge b-red">Low Stock</span>':''}
         </div>
         <div class="pc-btns">
-          <button class="btn-primary btn-sm btn-pill" onclick='openEdit(${JSON.stringify(p)})'>Edit Stock</button>
+          <button class="btn-primary btn-sm btn-pill" onclick='openEdit(${JSON.stringify(p)})'>✏️ Edit</button>
           <button class="${active?'btn-ghost':'btn-success'} btn-sm btn-pill" onclick="toggleActive('${p.id}',${active})">
             ${active?'Pause':'Activate'}
           </button>
@@ -1130,58 +1267,48 @@ async function loadStocks() {
   const grid = document.getElementById('stockGrid');
   grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading…</div>';
   try {
-    const {data:prods,error} = await sb.from('products').select('id,name,auto_delivery,price,stock,is_active').order('name');
+    const {data:prods,error} = await sb.from('products').select('id,name,auto_delivery,price').order('name');
     if (error) throw error;
     if (!prods||!prods.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products found.</div>';
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products.</div>';
       return;
     }
     const cards = await Promise.all(prods.map(async p=>{
-      const isAuto  = bool(p.auto_delivery);
-      const price   = p.price!=null ? 'RM '+parseFloat(p.price).toFixed(2) : '';
-      const active  = bool(p.is_active);
-      let total=0, used=0, avail=0;
-
-      if (isAuto) {
-        try {
-          const [rU,rA] = await Promise.all([
-            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
-            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
-          ]);
-          used=rU.count??0; avail=rA.count??0; total=used+avail;
-        } catch(_){}
-      } else {
-        avail = p.stock??0; total = avail;
-      }
-
+      if (!bool(p.auto_delivery)) return null;
+      let total=0,used=0,avail=0;
+      try {
+        const [rU,rA] = await Promise.all([
+          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
+          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
+        ]);
+        used=rU.count??0; avail=rA.count??0; total=used+avail;
+      } catch(_){}
       const low = avail<=2;
+      const price = p.price!=null?'RM '+parseFloat(p.price).toFixed(2):'';
       return `<div class="stock-card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.35rem">
           <div>
             <div class="card-name">${p.name}</div>
-            <div class="card-chips" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.25rem">
+            <div class="card-chips">
               ${price?`<span class="chip price">${price}</span>`:''}
-              <span class="badge ${isAuto?'b-green':'b-grey'}">${isAuto?'Auto Delivery':'Manual'}</span>
-              ${low?'<span class="badge b-amber">Needs Stock</span>':''}
             </div>
           </div>
-          <span class="badge ${active?'b-green':'b-grey'}" style="flex-shrink:0">${active?'Active':'Inactive'}</span>
+          <span class="badge ${low?'b-red':'b-green'}">${low?'⚠️ Restock':'✅ OK'}</span>
         </div>
         <div class="stat-boxes">
-          <div class="stat-box"><div class="sb-lbl">${isAuto?'Total Entries':'Total Stock'}</div><div class="sb-val">${total}</div></div>
+          <div class="stat-box"><div class="sb-lbl">Total</div><div class="sb-val">${total}</div></div>
           <div class="stat-box"><div class="sb-lbl">Available</div><div class="sb-val ${avail>2?'ok':'bad'}">${avail}</div></div>
-          <div class="stat-box"><div class="sb-lbl">${isAuto?'Delivered':'Reserved'}</div><div class="sb-val">${used}</div></div>
+          <div class="stat-box"><div class="sb-lbl">Delivered</div><div class="sb-val">${used}</div></div>
         </div>
-        <div style="font-size:.76rem;margin-top:.2rem">
-          ${avail===0
-            ? '<span style="color:var(--danger)">⛔ Out of stock</span>'
-            : avail<=2
-              ? `<span style="color:var(--warning)">⚠️ ${avail} left — restock soon</span>`
-              : `<span style="color:var(--success)">✅ ${avail} available</span>`}
+        <div style="font-size:.78rem;color:var(--text-s)">
+          ${avail===0?'⛔ Stok habis — add via /addcred':avail<=2?`⚠️ ${avail} left — restock soon`:`✅ ${avail} credentials ready`}
         </div>
       </div>`;
     }));
-    grid.innerHTML = cards.join('');
+    const valid = cards.filter(Boolean);
+    grid.innerHTML = valid.length
+      ? valid.join('')
+      : '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No auto-delivery products.</div>';
     markUpdated();
   } catch(e) {
     grid.innerHTML = `<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--danger)">⚠️ ${e.message}</div>`;
@@ -1220,16 +1347,16 @@ async function loadCredentials() {
       if (!isAuto) return `<div class="cred-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
           <div class="card-name">${p.name}</div>
-          <span class="badge b-grey">Manual</span>
+          <span class="badge b-grey">⚙️ Manual</span>
         </div>
-        <div style="font-size:.78rem;color:var(--text-s)">Admin delivers credentials manually.</div>
+        <div style="font-size:.8rem;color:var(--text-s)">Admin hantar akaun secara manual.</div>
       </div>`;
       return `<div class="cred-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
           <div class="card-name">${p.name}</div>
-          <span class="badge b-blue">Auto Delivery</span>
+          <span class="badge b-blue">🤖 Auto</span>
         </div>
-        <div style="display:flex;flex-direction:column;gap:.22rem;font-size:.82rem;margin:.45rem 0">
+        <div style="display:flex;flex-direction:column;gap:.25rem;font-size:.84rem;margin:.5rem 0">
           <div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Total</span><strong>${total}</strong></div>
           <div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Used</span><strong>${used}</strong></div>
           <div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Available</span><strong style="color:${avail>0?'var(--success)':'var(--danger)'}">${avail}</strong></div>
@@ -1238,7 +1365,7 @@ async function loadCredentials() {
           <div class="prog-bg"><div class="prog-fill ${barCls}" style="width:${usedPct}%"></div></div>
           <div class="prog-lbl">${usedPct}% used</div>
         </div>
-        ${avail===0?'<span class="badge b-red">Out of Stock</span>':avail<=2?'<span class="badge b-amber">Low Stock</span>':'<span class="badge b-green">In Stock</span>'}
+        ${avail===0?'<span class="badge b-red">⛔ Stok Habis</span>':avail<=2?'<span class="badge b-amber">⚠️ Stok Rendah</span>':'<span class="badge b-green">✅ Ada Stok</span>'}
       </div>`;
     }));
     grid.innerHTML = cards.join('');
@@ -1305,23 +1432,18 @@ document.querySelectorAll('.overlay').forEach(o=>{
   o.addEventListener('click', e=>{ if(e.target===o && o.id!=='connectOverlay') o.classList.remove('open'); });
 });
 
-document.addEventListener('DOMContentLoaded', function init(){
+(function init(){
   const t = today();
   document.getElementById('salFrom').value = t;
   document.getElementById('salTo').value   = t;
 
-  const url = localStorage.getItem('bs_url')||'';
-  const key = localStorage.getItem('bs_key')||'';
-  if (url&&key) {
-    try {
-      sb = supabase.createClient(url,key);
-      setConn(true);
-      startRefresh();
-    } catch(_){ openConnect(); }
-  } else {
-    openConnect();
-  }
-});
+  // Always clear any previously saved credentials — never auto-connect from storage
+  localStorage.removeItem('bs_url');
+  localStorage.removeItem('bs_key');
+
+  // Always show a fresh connect form
+  openConnect();
+})();
 </script>
 </body>
 </html>
