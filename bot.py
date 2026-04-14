@@ -76,8 +76,9 @@ def _get_env(key: str, fallback: str = "") -> str:
     return (os.getenv(key) or fallback).strip()
 
 BOT_TOKEN    = _get_env("BOT_TOKEN") or _get_env("TOKEN") or _get_env("TELEGRAM_BOT_TOKEN")
-SUPABASE_URL = _get_env("SUPABASE_URL").rstrip("/")
-SUPABASE_KEY = _get_env("SUPABASE_KEY")
+SUPABASE_URL         = _get_env("SUPABASE_URL").rstrip("/")
+SUPABASE_KEY         = _get_env("SUPABASE_KEY")
+SUPABASE_SERVICE_KEY = _get_env("SUPABASE_SERVICE_KEY")
 ADMIN_ID     = 0
 PORT         = int(_get_env("PORT", "8000"))
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
@@ -85,7 +86,7 @@ PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 
 def _redact(text: object) -> str:
     value = str(text)
-    for secret in (BOT_TOKEN, SUPABASE_KEY):
+    for secret in (BOT_TOKEN, SUPABASE_KEY, SUPABASE_SERVICE_KEY):
         if secret:
             value = value.replace(secret, "[REDACTED]")
     return value[:500]
@@ -98,12 +99,15 @@ try:
 except ValueError:
     log.warning("ADMIN_ID bukan nombor — ditetapkan kepada 0")
 
+TESTIMONIALS_CHANNEL_ID = -1003850553745
+
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
 log.info("=" * 50)
 log.info(f"BOT_TOKEN    : {'✅ set' if BOT_TOKEN else '❌ MISSING'}")
 log.info(f"SUPABASE_URL : {'✅ ' + SUPABASE_URL[:35] if SUPABASE_URL else '❌ MISSING'}")
 log.info(f"SUPABASE_KEY : {'✅ set (len=' + str(len(SUPABASE_KEY)) + ')' if SUPABASE_KEY else '❌ MISSING'}")
+log.info(f"SUPABASE_SERVICE_KEY : {'✅ set (len=' + str(len(SUPABASE_SERVICE_KEY)) + ')' if SUPABASE_SERVICE_KEY else '⚠️ NOT SET — admin writes will use anon key'}")
 log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
 log.info("=" * 50)
 
@@ -171,6 +175,16 @@ def _sb_headers() -> dict:
     }
 
 
+def _sb_admin_headers() -> dict:
+    """Use service role key for write operations that bypass RLS."""
+    key = SUPABASE_SERVICE_KEY if SUPABASE_SERVICE_KEY else SUPABASE_KEY
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+
 def sb_get(table: str, params: str = "") -> list:
     """SELECT rows. Returns list of dicts."""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
@@ -210,6 +224,38 @@ def sb_patch(table: str, params: str, data: dict) -> list:
     r = _httpx.patch(
         f"{SUPABASE_URL}/rest/v1/{table}?{params}",
         headers={**_sb_headers(), "Prefer": "return=representation"},
+        json=data, timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def sb_admin_get(table: str, params: str = "") -> list:
+    """SELECT rows using service role key (bypasses RLS)."""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if params:
+        url += "?" + params
+    r = _httpx.get(url, headers=_sb_admin_headers(), timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def sb_admin_post(table: str, data: dict) -> list:
+    """INSERT a row using service role key (bypasses RLS)."""
+    r = _httpx.post(
+        f"{SUPABASE_URL}/rest/v1/{table}",
+        headers={**_sb_admin_headers(), "Prefer": "return=representation"},
+        json=data, timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def sb_admin_patch(table: str, params: str, data: dict) -> list:
+    """UPDATE rows using service role key (bypasses RLS)."""
+    r = _httpx.patch(
+        f"{SUPABASE_URL}/rest/v1/{table}?{params}",
+        headers={**_sb_admin_headers(), "Prefer": "return=representation"},
         json=data, timeout=15,
     )
     r.raise_for_status()
@@ -880,13 +926,13 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                     new_stock = max(0, product_data.get("stock", 0) - order_data.get("quantity", 1))
                     sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
                     if product_data.get("auto_delivery"):
-                        cred_rows = sb_get(
+                        cred_rows = sb_admin_get(
                             "credentials",
                             f"select=*&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
                         )
                         if cred_rows:
                             cred = cred_rows[0]
-                            sb_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
+                            sb_admin_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
             return order_data, product_data, cred
 
         result = await _run_supabase(f"orders.approve id={order_id}", approve_tx, attempts=1, timeout=15)
@@ -900,6 +946,9 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
     log.info(f"Order {order_id} approved by admin (auto_delivery={bool(product.get('auto_delivery'))})")
     await update.callback_query.edit_message_caption(
         caption=(update.callback_query.message.caption or "") + "\n\n✅ APPROVED", reply_markup=None)
+
+    # ── Testimonial channel post ───────────────────────────────────────────────
+    await _post_testimonial(context, order)
 
     # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
     if product.get("auto_delivery"):
@@ -1118,6 +1167,55 @@ async def _admin_notify(context: ContextTypes.DEFAULT_TYPE, text: str):
     except Exception as exc:
         log.warning(f"Admin notify: {_safe_error(exc)}")
 
+
+def _censor_username(username: str | None) -> str:
+    """Return censored username: first 2 chars + ****** + last char."""
+    if not username:
+        return "Customer"
+    u = username.lstrip("@")
+    if not u:
+        return "Customer"
+    if len(u) == 1:
+        return u + "******"
+    if len(u) == 2:
+        return u[0] + "******" + u[1]
+    return u[:2] + "******" + u[-1]
+
+
+async def _post_testimonial(context, order: dict):
+    """Auto-post a delivery testimonial to the Telegram channel when an order is completed."""
+    order_id = order.get("id", "?")
+    log.info(f"[TESTIMONIAL] Attempting to post for order {order_id}")
+    try:
+        censored     = _censor_username(order.get("username"))
+        product_name = order.get("product_name") or "—"
+        quantity     = order.get("quantity") or 1
+
+        try:
+            total_completed = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: len(sb_get("orders", "select=id&status=eq.completed"))
+                ),
+                timeout=10,
+            )
+        except Exception as exc:
+            log.warning(f"Testimonial: could not fetch total completed count: {_safe_error(exc)}")
+            total_completed = "?"
+
+        text = (
+            f"🎉 New successful order delivered!\n"
+            f"👤 Buyer: {censored}\n"
+            f"📦 Product: {product_name}\n"
+            f"📋 Quantity: {quantity}\n"
+            f"__________________\n"
+            f"🔥 Total sold: {total_completed} units"
+        )
+
+        await context.bot.send_message(chat_id=TESTIMONIALS_CHANNEL_ID, text=text)
+        log.info(f"[TESTIMONIAL] Posted successfully")
+    except Exception as exc:
+        log.error(f"[TESTIMONIAL] Failed: {_safe_error(exc)}")
+
 # ─── Rate Limiter ─────────────────────────────────────────────────────────────
 # Max 5 button presses per 3 seconds per user.
 
@@ -1248,6 +1346,8 @@ async def send_account_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages: reply keyboard numbers, Home button, and admin account delivery."""
+    if not update.effective_user:
+        return
     user_id = update.effective_user.id
     text    = (update.message.text or "").strip()
 
@@ -1309,7 +1409,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             def insert_creds(items=items):
                 for item in items:
-                    sb_post("credentials", item)
+                    sb_admin_post("credentials", item)
             await _run_supabase(f"credentials.insert product={product_id}", insert_creds)
             await update.message.reply_text(
                 f"✅ {len(items)} credentials berjaya ditambah untuk {product_name}"
@@ -1684,6 +1784,74 @@ async def cmd_credstock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+# ─── /credcheck ───────────────────────────────────────────────────────────────
+
+async def cmd_credcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /credcheck PRODUCT_ID — show unused credentials for a product."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Not allowed")
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /credcheck PRODUCT_ID\n"
+            "Example: /credcheck 3\n\n"
+            "Tunjukkan senarai credentials yang belum digunakan untuk produk tersebut."
+        )
+        return
+    try:
+        product_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ Product ID mestilah nombor.")
+        return
+    try:
+        prod_rows = await _run_supabase(
+            f"products.credcheck id={product_id}",
+            lambda: sb_admin_get("products", f"select=id,name,auto_delivery&id=eq.{product_id}&limit=1"),
+        )
+        if not prod_rows:
+            await update.message.reply_text(f"⚠️ Produk ID {product_id} tidak dijumpai.")
+            return
+        product = prod_rows[0]
+
+        unused_rows = await _run_supabase(
+            f"credentials.unused pid={product_id}",
+            lambda: sb_admin_get("credentials", f"select=id,email,password&product_id=eq.{product_id}&is_used=eq.false&order=id"),
+        ) or []
+
+        used_count_rows = await _run_supabase(
+            f"credentials.used_count pid={product_id}",
+            lambda: sb_admin_get("credentials", f"select=id&product_id=eq.{product_id}&is_used=eq.true"),
+        ) or []
+
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Ralat: {_safe_error(exc)}")
+        return
+
+    unused = len(unused_rows)
+    used   = len(used_count_rows)
+    total  = unused + used
+    auto_tag = " 🤖 Auto Delivery" if product.get("auto_delivery") else ""
+
+    lines = [
+        f"🔍 CREDENTIAL CHECK",
+        f"━━━━━━━━━━━━━━━━━━",
+        f"📦 Produk: {product['name']}{auto_tag}",
+        f"📊 Total: {total} | ✅ Belum guna: {unused} | ❌ Dah guna: {used}",
+        f"━━━━━━━━━━━━━━━━━━",
+    ]
+
+    if unused_rows:
+        lines.append("📋 Senarai credentials tersedia:")
+        for i, cred in enumerate(unused_rows, 1):
+            pw = cred["password"]
+            masked_pw = pw[:2] + "*" * max(0, len(pw) - 4) + pw[-2:] if len(pw) > 4 else "****"
+            lines.append(f"{i}. {cred['email']} | {masked_pw}")
+    else:
+        lines.append("⚠️ Tiada credentials tersedia! Tambah dengan /addcred " + str(product_id))
+
+    await update.message.reply_text("\n".join(lines))
+
+
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
@@ -1697,6 +1865,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("send",      send_account_command))
     app.add_handler(CommandHandler("addcred",   cmd_addcred))
     app.add_handler(CommandHandler("credstock", cmd_credstock))
+    app.add_handler(CommandHandler("credcheck", cmd_credcheck))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
