@@ -612,6 +612,15 @@ const pctStr = (a,b) => {
   return `<span class="sc-trend ${cls}">${sym} ${Math.abs(p)}% vs prev 7d</span>`;
 };
 
+function setTrend(id, a, b) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!b) { el.textContent = ''; el.className = 'sc-trend'; return; }
+  const p = Math.round(((a - b) / b) * 100);
+  el.className = `sc-trend ${p >= 0 ? 'up' : 'dn'}`;
+  el.textContent = `${p >= 0 ? '▲' : '▼'} ${Math.abs(p)}% vs prev 7d`;
+}
+
 const rm = v => 'RM ' + parseFloat(v||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
 
 const closeOverlay = id => document.getElementById(id).classList.remove('open');
@@ -777,8 +786,8 @@ async function loadDashboard() {
     document.getElementById('dUsers').textContent = totalUsers;
     document.getElementById('dRev').textContent   = rm(revT);
     document.getElementById('dApp').textContent   = appT.length;
-    document.getElementById('dRevTrend').outerHTML = pctStr(revT, revP);
-    document.getElementById('dAppTrend').outerHTML = pctStr(appT.length, appP.length);
+    setTrend('dRevTrend', revT, revP);
+    setTrend('dAppTrend', appT.length, appP.length);
 
     // Daily data for sparklines + chart
     const labels=[], revDay=[], appDay=[];
