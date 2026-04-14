@@ -950,6 +950,18 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
     # ── Testimonial channel post ───────────────────────────────────────────────
     await _post_testimonial(context, order)
 
+    # ── Loyalty points award ───────────────────────────────────────────────────
+    try:
+        _user_id   = order.get("user_id")
+        _username  = order.get("username") or ""
+        await _run_supabase(
+            f"points.award user={_user_id}",
+            lambda uid=_user_id, uname=_username: _award_points_sync(uid, uname),
+        )
+        log.info(f"[POINTS] 10 points awarded to user {_user_id} for order {order_id}")
+    except Exception as exc:
+        log.warning(f"[POINTS] Award failed (non-fatal): {_safe_error(exc)}")
+
     # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
     if product.get("auto_delivery"):
         if cred:
@@ -1215,6 +1227,61 @@ async def _post_testimonial(context, order: dict):
         log.info(f"[TESTIMONIAL] Posted successfully")
     except Exception as exc:
         log.error(f"[TESTIMONIAL] Failed: {_safe_error(exc)}")
+
+
+# ─── Loyalty Points ───────────────────────────────────────────────────────────
+
+def _award_points_sync(user_id: int, username: str):
+    """Add 10 points to user in the 'points' table (read-then-write)."""
+    now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat()
+    rows = sb_admin_get("points", f"select=*&user_id=eq.{user_id}&limit=1")
+    if rows:
+        current = rows[0]
+        sb_admin_patch("points", f"user_id=eq.{user_id}", {
+            "username":     username or current.get("username", ""),
+            "points":       (current.get("points") or 0) + 10,
+            "total_orders": (current.get("total_orders") or 0) + 1,
+            "updated_at":   now,
+        })
+    else:
+        sb_admin_post("points", {
+            "user_id":      user_id,
+            "username":     username or "",
+            "points":       10,
+            "total_orders": 1,
+            "updated_at":   now,
+        })
+
+
+async def cmd_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Customer checks their loyalty points balance."""
+    user = update.effective_user
+    try:
+        rows = await _run_supabase(
+            f"points.check user={user.id}",
+            lambda: sb_get("points", f"select=*&user_id=eq.{user.id}&limit=1"),
+        )
+        if rows:
+            pts   = rows[0].get("points") or 0
+            total = rows[0].get("total_orders") or 0
+        else:
+            pts   = 0
+            total = 0
+    except Exception as exc:
+        log.warning(f"[POINTS] Check failed for user {user.id}: {_safe_error(exc)}")
+        await update.message.reply_text("⚠️ Could not fetch points. Try again later.")
+        return
+
+    free        = pts // 50
+    remainder   = pts % 50
+    next_reward = 50 - remainder if remainder else 0
+
+    await update.message.reply_text(
+        f"⭐ Your Points: {pts} pts\n"
+        f"🛒 Total Orders: {total}\n"
+        f"🎁 Free products available: {free} (every 50pts)\n"
+        f"📊 Next reward in: {next_reward} pts"
+    )
 
 # ─── Rate Limiter ─────────────────────────────────────────────────────────────
 # Max 5 button presses per 3 seconds per user.
@@ -1884,6 +1951,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("addcred",   cmd_addcred))
     app.add_handler(CommandHandler("credstock", cmd_credstock))
     app.add_handler(CommandHandler("credcheck", cmd_credcheck))
+    app.add_handler(CommandHandler("points",    cmd_points))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
