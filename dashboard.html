@@ -72,14 +72,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ══ STAT CARDS ══ */
 .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
-.stat-card{background:var(--white);border-radius:var(--r);padding:1.15rem 1.25rem;box-shadow:var(--shadow);position:relative}
+.stat-card{background:var(--white);border-radius:var(--r);padding:1.15rem 1.25rem;box-shadow:var(--shadow);position:relative;overflow:hidden}
 .sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.75rem}
 .sc-label{font-size:.63rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s)}
 .sc-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:#fff;flex-shrink:0}
 .sc-icon.amber{background:#fbbc04}
 .sc-icon.blue{background:#1a73e8}
 .sc-icon.green{background:#34a853}
-.sc-spark{height:48px;margin:-4px -4px .5rem}
+.sc-spark{height:48px;width:100%;display:block;margin:-4px 0 .5rem;box-sizing:border-box}
 .sc-val{font-size:1.9rem;font-weight:800;line-height:1;color:var(--text);margin-bottom:.3rem}
 .sc-trend{font-size:.75rem;font-weight:600;display:inline-block;line-height:1;min-height:0}
 .sc-trend.up{color:var(--success)}
@@ -319,7 +319,7 @@ button:active{transform:scale(.97)}
             <div class="sc-label">Revenue · 7D</div>
             <div class="sc-icon blue" style="font-size:.65rem">RM</div>
           </div>
-          <canvas class="sc-spark" id="spkRev"></canvas>
+          <canvas class="sc-spark" id="spkRev" height="48"></canvas>
           <div class="sc-val" id="dRev">—</div>
           <div class="sc-trend up" id="dRevTrend"></div>
         </div>
@@ -329,7 +329,7 @@ button:active{transform:scale(.97)}
             <div class="sc-label">Approved · 7D</div>
             <div class="sc-icon green">✓</div>
           </div>
-          <canvas class="sc-spark" id="spkApp"></canvas>
+          <canvas class="sc-spark" id="spkApp" height="48"></canvas>
           <div class="sc-val" id="dApp">—</div>
           <div class="sc-trend up" id="dAppTrend"></div>
         </div>
@@ -374,7 +374,7 @@ button:active{transform:scale(.97)}
         <div class="filter-pills" id="statusPills">
           <span class="fpill active" data-st="" onclick="setStatusFilter(this,'')">All</span>
           <span class="fpill" data-st="pending" onclick="setStatusFilter(this,'pending')">Pending</span>
-          <span class="fpill" data-st="waiting_approval" onclick="setStatusFilter(this,'waiting_approval')">Waiting</span>
+          <span class="fpill" data-st="waiting" onclick="setStatusFilter(this,'waiting')">Waiting</span>
           <span class="fpill" data-st="completed" onclick="setStatusFilter(this,'completed')">Completed</span>
           <span class="fpill" data-st="approved" onclick="setStatusFilter(this,'approved')">Approved</span>
           <span class="fpill" data-st="cancelled" onclick="setStatusFilter(this,'cancelled')">Cancelled</span>
@@ -396,16 +396,11 @@ button:active{transform:scale(.97)}
           <input type="date" id="ordTo" onchange="loadOrders()"/>
         </span>
       </div>
-      <div id="ordTestBox" style="display:none;margin-bottom:.75rem;background:#1e293b;color:#e2e8f0;border-radius:8px;padding:1rem;font-family:monospace;font-size:.75rem;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow-y:auto"></div>
-      <div id="ordDebugBox" style="display:none;margin-bottom:.75rem;background:#fefce8;border:1.5px solid #eab308;color:#713f12;border-radius:8px;padding:1rem;font-family:monospace;font-size:.75rem;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto"></div>
 
       <div class="table-card">
         <div class="tc-hdr">
           <h3>Orders</h3>
-          <div style="display:flex;align-items:center;gap:.5rem">
-            <button onclick="testOrdersApi()" style="font-size:.72rem;padding:.25rem .7rem;border-radius:999px;border:1px solid var(--border);background:#f3f4f6;color:var(--text-s);cursor:pointer;font-weight:600">🔬 Test API</button>
-            <span class="badge b-grey" id="ordCount">—</span>
-          </div>
+          <span class="badge b-grey" id="ordCount">—</span>
         </div>
         <div class="overflow-x">
           <table class="box-table">
@@ -597,7 +592,7 @@ const bool = v => v===true||v==='true'||v===1;
 const statusBadge = s => {
   const map = {
     completed:'b-green', approved:'b-green',
-    pending:'b-amber', waiting_approval:'b-blue',
+    pending:'b-amber', waiting:'b-blue',
     cancelled:'b-grey', rejected:'b-red'
   };
   const key = (s||'').toLowerCase();
@@ -752,7 +747,7 @@ function drawSpark(id, data, color) {
   _spkCharts[id] = new Chart(ctx, {
     type:'line',
     data:{ labels:data.map((_,i)=>i), datasets:[{data, borderColor:color, borderWidth:2, pointRadius:0, fill:false, tension:.4}]},
-    options:{plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false,responsive:true,maintainAspectRatio:false}
+    options:{plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false,responsive:false,maintainAspectRatio:false}
   });
 }
 
@@ -927,81 +922,13 @@ function unsubscribeOrders() {
   }
 }
 
-async function testOrdersApi() {
-  const box = document.getElementById('ordTestBox');
-  box.style.display = 'block';
-  box.textContent = '⏳ Running direct fetch() to Supabase REST API…';
-
-  const sbUrl = _sbUrl.replace(/\/$/, '');
-  const sbKey = _sbKey;
-  const sbKeyRole = jwtRole(sbKey);
-
-  if (!sbUrl || !sbKey) {
-    box.textContent = '❌ ERROR: No URL or key set. Connect first (enter credentials in the Connect form).';
-    return;
-  }
-
-  const endpoint = `${sbUrl}/rest/v1/orders?select=*&limit=5`;
-  const lines = [
-    `► URL:      ${sbUrl}`,
-    `► Key role: ${sbKeyRole || '(could not decode)'}`,
-    `► Endpoint: GET ${endpoint}`,
-    `► Headers:  apikey: ${sbKey.slice(0,12)}… | Authorization: Bearer ${sbKey.slice(0,12)}…`,
-    '',
-    '⏳ Fetching…',
-  ];
-  box.textContent = lines.join('\n');
-
-  try {
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'apikey': sbKey,
-        'Authorization': `Bearer ${sbKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const statusLine = `► HTTP Status: ${res.status} ${res.statusText}`;
-    let body;
-    try { body = await res.json(); } catch(_) { body = await res.text(); }
-    const bodyStr = JSON.stringify(body, null, 2);
-
-    lines[lines.length - 1] = statusLine;
-    if (res.ok) {
-      const count = Array.isArray(body) ? body.length : '?';
-      lines.push(`► Rows returned: ${count}`);
-      lines.push('');
-      lines.push('✅ SUCCESS — raw response:');
-      lines.push(bodyStr);
-    } else {
-      lines.push('');
-      lines.push('❌ FAILED — raw error response:');
-      lines.push(bodyStr);
-    }
-    box.textContent = lines.join('\n');
-  } catch(e) {
-    lines[lines.length - 1] = `❌ fetch() threw an exception: ${e.message}`;
-    box.textContent = lines.join('\n');
-  }
-}
-
 async function loadOrders() {
   const tbody = document.getElementById('ordBody');
-  const dbg = document.getElementById('ordDebugBox');
   tbody.innerHTML = '<tr class="empty-r"><td colspan="6"><span class="spin"></span>Loading…</td></tr>';
-  dbg.style.display = 'none';
-  dbg.textContent = '';
 
   const sbUrl = _sbUrl.replace(/\/$/, '');
   const sbKey = _sbKey;
   const sbKeyRole = jwtRole(sbKey);
-
-  // ── console ──────────────────────────────────────────────
-  console.log('[loadOrders] URL (exact):', sbUrl);
-  console.log('[loadOrders] Key first 20 chars:', sbKey.slice(0, 20));
-  console.log('[loadOrders] Key role:', sbKeyRole);
-  // ─────────────────────────────────────────────────────────
 
   if (!sbUrl || !sbKey) {
     tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem">
@@ -1025,31 +952,6 @@ async function loadOrders() {
 
   try {
     const range = ordDateRange();
-    // Build the equivalent REST URL so we can print it exactly
-    let restUrl = `${sbUrl}/rest/v1/orders?select=id,user_id,username,product_name,amount,status,created_at&order=created_at.desc&limit=500`;
-    if (_ordStatusFilter) restUrl += `&status=eq.${_ordStatusFilter}`;
-    if (range) {
-      restUrl += `&created_at=gte.${range.from}&created_at=lte.${range.to}`;
-    }
-
-    // ── console ──────────────────────────────────────────────
-    console.log('[loadOrders] Equivalent REST query:', restUrl);
-    console.log('[loadOrders] Status filter:', _ordStatusFilter || '(none)');
-    console.log('[loadOrders] Date filter:', _ordDateFilter);
-    if (range) console.log('[loadOrders] Date range:', range.from, '→', range.to);
-    // ─────────────────────────────────────────────────────────
-
-    // Show debug box with pre-response info
-    dbg.style.display = 'block';
-    dbg.textContent = [
-      '🔍 loadOrders DEBUG',
-      `URL:        ${sbUrl}`,
-      `Key[0:20]:  ${sbKey.slice(0, 20)}`,
-      `Key role:   ${sbKeyRole || '(unknown)'}`,
-      `Query URL:  ${restUrl}`,
-      '',
-      '⏳ Awaiting Supabase response…',
-    ].join('\n');
 
     let q = adminSb.from('orders')
       .select('id,user_id,username,product_name,amount,status,created_at')
@@ -1059,25 +961,6 @@ async function loadOrders() {
     if (range) q = q.gte('created_at', range.from).lte('created_at', range.to);
 
     const { data, error } = await q;
-
-    // ── console ──────────────────────────────────────────────
-    console.log('[loadOrders] RAW data:', data);
-    console.log('[loadOrders] RAW error:', error);
-    // ─────────────────────────────────────────────────────────
-
-    // Update debug box with raw response
-    dbg.textContent = [
-      '🔍 loadOrders DEBUG',
-      `URL:        ${sbUrl}`,
-      `Key[0:20]:  ${sbKey.slice(0, 20)}`,
-      `Key role:   ${sbKeyRole || '(unknown)'}`,
-      `Query URL:  ${restUrl}`,
-      '',
-      `RAW error:  ${error ? JSON.stringify(error) : 'null'}`,
-      `RAW data (${Array.isArray(data) ? data.length : '?'} rows):`,
-      JSON.stringify(data, null, 2),
-    ].join('\n');
-
     if (error) throw error;
 
     _allOrders = data || [];
@@ -1085,25 +968,16 @@ async function loadOrders() {
     document.getElementById('ordCount').textContent = _allOrders.length + ' orders';
 
     if (_allOrders.length === 0) {
-      tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem;text-align:left">
-        <div style="font-size:.82rem;line-height:1.8">
-          <strong>No orders found.</strong><br>
-          Key role: <strong style="color:${sbKeyRole==='service_role'?'green':'red'}">${sbKeyRole||'unknown'}</strong>
-          ${sbKeyRole!=='service_role'?' ← must be service_role to bypass RLS':' ✅'}<br>
-          See yellow box above for full raw response.
-        </div>
+      tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem">
+        <strong>No orders found.</strong>
       </td></tr>`;
       return;
     }
 
-    // Hide debug box on success
-    dbg.style.display = 'none';
     markUpdated();
   } catch(e) {
-    console.error('[loadOrders] Exception:', e);
-    dbg.textContent += `\n\n❌ Exception: ${e.message}`;
     tbody.innerHTML = `<tr class="empty-r"><td colspan="6" style="padding:1.5rem">
-      <strong style="color:var(--danger)">⚠️ Query failed: ${e.message} — see yellow box above.</strong>
+      <strong style="color:var(--danger)">⚠️ Query failed: ${e.message}</strong>
     </td></tr>`;
   }
 }
