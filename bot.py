@@ -982,6 +982,8 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery send to user: {_safe_error(exc)}")
+            # Points notification → customer
+            await _send_points_notification(context, order["user_id"])
             # Notify admin: auto delivery success
             try:
                 await context.bot.send_message(
@@ -1251,6 +1253,43 @@ def _award_points_sync(user_id: int, username: str):
             "total_orders": 1,
             "updated_at":   now,
         })
+
+
+async def _send_points_notification(context, user_id: int):
+    """Send a loyalty points summary to the customer right after delivery."""
+    try:
+        rows = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: sb_get("points", f"select=points&user_id=eq.{user_id}&limit=1")
+            ),
+            timeout=10,
+        )
+        pts = (rows[0].get("points") or 0) if rows else 0
+    except Exception as exc:
+        log.warning(f"[POINTS] Notification fetch failed for user {user_id}: {_safe_error(exc)}")
+        return
+
+    try:
+        if pts >= 50:
+            text = (
+                f"⭐ You earned 10 points!\n"
+                f"🎉 You have {pts} pts — enough for a FREE product!\n"
+                f"💬 Contact admin to redeem your free product!"
+            )
+        else:
+            filled = round(pts / 50 * 10)
+            empty  = 10 - filled
+            bar    = "█" * filled + "░" * empty
+            text   = (
+                f"⭐ You earned 10 points for this purchase!\n"
+                f"📊 Total points: {pts} pts\n"
+                f"🎁 Collect 50 points to redeem a FREE product!\n"
+                f"Progress: [{bar}] {pts}/50 pts"
+            )
+        await context.bot.send_message(chat_id=user_id, text=text)
+        log.info(f"[POINTS] Notification sent to user {user_id} ({pts} pts)")
+    except Exception as exc:
+        log.warning(f"[POINTS] Notification send failed for user {user_id}: {_safe_error(exc)}")
 
 
 async def cmd_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1523,6 +1562,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(f"✅ Maklumat akaun berjaya dihantar kepada pembeli (Order: {order_id})")
         log.info(f"Account details sent for order {order_id} → buyer {buyer_id}")
+        # Points notification → customer
+        await _send_points_notification(context, buyer_id)
     except Exception as exc:
         log.warning(f"Send account details error: {_safe_error(exc)}")
         await update.message.reply_text(f"⚠️ Gagal hantar kepada pembeli: {_safe_error(exc)}")
