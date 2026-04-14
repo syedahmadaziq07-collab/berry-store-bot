@@ -1578,6 +1578,23 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❌ Gagal            : {failed} pengguna"
     )
 
+# ─── /testchannel ─────────────────────────────────────────────────────────────
+
+async def cmd_testchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    try:
+        await context.bot.send_message(
+            chat_id=TESTIMONIALS_CHANNEL_ID,
+            text="✅ Test message from Berry Store Bot",
+        )
+        log.info(f"[TESTCHANNEL] Success — message posted to {TESTIMONIALS_CHANNEL_ID}")
+        await update.message.reply_text(f"✅ Test message sent to channel {TESTIMONIALS_CHANNEL_ID}")
+    except Exception as exc:
+        log.error(f"[TESTCHANNEL] Failed — {_safe_error(exc)}")
+        await update.message.reply_text(f"❌ Failed to post to channel:\n{_safe_error(exc)}")
+
 # ─── /adminorders ─────────────────────────────────────────────────────────────
 
 async def cmd_adminorders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1860,6 +1877,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("adminorders", cmd_adminorders))
     app.add_handler(CommandHandler("stock",       cmd_stock))
     app.add_handler(CommandHandler("broadcast",   cmd_broadcast))
+    app.add_handler(CommandHandler("testchannel", cmd_testchannel))
     app.add_handler(CommandHandler("shop",   show_shop))
     app.add_handler(CommandHandler("orders", my_orders))
     app.add_handler(CommandHandler("send",      send_account_command))
