@@ -777,16 +777,17 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         )
         if existing:
             o = existing[0]
+            oid = o.get("id", "")
             await update.callback_query.edit_message_text(
                 f"⚠️ Anda sudah mempunyai order aktif:\n"
-                f"• Order  : {o.get('id','')}\n"
+                f"• Order  : {oid}\n"
                 f"• Produk : {o.get('product_name','')}\n"
                 f"• Jumlah : RM {o.get('amount','')}\n"
                 f"• Status : {o.get('status','')}\n\n"
-                f"Sila selesaikan atau batalkan order semasa sebelum membuat order baru.",
+                f"Sila teruskan pembayaran atau batalkan order semasa.",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 My Orders", callback_data="myorders")],
-                    [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")],
+                    [InlineKeyboardButton("💳 Continue Payment", callback_data=f"payment_{oid}")],
+                    [InlineKeyboardButton("❌ Cancel Order",      callback_data=f"cancel_{oid}")],
                 ]),
             )
             return
