@@ -521,7 +521,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         products = await _run_supabase(
             "products.list",
-            lambda: sb_get("products", "select=id,name,stock,price,duration&order=id"),
+            lambda: sb_get("products", "select=id,name,stock,price,duration,variants&order=id"),
         ) or []
         _cache_products(products)
         log.info(f"Products loaded: {len(products)} items source=supabase")
@@ -565,6 +565,103 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, reply_markup=build_product_keyboard(products))
 
+# ─── Variant Helpers ──────────────────────────────────────────────────────────
+
+def _parse_variants(raw) -> list:
+    """Safely parse the variants column into a list of dicts.
+    Returns [] if null, empty, or invalid in any way."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    if not isinstance(raw, list):
+        return []
+    # Keep only items that have at least a label and a price
+    result = []
+    for v in raw:
+        if not isinstance(v, dict):
+            continue
+        if v.get("label") and v.get("price") is not None:
+            result.append(v)
+    return result
+
+# ─── Variant Picker ───────────────────────────────────────────────────────────
+
+async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, product: dict):
+    """Show variant selection buttons for a product that has variants."""
+    try:
+        variants = _parse_variants(product.get("variants"))
+        product_id = product.get("id")
+        product_name = product.get("name", "Product")
+
+        # If parsed result is empty, fall back to normal product detail (no loop —
+        # show_product uses _parse_variants too and will render the no-variant view)
+        if not variants:
+            log.warning(f"show_variants: product id={product_id} has no valid variants, falling back")
+            await show_product(update, context, product_id)
+            return
+
+        # Store for callback lookup
+        context.user_data["variant_product"] = product
+
+        # Check if all variants have 0 stock
+        all_out_of_stock = all(v.get("stock", 0) == 0 for v in variants)
+        if all_out_of_stock:
+            text = (
+                f"{product_name}\n"
+                f"⚠️ Stok habis. Semua varian tidak tersedia pada masa ini."
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]
+            ])
+            if update.callback_query:
+                await update.callback_query.edit_message_text(text, reply_markup=kb)
+            else:
+                await update.message.reply_text(text, reply_markup=kb)
+            return
+
+        text = (
+            f"{product_name}\n"
+            f"{len(variants)} variants available.\n"
+            f"Choose one of the options below."
+        )
+
+        # Build inline buttons — 2 per row, index-based callback_data (safe for 64-char limit)
+        rows = []
+        row = []
+        for i, v in enumerate(variants):
+            stock = v.get("stock", 0)
+            label = v.get("label", f"Variant {i + 1}")
+            btn_label = f"{label} ({stock})"
+            # callback_data: "variant_{product_id}_{index}" — always within 64 chars
+            row.append(InlineKeyboardButton(btn_label, callback_data=f"variant_{product_id}_{i}"))
+            if len(row) == 2:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
+
+        kb = InlineKeyboardMarkup(rows)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=kb)
+        else:
+            await update.message.reply_text(text, reply_markup=kb)
+
+    except Exception as exc:
+        log.error(f"show_variants error: {_safe_error(exc)}", exc_info=True)
+        err = "⚠️ Gagal muatkan variants. Sila cuba lagi."
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(err, reply_markup=back_shop())
+            else:
+                await update.message.reply_text(err, reply_markup=back_shop())
+        except Exception:
+            pass
+
 # ─── Product Detail ───────────────────────────────────────────────────────────
 
 async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int = 1):
@@ -590,6 +687,11 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             else:
                 await update.message.reply_text(err_msg, reply_markup=back_shop())
             return
+
+    # ── Variant check: if product has valid variants, show variant picker instead ─
+    if _parse_variants(p.get("variants")):
+        await show_variants(update, context, p)
+        return
 
     total = round(p["price"] * qty, 2)
     stock = p.get("stock", 0)
@@ -630,9 +732,9 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 
 # ─── Create Order ─────────────────────────────────────────────────────────────
 
-async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int):
+async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None):
     user = update.effective_user
-    log.info(f"[CREATE_ORDER] product_id={product_id} qty={qty} user={user.id}")
+    log.info(f"[CREATE_ORDER] product_id={product_id} qty={qty} variant={variant_label!r} user={user.id}")
 
     # ── Instant loading feedback ───────────────────────────────────────────────
     try:
@@ -663,15 +765,46 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
         return
 
-    order_id = f"ORD{random.randint(10000, 99999)}{user.id}"
-    total    = round(p["price"] * qty, 2)
-    print(f"[CREATE_ORDER] Inserting order {order_id} total=RM{total}")
+    # ── Duplicate order protection ─────────────────────────────────────────────
+    try:
+        existing = await _run_supabase(
+            f"orders.dup_check user={user.id}",
+            lambda: sb_get("orders",
+                f"select=id,product_name,amount,status"
+                f"&user_id=eq.{user.id}"
+                f"&status=in.(pending,waiting)"
+                f"&limit=1"),
+        )
+        if existing:
+            o = existing[0]
+            await update.callback_query.edit_message_text(
+                f"⚠️ Anda sudah mempunyai order aktif:\n"
+                f"• Order  : {o.get('id','')}\n"
+                f"• Produk : {o.get('product_name','')}\n"
+                f"• Jumlah : RM {o.get('amount','')}\n"
+                f"• Status : {o.get('status','')}\n\n"
+                f"Sila selesaikan atau batalkan order semasa sebelum membuat order baru.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 My Orders", callback_data="myorders")],
+                    [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")],
+                ]),
+            )
+            return
+    except Exception as exc:
+        log.warning(f"Duplicate order check failed, proceeding: {_safe_error(exc)}")
+        # Non-blocking — if check fails, allow order creation to continue
+
+    order_id      = f"ORD{random.randint(10000, 99999)}{user.id}"
+    price_to_use  = variant_price if variant_price is not None else p["price"]
+    product_name  = f"{p['name']} — {variant_label}" if variant_label else p["name"]
+    total         = round(price_to_use * qty, 2)
+    print(f"[CREATE_ORDER] Inserting order {order_id} total=RM{total} product_name={product_name!r}")
     try:
         await _run_supabase(
             f"orders.insert id={order_id}",
             lambda: sb_post("orders", {
                 "id": order_id, "user_id": user.id, "username": user.username or "",
-                "product_id": product_id, "product_name": p["name"],
+                "product_id": product_id, "product_name": product_name,
                 "quantity": qty, "amount": total, "status": "pending",
             }),
             attempts=1,
@@ -687,9 +820,9 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     context.user_data[f"qty_{product_id}"] = 1
     await update.callback_query.edit_message_text(
         f"🧾 ORDER SUMMARY\n─────────────────────\n"
-        f"• Produk  : {p['name']}\n"
+        f"• Produk  : {product_name}\n"
         f"• Quantity: {qty}\n"
-        f"• Harga   : RM {p['price']}\n"
+        f"• Harga   : RM {price_to_use}\n"
         f"• Total   : RM {total}\n\n"
         f"Sila teruskan ke pembayaran.",
         reply_markup=InlineKeyboardMarkup([
@@ -1364,6 +1497,61 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif data.startswith("product_"):
             await show_product(update, context, int(data.split("_")[1]))
+
+        elif data.startswith("variant_"):
+            try:
+                parts = data.split("_")          # ['variant', product_id, variant_idx]
+                if len(parts) != 3:
+                    raise ValueError(f"Unexpected variant callback format: {data!r}")
+                pid  = int(parts[1])
+                vidx = int(parts[2])
+
+                product = context.user_data.get("variant_product")
+                if not product or product.get("id") != pid:
+                    try:
+                        _pid = pid  # capture for lambda
+                        rows = await _run_supabase(
+                            f"products.variant_fetch id={pid}",
+                            lambda: sb_get("products", f"select=*&id=eq.{_pid}&limit=1"),
+                        )
+                        product = rows[0] if rows else None
+                    except Exception as exc:
+                        log.warning(f"variant re-fetch error pid={pid}: {_safe_error(exc)}")
+                        await q.edit_message_text("⚠️ Ralat. Sila cuba lagi.", reply_markup=back_shop())
+                        return
+
+                if not product:
+                    await q.edit_message_text("⚠️ Produk tidak ditemui.", reply_markup=back_shop())
+                    return
+
+                variants = _parse_variants(product.get("variants"))
+                if not variants:
+                    await q.edit_message_text("⚠️ Tiada variants untuk produk ini.", reply_markup=back_shop())
+                    return
+                if vidx >= len(variants):
+                    await q.edit_message_text("⚠️ Variant tidak sah.", reply_markup=back_shop())
+                    return
+
+                v = variants[vidx]
+                v_label = v.get("label")
+                v_price = v.get("price")
+                if not v_label or v_price is None:
+                    log.warning(f"Variant at index {vidx} missing label or price: {v!r}")
+                    await q.edit_message_text("⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
+                    return
+
+                await create_order(update, context, pid, 1,
+                                   variant_label=str(v_label), variant_price=float(v_price))
+
+            except (ValueError, IndexError) as exc:
+                log.warning(f"variant callback parse error data={data!r}: {_safe_error(exc)}")
+                await q.edit_message_text("⚠️ Ralat. Sila mulakan semula.", reply_markup=back_shop())
+            except Exception as exc:
+                log.error(f"variant handler error data={data!r}: {_safe_error(exc)}", exc_info=True)
+                try:
+                    await q.edit_message_text("⚠️ Ralat. Sila cuba lagi.", reply_markup=back_shop())
+                except Exception:
+                    pass
 
         elif data.startswith("qty_minus_"):
             parts = data.split("_")          # ['qty', 'minus', pid, qty]
