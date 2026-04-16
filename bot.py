@@ -827,7 +827,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         f"Sila teruskan ke pembayaran.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"payment_{order_id}")],
-            [InlineKeyboardButton("⬅️ Back to Shop",       callback_data="shop")],
+            [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_{order_id}")],
         ]),
     )
 
@@ -987,8 +987,10 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     except Exception as exc:
         log.warning(f"Supabase cancel: {_safe_error(exc)}")
     await update.callback_query.edit_message_text(
-        f"❌ Order {order_id} dibatalkan.",
-        reply_markup=back_home(),
+        f"❌ Order {order_id} telah dibatalkan. Terima kasih!",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛍 Back to Shop", callback_data="shop")],
+        ]),
     )
 
 # ─── My Orders ────────────────────────────────────────────────────────────────
