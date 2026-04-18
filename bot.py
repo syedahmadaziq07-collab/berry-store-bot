@@ -521,7 +521,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         products = await _run_supabase(
             "products.list",
-            lambda: sb_get("products", "select=id,name,stock,price,duration,variants&order=id"),
+            lambda: sb_get("products", "select=id,name,stock,price,duration&order=id"),
         ) or []
         _cache_products(products)
         log.info(f"Products loaded: {len(products)} items source=supabase")
