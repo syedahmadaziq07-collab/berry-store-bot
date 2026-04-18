@@ -100,6 +100,7 @@ except ValueError:
     log.warning("ADMIN_ID bukan nombor — ditetapkan kepada 0")
 
 TESTIMONIALS_CHANNEL_ID = -1003850553745
+_qr_file_id: str | None = None
 
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
@@ -841,16 +842,12 @@ def get_qr_path():
 
 
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
-    # answer() already called in on_button — do NOT call query.answer() here
+    global _qr_file_id
     query = update.callback_query
-
-    # ── FIX 1: Immediate loading indicator so user knows the bot is working ─────
     try:
         await query.edit_message_text("⏳ Memuatkan butiran pembayaran...")
     except Exception as exc:
         log.warning(f"[PAYMENT] edit_loading failed: {_safe_error(exc)}")
-
-    # ── FIX 2: Order fetch with null-check guard ────────────────────────────────
     try:
         rows = await _run_supabase(
             f"orders.payment id={order_id}",
@@ -858,36 +855,50 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
         order = rows[0] if rows else None
         if not order:
-            log.warning(f"[PAYMENT] order {order_id} not found in DB")
             await query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
             return
     except Exception as exc:
         log.warning(f"[PAYMENT] Supabase fetch failed: {_safe_error(exc)}", exc_info=True)
         await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
         return
-
-    # ── QR path: check multiple locations ──────────────────────────────────────
-    qr = get_qr_path()
-
-    # ── FIX 3: send_photo with proper context manager + its own try/except ──────
     qr_sent = False
-    if qr:
+    caption = (
+        f"💳 PAYMENT DETAILS\n\n"
+        f"Order ID: {order_id}\n"
+        f"Amount: RM {order['amount']}\n\n"
+        f"Scan QR code below to pay 👇"
+    )
+    if _qr_file_id:
         try:
-            with open(qr, "rb") as qr_file:
-                await context.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=qr_file,
-                    caption=(
-                        f"💳 PAYMENT DETAILS\n\n"
-                        f"Order ID: {order_id}\n"
-                        f"Amount: RM {order['amount']}\n\n"
-                        f"Scan QR code below to pay 👇"
-                    ),
-                )
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=_qr_file_id,
+                caption=caption,
+            )
             qr_sent = True
+            log.info(f"[PAYMENT] QR sent using cached file_id")
         except Exception as exc:
-            log.warning(f"[PAYMENT] send_photo failed, falling back to text: {_safe_error(exc)}")
-
+            log.warning(f"[PAYMENT] cached file_id failed, will re-upload: {_safe_error(exc)}")
+            _qr_file_id = None
+    if not qr_sent:
+        qr = get_qr_path()
+        if qr:
+            try:
+                with open(qr, "rb") as qr_file:
+                    sent_msg = await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=qr_file,
+                        caption=caption,
+                        read_timeout=30,
+                        write_timeout=30,
+                        connect_timeout=30,
+                    )
+                if sent_msg.photo:
+                    _qr_file_id = sent_msg.photo[-1].file_id
+                    log.info(f"[PAYMENT] QR file_id cached: {_qr_file_id[:20]}...")
+                qr_sent = True
+            except Exception as exc:
+                log.warning(f"[PAYMENT] send_photo failed: {_safe_error(exc)}")
     if not qr_sent:
         try:
             await context.bot.send_message(
@@ -901,8 +912,6 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             )
         except Exception as exc:
             log.warning(f"[PAYMENT] text fallback also failed: {_safe_error(exc)}")
-
-    # ── FIX 4: Action buttons in its own try/except — user must always see these ─
     try:
         await context.bot.send_message(
             chat_id=query.message.chat_id,
@@ -913,9 +922,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             ]),
         )
     except Exception as exc:
-        log.error(f"[PAYMENT] send action buttons failed — user may be stuck: {_safe_error(exc)}")
-
-    # Admin notify is already safe inside _admin_notify (has its own try/except) ─
+        log.error(f"[PAYMENT] send action buttons failed: {_safe_error(exc)}")
     await _admin_notify(context,
         f"🔔 ORDER BARU!\n• Order: {order_id}\n• User: @{order.get('username','')}\n"
         f"• Produk: {order.get('product_name','')}\n• RM {order['amount']}")
