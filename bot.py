@@ -704,13 +704,14 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     total = round(p["price"] * qty, 2)
     stock = p.get("stock", 0)
 
+    _delivery_note = "• Akaun diberikan selepas bayar.\n• Akaun peribadi, tidak dikongsi."
     product_text = (
         f"📦 {p['name']}\n"
         f"├─ Stock   : {stock} units\n"
         f"├─ Price   : RM {p['price']}\n"
         f"├─ Duration: {p.get('duration', '-')}\n"
         f"└─ Total   : RM {total}\n\n"
-        f"{_setting('product_delivery_note', '• Akaun diberikan selepas bayar.\n• Akaun peribadi, tidak dikongsi.')}"
+        f"{_setting('product_delivery_note', _delivery_note)}"
     )
     product_kb = InlineKeyboardMarkup([
         [
