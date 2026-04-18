@@ -679,6 +679,7 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
     # ── Variant check: query product_variants table; if rows exist, show picker ──
     db_variants = await _fetch_db_variants(product_id)
+    log.info(f"[VARIANT DEBUG] product_id={product_id} db_variants count={len(db_variants)} data={db_variants}")
     if db_variants:
         await show_variants(update, context, p, db_variants)
         return
