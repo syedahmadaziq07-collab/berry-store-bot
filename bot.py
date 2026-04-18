@@ -80,7 +80,7 @@ SUPABASE_URL         = _get_env("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY         = _get_env("SUPABASE_KEY")
 SUPABASE_SERVICE_KEY = _get_env("SUPABASE_SERVICE_KEY")
 ADMIN_ID     = 0
-PORT         = int(_get_env("PORT", "8000"))
+PORT         = int(_get_env("PORT", "5000"))
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 
@@ -565,53 +565,46 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, reply_markup=build_product_keyboard(products))
 
-# ─── Variant Helpers ──────────────────────────────────────────────────────────
+# ─── Variant Helpers (product_variants table) ─────────────────────────────────
 
-def _parse_variants(raw) -> list:
-    """Safely parse the variants column into a list of dicts.
-    Returns [] if null, empty, or invalid in any way."""
-    if not raw:
+async def _fetch_db_variants(product_id: int) -> list:
+    """Fetch variants for a product from the product_variants table.
+    Returns a list of row dicts (id, variant_name, stock, price) or [] on error."""
+    try:
+        _pid = product_id
+        rows = await _run_supabase(
+            f"product_variants.list pid={product_id}",
+            lambda: sb_get(
+                "product_variants",
+                f"select=id,variant_name,stock,price&product_id=eq.{_pid}&order=id",
+            ),
+        )
+        return rows or []
+    except Exception as exc:
+        log.warning(f"_fetch_db_variants pid={product_id}: {_safe_error(exc)}")
         return []
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except Exception:
-            return []
-    if not isinstance(raw, list):
-        return []
-    # Keep only items that have at least a label and a price
-    result = []
-    for v in raw:
-        if not isinstance(v, dict):
-            continue
-        if v.get("label") and v.get("price") is not None:
-            result.append(v)
-    return result
 
 # ─── Variant Picker ───────────────────────────────────────────────────────────
 
-async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, product: dict):
-    """Show variant selection buttons for a product that has variants."""
+async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, product: dict, variants: list):
+    """Show inline variant buttons for a product. `variants` is a list of product_variants rows."""
     try:
-        variants = _parse_variants(product.get("variants"))
-        product_id = product.get("id")
+        product_id   = product.get("id")
         product_name = product.get("name", "Product")
 
-        # If parsed result is empty, fall back to normal product detail (no loop —
-        # show_product uses _parse_variants too and will render the no-variant view)
         if not variants:
-            log.warning(f"show_variants: product id={product_id} has no valid variants, falling back")
+            log.warning(f"show_variants: product id={product_id} has no variants, falling back")
             await show_product(update, context, product_id)
             return
 
-        # Store for callback lookup
-        context.user_data["variant_product"] = product
+        # Store selected product so we have context if needed
+        context.user_data["variant_product_id"] = product_id
 
-        # Check if all variants have 0 stock
-        all_out_of_stock = all(v.get("stock", 0) == 0 for v in variants)
+        # Check if every variant is out of stock
+        all_out_of_stock = all(int(v.get("stock", 0)) == 0 for v in variants)
         if all_out_of_stock:
             text = (
-                f"{product_name}\n"
+                f"📦 {product_name}\n"
                 f"⚠️ Stok habis. Semua varian tidak tersedia pada masa ini."
             )
             kb = InlineKeyboardMarkup([
@@ -624,25 +617,20 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             return
 
         text = (
-            f"{product_name}\n"
-            f"{len(variants)} variants available.\n"
-            f"Choose one of the options below."
+            f"📦 {product_name}\n"
+            f"─────────────────────\n"
+            f"Pilih varian di bawah 👇"
         )
 
-        # Build inline buttons — 2 per row, index-based callback_data (safe for 64-char limit)
+        # Build inline buttons — 1 per row, callback_data: "variant_{variant_db_id}"
         rows = []
-        row = []
-        for i, v in enumerate(variants):
-            stock = v.get("stock", 0)
-            label = v.get("label", f"Variant {i + 1}")
-            btn_label = f"{label} ({stock})"
-            # callback_data: "variant_{product_id}_{index}" — always within 64 chars
-            row.append(InlineKeyboardButton(btn_label, callback_data=f"variant_{product_id}_{i}"))
-            if len(row) == 2:
-                rows.append(row)
-                row = []
-        if row:
-            rows.append(row)
+        for v in variants:
+            stock     = int(v.get("stock", 0))
+            name      = v.get("variant_name", "Variant")
+            price     = v.get("price", 0)
+            vid       = v.get("id")
+            btn_label = f"{name}  ( {stock} )  — RM {price}"
+            rows.append([InlineKeyboardButton(btn_label, callback_data=f"variant_{vid}")])
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
 
         kb = InlineKeyboardMarkup(rows)
@@ -688,9 +676,10 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 await update.message.reply_text(err_msg, reply_markup=back_shop())
             return
 
-    # ── Variant check: if product has valid variants, show variant picker instead ─
-    if _parse_variants(p.get("variants")):
-        await show_variants(update, context, p)
+    # ── Variant check: query product_variants table; if rows exist, show picker ──
+    db_variants = await _fetch_db_variants(product_id)
+    if db_variants:
+        await show_variants(update, context, p, db_variants)
         return
 
     total = round(p["price"] * qty, 2)
@@ -760,7 +749,9 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 reply_markup=back_shop())
             return
 
-    if p["stock"] < qty:
+    # For variant orders the stock was already validated in on_button; only
+    # check product-level stock for non-variant orders.
+    if variant_price is None and p["stock"] < qty:
         await update.callback_query.edit_message_text(
             "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
         return
@@ -1503,45 +1494,41 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif data.startswith("variant_"):
             try:
-                parts = data.split("_")          # ['variant', product_id, variant_idx]
-                if len(parts) != 3:
-                    raise ValueError(f"Unexpected variant callback format: {data!r}")
-                pid  = int(parts[1])
-                vidx = int(parts[2])
+                # callback_data format: "variant_{variant_db_id}"
+                vid = int(data.split("_", 1)[1])
 
-                product = context.user_data.get("variant_product")
-                if not product or product.get("id") != pid:
-                    try:
-                        _pid = pid  # capture for lambda
-                        rows = await _run_supabase(
-                            f"products.variant_fetch id={pid}",
-                            lambda: sb_get("products", f"select=*&id=eq.{_pid}&limit=1"),
-                        )
-                        product = rows[0] if rows else None
-                    except Exception as exc:
-                        log.warning(f"variant re-fetch error pid={pid}: {_safe_error(exc)}")
-                        await q.edit_message_text("⚠️ Ralat. Sila cuba lagi.", reply_markup=back_shop())
-                        return
-
-                if not product:
-                    await q.edit_message_text("⚠️ Produk tidak ditemui.", reply_markup=back_shop())
+                # Fetch the variant row live from product_variants table
+                _vid = vid
+                v_rows = await _run_supabase(
+                    f"product_variants.fetch id={vid}",
+                    lambda: sb_get(
+                        "product_variants",
+                        f"select=id,product_id,variant_name,stock,price&id=eq.{_vid}&limit=1",
+                    ),
+                )
+                v = v_rows[0] if v_rows else None
+                if not v:
+                    await q.edit_message_text("⚠️ Variant tidak ditemui.", reply_markup=back_shop())
                     return
 
-                variants = _parse_variants(product.get("variants"))
-                if not variants:
-                    await q.edit_message_text("⚠️ Tiada variants untuk produk ini.", reply_markup=back_shop())
-                    return
-                if vidx >= len(variants):
-                    await q.edit_message_text("⚠️ Variant tidak sah.", reply_markup=back_shop())
+                v_stock = int(v.get("stock", 0))
+                if v_stock <= 0:
+                    await q.edit_message_text(
+                        "⚠️ Varian ini telah habis stok.", reply_markup=back_shop()
+                    )
                     return
 
-                v = variants[vidx]
-                v_label = v.get("label")
+                v_label = v.get("variant_name")
                 v_price = v.get("price")
+                pid     = int(v.get("product_id"))
+
                 if not v_label or v_price is None:
-                    log.warning(f"Variant at index {vidx} missing label or price: {v!r}")
+                    log.warning(f"Variant id={vid} missing name or price: {v!r}")
                     await q.edit_message_text("⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
                     return
+
+                # Store selected variant_id in user_data for any downstream use
+                context.user_data["selected_variant_id"] = vid
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
