@@ -605,7 +605,7 @@ async def _fetch_db_variants(product_id: int) -> list:
             f"product_variants.list pid={product_id}",
             lambda: sb_get(
                 "product_variants",
-                f"select=id,variant_name,stock,price&product_id=eq.{_pid}&order=id",
+                f"select=id,variant_name,stock,price,description&product_id=eq.{_pid}&order=id",
             ),
         )
         return rows or []
