@@ -576,11 +576,29 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save product list so handle_message can resolve number → product
     context.user_data["shop_products"] = products
 
+    # Fetch all variants stock in one query
+    try:
+        all_variants = await _run_supabase(
+            "product_variants.all",
+            lambda: sb_get("product_variants", "select=product_id,stock"),
+        ) or []
+    except Exception:
+        all_variants = []
+
+    # Build dict: product_id -> total variant stock
+    variant_stock = {}
+    for v in all_variants:
+        pid = v.get("product_id")
+        if pid:
+            variant_stock[pid] = variant_stock.get(pid, 0) + int(v.get("stock") or 0)
+
     _shop_title = await _setting('shop_title', 'LIST PRODUCT')
     _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
     text = f"╭─────────────────────╮\n┊  {_shop_title}\n┊─────────────────────\n"
     for i, p in enumerate(products, 1):
-        text += f"┊ {i}. {p['name']} ( {p['stock']} )\n"
+        pid = p.get("id")
+        stock = variant_stock[pid] if pid in variant_stock else p["stock"]
+        text += f"┊ {i}. {p['name']} ( {stock} )\n"
     text += f"╰─────────────────────╯\n\n{_shop_footer}"
 
     # ReplyKeyboardMarkup cannot go on edit_message_text — must use send_message.
