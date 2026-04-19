@@ -664,8 +664,6 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             v_desc    = v.get("description") or ""
             btn_label = f"{name}  ( {stock} )  — RM {price}"
             rows.append([InlineKeyboardButton(btn_label, callback_data=f"variant_{vid}")])
-            if v_desc:
-                text += f"\n\n📌 {name}:\n{v_desc}"
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
 
         kb = InlineKeyboardMarkup(rows)
@@ -851,13 +849,19 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     context.user_data[f"qty_{product_id}"] = 1
     _order_title = await _setting('order_summary_title', '🧾 ORDER SUMMARY')
     _order_proceed = await _setting('order_proceed_msg', 'Sila teruskan ke pembayaran.')
-    await update.callback_query.edit_message_text(
+    _variant_desc = context.user_data.get("selected_variant_desc") or ""
+    summary_text = (
         f"{_order_title}\n─────────────────────\n"
         f"• Produk  : {product_name}\n"
         f"• Quantity: {qty}\n"
         f"• Harga   : RM {price_to_use}\n"
-        f"• Total   : RM {total}\n\n"
-        f"{_order_proceed}",
+        f"• Total   : RM {total}\n"
+    )
+    if _variant_desc:
+        summary_text += f"\n{_variant_desc}\n"
+    summary_text += f"\n{_order_proceed}"
+    await update.callback_query.edit_message_text(
+        summary_text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"payment_{order_id}")],
             [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_{order_id}")],
@@ -1597,6 +1601,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # Store selected variant_id in user_data for any downstream use
                 context.user_data["selected_variant_id"] = vid
+                context.user_data["selected_variant_desc"] = v.get("description") or ""
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
