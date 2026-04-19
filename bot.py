@@ -80,6 +80,8 @@ SUPABASE_URL         = _get_env("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY         = _get_env("SUPABASE_KEY")
 SUPABASE_SERVICE_KEY = _get_env("SUPABASE_SERVICE_KEY")
 ADMIN_ID     = 0
+REQUIRED_CHANNEL     = "@berrystorrel"
+REQUIRED_CHANNEL_URL = "https://t.me/berrystorrel"
 PORT         = int(_get_env("PORT", "5000"))
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
@@ -458,10 +460,37 @@ def build_product_keyboard(products: list) -> ReplyKeyboardMarkup:
     buttons.append([KeyboardButton("🏠 Home")])
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
 
+# ─── Membership gate ──────────────────────────────────────────────────────────
+
+async def _check_membership(bot, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        return member.status in ("member", "administrator", "creator")
+    except Exception as exc:
+        log.warning(f"[MEMBERSHIP] Check failed for user {user_id}: {exc}")
+        return True
+
+async def _send_join_message(update: Update):
+    text = (
+        "🔒 To continue, please join our channel first:\n"
+        f"• {REQUIRED_CHANNEL}\n\n"
+        "After joining, send /start again."
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 Join Channel", url=REQUIRED_CHANNEL_URL)],
+    ])
+    if update.message:
+        await update.message.reply_text(text, reply_markup=kb)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=kb)
+
 # ─── /start ───────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    if not await _check_membership(context.bot, user.id):
+        await _send_join_message(update)
+        return
     log.info(f"/start from {user.id} (@{user.username})")
 
     # Instant reply so user knows bot is alive
@@ -538,6 +567,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Shop ─────────────────────────────────────────────────────────────────────
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _check_membership(context.bot, update.effective_user.id):
+        await _send_join_message(update)
+        return
+
     # ── Instant loading feedback ───────────────────────────────────────────────
     if update.callback_query:
         try:
@@ -1746,6 +1779,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 0 <= idx < len(products):
                 product_id = products[idx]["id"]
                 log.info(f"Keyboard product select: user={user_id} number={text} product_id={product_id}")
+                if not await _check_membership(context.bot, user_id):
+                    await update.message.reply_text(
+                        "🔒 To continue, please join our channel first:\n"
+                        f"• {REQUIRED_CHANNEL}\n\n"
+                        "After joining, send /start again.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📢 Join Channel", url=REQUIRED_CHANNEL_URL)],
+                        ]),
+                    )
+                    return
                 await show_product(update, context, product_id)
                 return
             else:
