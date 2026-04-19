@@ -645,11 +645,14 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
                 await update.message.reply_text(text, reply_markup=kb)
             return
 
+        prod_desc = product.get("description") or ""
         text = (
             f"📦 {product_name}\n"
             f"─────────────────────\n"
-            f"Pilih varian di bawah 👇"
         )
+        if prod_desc:
+            text += f"{prod_desc}\n─────────────────────\n"
+        text += "Pilih varian di bawah 👇"
 
         # Build inline buttons — 1 per row, callback_data: "variant_{variant_db_id}"
         rows = []
@@ -658,6 +661,7 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             name      = v.get("variant_name", "Variant")
             price     = v.get("price", 0)
             vid       = v.get("id")
+            v_desc    = v.get("description") or ""
             btn_label = f"{name}  ( {stock} )  — RM {price}"
             rows.append([InlineKeyboardButton(btn_label, callback_data=f"variant_{vid}")])
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
@@ -1565,7 +1569,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"product_variants.fetch id={vid}",
                     lambda: sb_get(
                         "product_variants",
-                        f"select=id,product_id,variant_name,stock,price&id=eq.{_vid}&limit=1",
+                        f"select=id,product_id,variant_name,stock,price,description&id=eq.{_vid}&limit=1",
                     ),
                 )
                 v = v_rows[0] if v_rows else None
@@ -1591,6 +1595,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # Store selected variant_id in user_data for any downstream use
                 context.user_data["selected_variant_id"] = vid
+
+                v_desc = v.get("description") or ""
+                if v_desc:
+                    await q.answer(v_desc[:200], show_alert=True)
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
