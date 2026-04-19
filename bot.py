@@ -360,7 +360,15 @@ async def _load_bot_settings():
     except Exception as exc:
         log.warning(f"[SETTINGS] Failed to load settings: {exc}")
 
-def _setting(key: str, fallback: str = "") -> str:
+async def _setting(key: str, fallback: str = "") -> str:
+    try:
+        rows = await asyncio.to_thread(
+            lambda: sb_get("bot_settings", f"select=value&key=eq.{key}&limit=1")
+        )
+        if rows and rows[0].get("value"):
+            return rows[0]["value"]
+    except Exception:
+        pass
     return _bot_settings.get(key) or fallback
 
 # ─── Flask Keep-Alive Server ──────────────────────────────────────────────────
@@ -483,8 +491,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.warning(f"Supabase /start: {_safe_error(exc)}")
 
     now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%A, %d %B %Y %H:%M:%S")
+    _welcome = await _setting('welcome_message', 'Welcome to Berry Store.')
     await update.message.reply_text(
-        f"{_setting('welcome_message', 'Welcome to Berry Store.')}\n"
+        f"{_welcome}\n"
         f"Updated: {now}\n\n"
         f"👋 Hi {user.first_name}!\n\n"
         f"👤 Account\n"
@@ -567,10 +576,12 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save product list so handle_message can resolve number → product
     context.user_data["shop_products"] = products
 
-    text = f"╭─────────────────────╮\n┊  {_setting('shop_title', 'LIST PRODUCT')}\n┊─────────────────────\n"
+    _shop_title = await _setting('shop_title', 'LIST PRODUCT')
+    _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
+    text = f"╭─────────────────────╮\n┊  {_shop_title}\n┊─────────────────────\n"
     for i, p in enumerate(products, 1):
         text += f"┊ {i}. {p['name']} ( {p['stock']} )\n"
-    text += f"╰─────────────────────╯\n\n{_setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')}"
+    text += f"╰─────────────────────╯\n\n{_shop_footer}"
 
     # ReplyKeyboardMarkup cannot go on edit_message_text — must use send_message.
     # When triggered via inline button: the loading message stays; new message has the keyboard.
@@ -705,14 +716,17 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     stock = p.get("stock", 0)
 
     _delivery_note = "• Akaun diberikan selepas bayar.\n• Akaun peribadi, tidak dikongsi."
+    _delivery_setting = await _setting('product_delivery_note', _delivery_note)
     product_text = (
         f"📦 {p['name']}\n"
         f"├─ Stock   : {stock} units\n"
         f"├─ Price   : RM {p['price']}\n"
         f"├─ Duration: {p.get('duration', '-')}\n"
         f"└─ Total   : RM {total}\n\n"
-        f"{_setting('product_delivery_note', _delivery_note)}"
+        f"{_delivery_setting}"
     )
+    if p.get("description"):
+        product_text += f"\n\n{p['description']}"
     product_kb = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("➖", callback_data=f"qty_minus_{product_id}_{qty}"),
@@ -829,13 +843,15 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
     log.info(f"Order created: {order_id} by {user.id}")
     context.user_data[f"qty_{product_id}"] = 1
+    _order_title = await _setting('order_summary_title', '🧾 ORDER SUMMARY')
+    _order_proceed = await _setting('order_proceed_msg', 'Sila teruskan ke pembayaran.')
     await update.callback_query.edit_message_text(
-        f"{_setting('order_summary_title', '🧾 ORDER SUMMARY')}\n─────────────────────\n"
+        f"{_order_title}\n─────────────────────\n"
         f"• Produk  : {product_name}\n"
         f"• Quantity: {qty}\n"
         f"• Harga   : RM {price_to_use}\n"
         f"• Total   : RM {total}\n\n"
-        f"{_setting('order_proceed_msg', 'Sila teruskan ke pembayaran.')}",
+        f"{_order_proceed}",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"payment_{order_id}")],
             [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_{order_id}")],
@@ -880,11 +896,13 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
         return
     qr_sent = False
+    _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
+    _pay_instruction = await _setting('payment_instruction', 'Scan QR code below to pay 👇')
     caption = (
-        f"{_setting('payment_title', '💳 PAYMENT DETAILS')}\n\n"
+        f"{_pay_title}\n\n"
         f"Order ID: {order_id}\n"
         f"Amount: RM {order['amount']}\n\n"
-        f"{_setting('payment_instruction', 'Scan QR code below to pay 👇')}"
+        f"{_pay_instruction}"
     )
     if _qr_file_id:
         try:
@@ -933,7 +951,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     try:
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=_setting("payment_button_instruction", "After payment, click the button below:"),
+            text=await _setting("payment_button_instruction", "After payment, click the button below:"),
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
                 [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
@@ -973,8 +991,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     context.user_data.pop("pending_receipt", None)
+    _receipt_msg = await _setting('receipt_received_msg', '✅ Resit diterima!')
     await update.message.reply_text(
-        f"{_setting('receipt_received_msg', '✅ Resit diterima!')}\nOrder ID: {order_id}\nAdmin akan sahkan pembayaran anda.",
+        f"{_receipt_msg}\nOrder ID: {order_id}\nAdmin akan sahkan pembayaran anda.",
         reply_markup=main_kb(),
     )
     try:
@@ -1121,7 +1140,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             try:
                 await context.bot.send_message(
                     chat_id=order["user_id"],
-                    text=_setting(
+                    text=(await _setting(
                         "auto_delivery_msg",
                         "✅ Pembayaran anda telah disahkan!\n\n"
                         "🎉 Berikut adalah maklumat akaun anda:\n\n"
@@ -1131,7 +1150,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                         "📅 Tempoh: {duration}\n\n"
                         "⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
                         "💬 Ada masalah? Hubungi: @berryrc 🙌"
-                    ).format(
+                    )).format(
                         product_name=order.get("product_name", "-"),
                         email=cred["email"],
                         password=cred["password"],
@@ -1206,7 +1225,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
     try:
         await context.bot.send_message(
             chat_id=order["user_id"],
-            text=_setting(
+            text=await _setting(
                 "delivery_msg",
                 "✅ Pembayaran anda telah disahkan!\n\n"
                 "✅ Payment dah confirm!\n\n"
@@ -1274,7 +1293,7 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         caption=(update.callback_query.message.caption or "") + "\n\n❌ REJECTED", reply_markup=None)
     try:
         await context.bot.send_message(chat_id=order["user_id"],
-            text=_setting("reject_msg", "⚠️ Bayaran ditolak.\nHubungi support untuk bantuan."))
+            text=await _setting("reject_msg", "⚠️ Bayaran ditolak.\nHubungi support untuk bantuan."))
     except Exception as exc:
         log.warning(f"Notify user reject: {_safe_error(exc)}")
 
@@ -1299,8 +1318,10 @@ async def show_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _support_username = await _setting('support_username', '@berryrc')
+    _support_hours = await _setting('support_hours', '9am – 11pm')
     await update.callback_query.edit_message_text(
-        f"💬 SUPPORT\n─────────────────────\nHubungi admin:\n• Telegram: {_setting('support_username', '@berryrc')}\n\nMasa operasi: {_setting('support_hours', '9am – 11pm')}",
+        f"💬 SUPPORT\n─────────────────────\nHubungi admin:\n• Telegram: {_support_username}\n\nMasa operasi: {_support_hours}",
         reply_markup=back_home())
 
 
@@ -1375,7 +1396,7 @@ async def _post_testimonial(context, order: dict):
             log.warning(f"Testimonial: could not fetch total completed count: {_safe_error(exc)}")
             total_completed = "?"
 
-        text = _setting(
+        text = (await _setting(
             "testimonial_template",
             "🎉 New successful order delivered!\n"
             "👤 Buyer: {buyer}\n"
@@ -1383,7 +1404,7 @@ async def _post_testimonial(context, order: dict):
             "📋 Quantity: {qty}\n"
             "__________________\n"
             "🔥 Total sold: {total} units"
-        ).format(
+        )).format(
             buyer=censored,
             product=product_name,
             qty=quantity,
@@ -1404,9 +1425,12 @@ def _award_points_sync(user_id: int, username: str):
     rows = sb_admin_get("points", f"select=*&user_id=eq.{user_id}&limit=1")
     if rows:
         current = rows[0]
+        new_points = (current.get("points") or 0) + 10
+        if new_points >= 50:
+            new_points = 0  # reset after redeem threshold reached
         sb_admin_patch("points", f"user_id=eq.{user_id}", {
             "username":     username or current.get("username", ""),
-            "points":       (current.get("points") or 0) + 10,
+            "points":       new_points,
             "total_orders": (current.get("total_orders") or 0) + 1,
             "updated_at":   now,
         })
