@@ -664,6 +664,8 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             v_desc    = v.get("description") or ""
             btn_label = f"{name}  ( {stock} )  — RM {price}"
             rows.append([InlineKeyboardButton(btn_label, callback_data=f"variant_{vid}")])
+            if v_desc:
+                text += f"\n\n📌 {name}:\n{v_desc}"
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
 
         kb = InlineKeyboardMarkup(rows)
@@ -1595,10 +1597,6 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # Store selected variant_id in user_data for any downstream use
                 context.user_data["selected_variant_id"] = vid
-
-                v_desc = v.get("description") or ""
-                if v_desc:
-                    await q.answer(v_desc[:200], show_alert=True)
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
