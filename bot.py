@@ -101,7 +101,8 @@ try:
 except ValueError:
     log.warning("ADMIN_ID bukan nombor — ditetapkan kepada 0")
 
-TESTIMONIALS_CHANNEL_ID = -1003850553745
+TESTIMONIALS_CHANNEL_ID   = -1003850553745
+TESTIMONIALS_CHANNEL_ID_2 = -1003831715755
 _qr_file_id: str | None = None
 _bot_settings: dict = {}
 
@@ -1473,7 +1474,12 @@ async def _post_testimonial(context, order: dict):
         )
 
         await context.bot.send_message(chat_id=TESTIMONIALS_CHANNEL_ID, text=text)
-        log.info(f"[TESTIMONIAL] Posted successfully")
+        log.info(f"[TESTIMONIAL] Posted to channel 1 successfully")
+        try:
+            await context.bot.send_message(chat_id=TESTIMONIALS_CHANNEL_ID_2, text=text)
+            log.info(f"[TESTIMONIAL] Posted to channel 2 successfully")
+        except Exception as exc:
+            log.warning(f"[TESTIMONIAL] Failed to post to channel 2: {_safe_error(exc)}")
     except Exception as exc:
         log.error(f"[TESTIMONIAL] Failed: {_safe_error(exc)}")
 
