@@ -1219,6 +1219,13 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                         duration=product.get("duration", "-"),
                     ),
                 )
+                try:
+                    await _run_supabase(
+                        f"orders.mark_sent id={order_id}",
+                        lambda oid=order_id: sb_patch("orders", f"id=eq.{oid}", {"credentials_sent": True}),
+                    )
+                except Exception as exc:
+                    log.warning(f"[UNSENT] auto mark sent failed: {_safe_error(exc)}")
             except Exception as exc:
                 log.warning(f"Auto delivery send to user: {_safe_error(exc)}")
             # Points notification → customer
@@ -1879,6 +1886,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         )
         await update.message.reply_text(f"✅ Maklumat akaun berjaya dihantar kepada pembeli (Order: {order_id})")
+        try:
+            await _run_supabase(
+                f"orders.mark_sent id={order_id}",
+                lambda: sb_patch("orders", f"id=eq.{order_id}", {"credentials_sent": True}),
+            )
+        except Exception as exc:
+            log.warning(f"[UNSENT] mark sent failed: {_safe_error(exc)}")
         log.info(f"Account details sent for order {order_id} → buyer {buyer_id}")
         # Points notification → customer
         await _send_points_notification(context, buyer_id)
@@ -2305,7 +2319,7 @@ async def cmd_unsent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "orders.unsent",
             lambda: sb_get(
                 "orders",
-                "select=id,username,product_name,amount,status&status=in.(completed,waiting_approval)&order=id.desc&limit=20"
+                "select=id,username,product_name,amount,status&status=eq.completed&credentials_sent=eq.false&order=id.desc&limit=20"
             ),
         ) or []
     except Exception as exc:
