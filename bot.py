@@ -2295,12 +2295,56 @@ async def cmd_credcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_unsent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+
+    try:
+        orders = await _run_supabase(
+            "orders.unsent",
+            lambda: sb_get(
+                "orders",
+                "select=id,username,product_name,amount,status&status=in.(completed,waiting_approval)&order=id.desc&limit=20"
+            ),
+        ) or []
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Ralat: {_safe_error(exc)}")
+        return
+
+    if not orders:
+        await update.message.reply_text("✅ Tiada order pending.")
+        return
+
+    STATUS_EMOJI = {
+        "completed": "✅",
+        "waiting_approval": "🔍",
+    }
+
+    lines = ["📋 SENARAI ORDER TERKINI", "━━━━━━━━━━━━━━━━━━"]
+    for o in orders:
+        emoji = STATUS_EMOJI.get(o["status"], "❓")
+        lines.append(
+            f"{emoji} {o['id']}\n"
+            f"   👤 @{o.get('username') or 'tiada'}\n"
+            f"   📦 {o.get('product_name') or '-'}\n"
+            f"   💰 RM {o.get('amount') or '-'}\n"
+            f"   📌 {o.get('status') or '-'}\n"
+            f"   👉 /send {o['id']}\n"
+        )
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append(f"Total: {len(orders)} order")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("ping",        cmd_ping))
     app.add_handler(CommandHandler("admin",       cmd_admin))
     app.add_handler(CommandHandler("adminorders", cmd_adminorders))
+    app.add_handler(CommandHandler("unsent",      cmd_unsent))
     app.add_handler(CommandHandler("stock",       cmd_stock))
     app.add_handler(CommandHandler("broadcast",   cmd_broadcast))
     app.add_handler(CommandHandler("testchannel", cmd_testchannel))
