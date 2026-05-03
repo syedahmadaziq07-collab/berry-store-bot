@@ -117,8 +117,8 @@ log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
 log.info("=" * 50)
 
 if not BOT_TOKEN:
-    log.critical("BOT_TOKEN tidak ditetapkan. Set dalam Replit Secrets → BOT_TOKEN")
-    sys.exit(1)
+    log.warning("BOT_TOKEN tidak ditetapkan. Flask server akan berjalan, tetapi bot Telegram tidak aktif.")
+    log.warning("Set BOT_TOKEN dalam Replit Secrets untuk mengaktifkan bot.")
 
 def _validate_telegram_token() -> bool:
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
@@ -880,6 +880,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     product_name  = f"{p['name']} — {variant_label}" if variant_label else p["name"]
     total         = round(price_to_use * qty, 2)
     print(f"[CREATE_ORDER] Inserting order {order_id} total=RM{total} product_name={product_name!r}")
+    _variant_id = context.user_data.get("selected_variant_id") or None
     try:
         await _run_supabase(
             f"orders.insert id={order_id}",
@@ -887,6 +888,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 "id": order_id, "user_id": user.id, "username": user.username or "",
                 "product_id": product_id, "product_name": product_name,
                 "quantity": qty, "amount": total, "status": "pending",
+                "variant_id": _variant_id,
             }),
             attempts=1,
         )
@@ -1159,10 +1161,18 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                     new_stock = max(0, product_data.get("stock", 0) - order_data.get("quantity", 1))
                     sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
                     if product_data.get("auto_delivery"):
-                        cred_rows = sb_admin_get(
-                            "credentials",
-                            f"select=*&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
-                        )
+                        # Try fetch by variant_id first, fallback to product_id
+                        variant_id = order_data.get("variant_id") or None
+                        if variant_id:
+                            cred_rows = sb_admin_get(
+                                "credentials",
+                                f"select=*&variant_id=eq.{variant_id}&is_used=eq.false&order=id&limit=1",
+                            )
+                        else:
+                            cred_rows = sb_admin_get(
+                                "credentials",
+                                f"select=*&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
+                            )
                         if cred_rows:
                             cred = cred_rows[0]
                             sb_admin_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
@@ -1814,15 +1824,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Admin: addcred flow — receive credential lines ─────────────────────────
     if user_id == ADMIN_ID and ADMIN_ID in pending_addcred:
-        info = pending_addcred.pop(ADMIN_ID)
+        info = pending_addcred[ADMIN_ID]
+
+        # Step 1: Admin picking a variant
+        if info.get("step") == "pick_variant":
+            try:
+                chosen_id = int(text.strip())
+            except ValueError:
+                await update.message.reply_text("⚠️ Sila balas dengan nombor ID variant sahaja.")
+                return
+            variant_rows = info.get("variants") or []
+            chosen = next((v for v in variant_rows if v["id"] == chosen_id), None)
+            if not chosen:
+                await update.message.reply_text("⚠️ ID variant tidak dijumpai. Cuba semula.")
+                return
+            pending_addcred[ADMIN_ID] = {
+                "product_id": info["product_id"],
+                "product_name": info["product_name"],
+                "variant_id": chosen_id,
+                "variant_name": chosen["variant_name"],
+                "step": "enter_creds",
+            }
+            await update.message.reply_text(
+                f"✅ Variant: {chosen['variant_name']}\n\n"
+                f"Hantar credentials sekarang, satu per baris:\n"
+                f"email:password\n\n"
+                f"Contoh:\nuser@gmail.com:pass123"
+            )
+            return
+
+        # Step 2: Admin entering credentials
+        pending_addcred.pop(ADMIN_ID)
         product_id   = info["product_id"]
         product_name = info["product_name"]
+        variant_id   = info.get("variant_id") or None
+        variant_name = info.get("variant_name") or ""
+
         lines = [l.strip() for l in text.split("\n") if ":" in l.strip()]
         if not lines:
-            await update.message.reply_text(
-                "⚠️ Tiada credentials valid ditemui.\n"
-                "Format betul: email:password (satu per baris)"
-            )
+            await update.message.reply_text("⚠️ Format salah. Guna email:password")
             return
         items = []
         for line in lines:
@@ -1830,24 +1870,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(parts) == 2 and parts[0].strip() and parts[1].strip():
                 items.append({
                     "product_id": product_id,
+                    "variant_id": variant_id,
                     "email":      parts[0].strip(),
                     "password":   parts[1].strip(),
                     "is_used":    False,
                 })
         if not items:
-            await update.message.reply_text("⚠️ Tiada credentials valid untuk disimpan.")
+            await update.message.reply_text("⚠️ Tiada credentials valid.")
             return
         try:
             def insert_creds(items=items):
                 for item in items:
                     sb_admin_post("credentials", item)
             await _run_supabase(f"credentials.insert product={product_id}", insert_creds)
+            label = f"{product_name} — {variant_name}" if variant_name else product_name
             await update.message.reply_text(
-                f"✅ {len(items)} credentials berjaya ditambah untuk {product_name}"
+                f"✅ {len(items)} credentials berjaya ditambah untuk {label}"
             )
-            log.info(f"[ADDCRED] {len(items)} credentials added for product {product_id}")
         except Exception as exc:
-            log.warning(f"[ADDCRED] insert failed: {_safe_error(exc)}", exc_info=True)
             await update.message.reply_text(f"❌ Gagal simpan: {_safe_error(exc)}")
         return
 
@@ -2188,16 +2228,41 @@ async def cmd_addcred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as exc:
         await update.message.reply_text(f"⚠️ Ralat: {_safe_error(exc)}")
         return
-    pending_addcred[ADMIN_ID] = {"product_id": product_id, "product_name": product_name}
-    await update.message.reply_text(
-        f"📦 Produk: {product_name} (ID: {product_id})\n\n"
-        f"Hantar credentials sekarang, satu per baris:\n"
-        f"email:password\n"
-        f"email2:password2\n\n"
-        f"Contoh:\n"
-        f"user@netflix.com:pass123\n"
-        f"user2@netflix.com:pass456"
-    )
+    # Fetch variants for this product
+    try:
+        variant_rows = await _run_supabase(
+            f"variants.addcred pid={product_id}",
+            lambda: sb_get("product_variants", f"select=id,variant_name&product_id=eq.{product_id}&order=id"),
+        ) or []
+    except Exception:
+        variant_rows = []
+
+    if variant_rows:
+        # Store variants in pending and ask admin to pick one
+        pending_addcred[ADMIN_ID] = {
+            "product_id": product_id,
+            "product_name": product_name,
+            "variants": variant_rows,
+            "step": "pick_variant",
+        }
+        lines = [f"📦 Produk: {product_name}", "", "Pilih variant:"]
+        for v in variant_rows:
+            lines.append(f"{v['id']}. {v['variant_name']}")
+        lines.append("")
+        lines.append("Balas dengan nombor ID variant. Contoh: 1")
+        await update.message.reply_text("\n".join(lines))
+    else:
+        pending_addcred[ADMIN_ID] = {
+            "product_id": product_id,
+            "product_name": product_name,
+            "step": "enter_creds",
+        }
+        await update.message.reply_text(
+            f"📦 Produk: {product_name} (ID: {product_id})\n\n"
+            f"Hantar credentials sekarang, satu per baris:\n"
+            f"email:password\n\n"
+            f"Contoh:\nuser@gmail.com:pass123"
+        )
 
 
 # ─── /credstock ───────────────────────────────────────────────────────────────
@@ -2386,8 +2451,25 @@ def build_app() -> Application:
 # ─── Auto-Restart Polling Loop ────────────────────────────────────────────────
 
 def main():
+    if not BOT_TOKEN:
+        log.warning("BOT_TOKEN tidak ditetapkan — bot Telegram tidak akan dijalankan.")
+        log.warning("Set BOT_TOKEN dalam Replit Secrets, kemudian restart workflow.")
+        log.info("Flask server berjalan. Lawati /dashboard untuk panel admin.")
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            log.info("Dihenti oleh pengguna.")
+        return
+
     if not _validate_telegram_token():
-        sys.exit(1)
+        log.warning("Token Telegram tidak sah — menunggu dalam Flask mode.")
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            pass
+        return
 
     retry_delay = 5          # seconds before first retry
     max_delay   = 120        # cap at 2 minutes
