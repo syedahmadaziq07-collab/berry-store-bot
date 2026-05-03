@@ -1849,7 +1849,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ Variant: {chosen['variant_name']}\n\n"
                 f"Hantar credentials sekarang, satu per baris:\n"
                 f"email:password\n\n"
-                f"Contoh:\nuser@gmail.com:pass123"
+                f"Contoh:\nuser@gmail.com:pass123",
+                reply_markup=ReplyKeyboardRemove()
             )
             return
 
@@ -2250,7 +2251,10 @@ async def cmd_addcred(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"{v['id']}. {v['variant_name']}")
         lines.append("")
         lines.append("Balas dengan nombor ID variant. Contoh: 1")
-        await update.message.reply_text("\n".join(lines))
+        await update.message.reply_text(
+            "\n".join(lines),
+            reply_markup=ReplyKeyboardRemove()
+        )
     else:
         pending_addcred[ADMIN_ID] = {
             "product_id": product_id,
