@@ -631,7 +631,14 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"╭─────────────────────╮\n┊  {_shop_title}\n┊─────────────────────\n"
     for i, p in enumerate(products, 1):
         pid = p.get("id")
-        stock = variant_stock[pid] if pid in variant_stock else p["stock"]
+        has_variants = pid in variant_stock
+        if has_variants:
+            stock = variant_stock[pid]
+            stock_source = "product_variants_sum"
+        else:
+            stock = p["stock"]
+            stock_source = "products_stock"
+        log.info(f"[SHOP LIST] product_id={pid} has_variants={has_variants} stock_source={stock_source} displayed_stock={stock}")
         text += f"┊ {i}. {p['name']} ( {stock} )\n"
     text += f"╰─────────────────────╯\n\n{_shop_footer}"
 
@@ -1163,11 +1170,24 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 prod_rows = sb_get("products", f"select=*&id=eq.{order_data['product_id']}&limit=1")
                 if prod_rows:
                     product_data = prod_rows[0]
-                    new_stock = max(0, product_data.get("stock", 0) - order_data.get("quantity", 1))
-                    sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
+                    variant_id = order_data.get("variant_id") or None
+                    qty = order_data.get("quantity", 1)
+                    if variant_id:
+                        # Variant order: reduce product_variants.stock only, not products.stock
+                        var_rows = sb_get("product_variants", f"select=id,stock&id=eq.{variant_id}&limit=1")
+                        if var_rows:
+                            old_var_stock = var_rows[0].get("stock", 0)
+                            new_var_stock = max(0, old_var_stock - qty)
+                            sb_patch("product_variants", f"id=eq.{variant_id}", {"stock": new_var_stock})
+                            log.info(f"[VARIANT STOCK] variant_id={variant_id}")
+                            log.info(f"[VARIANT STOCK] old_stock={old_var_stock}")
+                            log.info(f"[VARIANT STOCK] new_stock={new_var_stock}")
+                    else:
+                        # Normal product: reduce products.stock
+                        new_stock = max(0, product_data.get("stock", 0) - qty)
+                        sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
                     # Resolve delivery mode: prefer explicit delivery_mode field, fallback to auto_delivery bool
                     delivery_mode = product_data.get("delivery_mode") or ("auto" if product_data.get("auto_delivery") else "manual")
-                    variant_id = order_data.get("variant_id") or None
                     log.info(f"[AUTO DELIVERY] order_id={order_id}")
                     log.info(f"[AUTO DELIVERY] delivery_mode={delivery_mode}")
                     log.info(f"[AUTO DELIVERY] product_id={order_data.get('product_id')}")
