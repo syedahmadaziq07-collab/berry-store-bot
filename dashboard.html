@@ -1216,7 +1216,7 @@ async function loadProducts() {
           '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+p.id+'\','+active+')">'+
             (active?'Deactivate':'Activate')+
           '</button>'+
-          '<button class="btn-ghost btn-sm btn-pill" style="border-color:rgba(168,85,247,.3);color:#a855f7" onclick="openVariants(\''+p.id+'\',\''+((p.name||'').replace(/'/g,"\\'"))+'\')">Manage Variants</button>'+
+          '<button class="btn-ghost btn-sm btn-pill" style="border-color:rgba(168,85,247,.3);color:#a855f7" onclick=\'openVariants('+JSON.stringify(p.id)+','+JSON.stringify(p.name||'').replace(/'/g,"\\'")+')\'>Manage Variants</button>'+
         '</div>'+
       '</div>';
     }).join('');
@@ -1334,7 +1334,7 @@ async function loadVariantsList() {
   }
 }
 
-function escH(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 function editVariantRow(id, name, price, stock) {
   const row = document.getElementById('var-row-'+id);
