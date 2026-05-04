@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
 <title>Berry Store Admin Dashboard</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#0f1117"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Berry Store"/>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png"/>
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
@@ -278,6 +288,29 @@ button:active{transform:scale(.97)}
 .toggle .slider::before{content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
 .toggle input:checked+.slider{background:var(--accent)}
 .toggle input:checked+.slider::before{transform:translateX(16px)}
+
+/* ====== NOTIFICATION BELL ====== */
+.notif-bell{background:none;border:1px solid var(--border);border-radius:var(--r-s);padding:.35rem .5rem;cursor:pointer;font-size:1rem;color:var(--text-s);transition:.2s;position:relative}
+.notif-bell:hover{border-color:var(--accent);color:var(--accent)}
+.notif-bell.active{border-color:var(--success);color:var(--success)}
+.notif-bell .bell-dot{position:absolute;top:4px;right:4px;width:6px;height:6px;background:var(--danger);border-radius:50%;display:none}
+.notif-bell.needs-setup .bell-dot{display:block}
+
+/* ====== NOTIFICATION PANEL ====== */
+.notif-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.2rem;max-width:480px;margin:0 auto}
+.notif-panel h3{font-size:.95rem;margin-bottom:.75rem}
+.notif-ios-hint{background:rgba(79,142,247,.08);border:1px solid var(--accent-border);border-radius:var(--r-s);padding:.75rem;margin-bottom:1rem;font-size:.78rem;color:var(--text-s);line-height:1.5}
+.notif-ios-hint strong{color:var(--accent)}
+.notif-status{display:flex;align-items:center;gap:.5rem;padding:.5rem .65rem;border-radius:var(--r-s);font-size:.82rem;margin-bottom:.75rem}
+.notif-status.granted{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);color:var(--success)}
+.notif-status.denied{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--danger)}
+.notif-status.default{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--warning)}
+.notif-events{margin-top:.75rem}
+.notif-events .ne-row{display:flex;justify-content:space-between;align-items:center;padding:.45rem 0;border-bottom:1px solid var(--border);font-size:.82rem}
+.notif-events .ne-row:last-child{border-bottom:none}
+.notif-events .ne-label{color:var(--text)}
+.notif-events .ne-desc{color:var(--text-xs);font-size:.72rem}
+.notif-test-btn{margin-top:1rem}
 </style>
 </head>
 <body>
@@ -324,6 +357,10 @@ button:active{transform:scale(.97)}
     <div class="nb" data-page="referral" onclick="nav(this)">
       <span class="ic">&#128279;</span>Referral
     </div>
+    <div class="sb-section">Settings</div>
+    <div class="nb" data-page="notifications" onclick="nav(this)">
+      <span class="ic">&#128276;</span>Notifications
+    </div>
   </div>
   <div class="sb-bottom">
     <div class="nb" onclick="openConnect()" style="color:var(--text-xs)">
@@ -345,6 +382,7 @@ button:active{transform:scale(.97)}
         <button class="ptab" onclick="setPeriod('week',this)">Week</button>
         <button class="ptab" onclick="setPeriod('month',this)">Month</button>
       </div>
+      <button class="notif-bell" id="notifBell" onclick="nav(document.querySelector('[data-page=notifications]'))" title="Notifications">&#128276;<span class="bell-dot"></span></button>
       <div class="conn-badge">
         <span class="cdot off" id="cdot"></span>
         <span id="clabel">Disconnected</span>
@@ -556,6 +594,45 @@ button:active{transform:scale(.97)}
       </div>
     </div>
 
+    <!-- ====== NOTIFICATIONS ====== -->
+    <div class="page" id="page-notifications">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div class="sec-title">Web Push Notifications</div>
+      </div>
+
+      <div class="notif-panel">
+        <h3>&#128276; Enable Notifications</h3>
+
+        <div class="notif-ios-hint">
+          <strong>&#63743; iPhone / iPad:</strong> For notifications to work, open this page in <strong>Safari</strong>, tap <strong>Share &#8599;</strong>, then <strong>Add to Home Screen</strong>. Open the app from your Home Screen, then tap the button below to enable notifications.
+        </div>
+
+        <div class="notif-status default" id="notifStatus">
+          <span id="notifStatusIcon">&#9888;</span>
+          <span id="notifStatusText">Notifications not yet enabled</span>
+        </div>
+
+        <button class="btn-primary" id="notifEnableBtn" onclick="enableNotifications()" style="width:100%">
+          &#128276; Enable Web Notifications
+        </button>
+
+        <div id="notifEnabledSection" style="display:none">
+          <div class="notif-events">
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);margin-bottom:.5rem;margin-top:.5rem">Notification Events</div>
+            <div class="ne-row"><div><div class="ne-label">&#128230; New Order</div><div class="ne-desc">When a customer places a new order</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#128176; Customer Paid</div><div class="ne-desc">When customer clicks "I Have Paid"</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#9989; Order Completed</div><div class="ne-desc">When an order is approved or completed</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#9888; Auto Delivery Failed</div><div class="ne-desc">When auto credential delivery fails</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#128232; Low Stock Alert</div><div class="ne-desc">When available credentials drop below 3</div></div><span class="badge b-green">Active</span></div>
+          </div>
+
+          <button class="btn-ghost notif-test-btn" onclick="sendTestNotification()" style="width:100%">&#128172; Send Test Notification</button>
+
+          <button class="btn-ghost" onclick="unsubscribePush()" style="width:100%;margin-top:.5rem;color:var(--danger);border-color:rgba(239,68,68,.25)">&#10005; Disable Notifications</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -687,7 +764,7 @@ let _lastUpdated = null;
 const PAGE_NAMES = {
   dashboard:'Dashboard', products:'Products', orders:'Orders',
   sales:'Sales', stocks:'Stocks', credentials:'Credentials',
-  broadcast:'Broadcast', referral:'Referral'
+  broadcast:'Broadcast', referral:'Referral', notifications:'Notifications'
 };
 
 // ====================================================
@@ -834,6 +911,7 @@ async function doConnect() {
     closeOverlay('connectOverlay');
     toast('Connected successfully' + (role === 'service_role' ? ' (service_role)' : ''));
     startRefresh();
+    if (Notification.permission === 'granted') setupRealtimeListeners();
   } catch(e) {
     err.textContent = 'Connection failed: ' + e.message;
     sb = null;
@@ -875,6 +953,7 @@ function loadPage(p) {
   if (p==='credentials') loadCredentials();
   if (p==='broadcast')   loadBcastCount();
   if (p==='referral')    loadReferral();
+  if (p==='notifications') refreshNotifUI();
 }
 
 // ====================================================
@@ -1768,6 +1847,221 @@ async function loadReferral() {
 }
 
 // ====================================================
+// PUSH NOTIFICATIONS (PWA)
+// ====================================================
+let _swRegistration = null;
+let _pushSubscription = null;
+let _realtimeChannel = null;
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    _swRegistration = await navigator.serviceWorker.register('./service-worker.js');
+    await navigator.serviceWorker.ready;
+    _pushSubscription = await _swRegistration.pushManager.getSubscription();
+    updateBellIcon();
+    refreshNotifUI();
+  } catch(_) {}
+}
+
+function updateBellIcon() {
+  const bell = document.getElementById('notifBell');
+  if (!bell) return;
+  if (_pushSubscription && Notification.permission === 'granted') {
+    bell.classList.add('active');
+    bell.classList.remove('needs-setup');
+  } else {
+    bell.classList.remove('active');
+    bell.classList.add('needs-setup');
+  }
+}
+
+function refreshNotifUI() {
+  const status = document.getElementById('notifStatus');
+  const icon = document.getElementById('notifStatusIcon');
+  const text = document.getElementById('notifStatusText');
+  const enableBtn = document.getElementById('notifEnableBtn');
+  const enabledSec = document.getElementById('notifEnabledSection');
+  if (!status) return;
+
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    status.className = 'notif-status denied';
+    icon.textContent = '\u274c';
+    text.textContent = 'Push notifications are not supported in this browser.';
+    enableBtn.style.display = 'none';
+    enabledSec.style.display = 'none';
+    return;
+  }
+
+  const perm = Notification.permission;
+  if (perm === 'granted' && _pushSubscription) {
+    status.className = 'notif-status granted';
+    icon.textContent = '\u2705';
+    text.textContent = 'Notifications enabled and active';
+    enableBtn.style.display = 'none';
+    enabledSec.style.display = 'block';
+  } else if (perm === 'denied') {
+    status.className = 'notif-status denied';
+    icon.textContent = '\u274c';
+    text.textContent = 'Notifications blocked. Please allow in browser settings.';
+    enableBtn.style.display = 'none';
+    enabledSec.style.display = 'none';
+  } else {
+    status.className = 'notif-status default';
+    icon.textContent = '\u26a0';
+    text.textContent = 'Notifications not yet enabled';
+    enableBtn.style.display = '';
+    enabledSec.style.display = 'none';
+  }
+}
+
+async function enableNotifications() {
+  if (!('Notification' in window)) { toast('Notifications not supported in this browser'); return; }
+  if (!_swRegistration) { toast('Service worker not ready. Try refreshing.'); return; }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    toast('Notification permission denied');
+    refreshNotifUI();
+    updateBellIcon();
+    return;
+  }
+
+  try {
+    let vapidKey = localStorage.getItem('bs_vapid_public');
+    if (!vapidKey && sb) {
+      const { data } = await sb.from('bot_settings').select('value').eq('key','vapid_public_key').maybeSingle();
+      if (data) { vapidKey = data.value; localStorage.setItem('bs_vapid_public', vapidKey); }
+    }
+
+    if (vapidKey) {
+      const converted = urlBase64ToUint8Array(vapidKey);
+      _pushSubscription = await _swRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: converted
+      });
+    } else {
+      _pushSubscription = await _swRegistration.pushManager.subscribe({ userVisibleOnly: true });
+    }
+
+    await savePushSubscription(_pushSubscription);
+    toast('Notifications enabled successfully!');
+    setupRealtimeListeners();
+  } catch(e) {
+    toast('Failed to enable push: ' + e.message);
+  }
+  refreshNotifUI();
+  updateBellIcon();
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+async function savePushSubscription(sub) {
+  if (!sb || !sub) return;
+  const json = sub.toJSON();
+  const payload = {
+    endpoint: json.endpoint,
+    keys: json.keys || {},
+    user_agent: navigator.userAgent,
+    is_active: true
+  };
+  const { error } = await sb.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+  if (error) toast('Failed to save subscription: ' + error.message);
+}
+
+async function unsubscribePush() {
+  if (_pushSubscription) {
+    const endpoint = _pushSubscription.endpoint;
+    await _pushSubscription.unsubscribe();
+    _pushSubscription = null;
+    if (sb) {
+      await sb.from('push_subscriptions').update({ is_active: false }).eq('endpoint', endpoint);
+    }
+    toast('Notifications disabled');
+  }
+  refreshNotifUI();
+  updateBellIcon();
+}
+
+function sendTestNotification() {
+  if (Notification.permission !== 'granted') { toast('Permission not granted'); return; }
+  if (_swRegistration) {
+    _swRegistration.showNotification('Berry Store Test', {
+      body: 'Notifications are working! You will receive alerts for new orders, payments, and more.',
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: 'test-' + Date.now(),
+      vibrate: [200, 100, 200]
+    });
+    toast('Test notification sent!');
+  }
+}
+
+// Supabase Realtime listeners for push events
+function setupRealtimeListeners() {
+  if (!sb || _realtimeChannel) return;
+  _realtimeChannel = sb.channel('admin-push-notifications');
+
+  // New order or status change
+  _realtimeChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+    showLocalNotification('New Order', 'New order from @' + (payload.new.username || 'customer') + ' for ' + (payload.new.product_name || 'product'), 'new-order');
+  });
+
+  _realtimeChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
+    const o = payload.new;
+    const old = payload.old;
+    if (o.status === 'waiting_approval' && old.status !== 'waiting_approval') {
+      showLocalNotification('Payment Received', '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order'), 'payment');
+    }
+    if ((o.status === 'completed' || o.status === 'approved') && old.status !== o.status) {
+      showLocalNotification('Order Completed', 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status, 'completed');
+    }
+  });
+
+  // Credential changes (auto delivery failed / low stock)
+  _realtimeChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'credentials' }, async () => {
+    await checkLowStock();
+  });
+
+  _realtimeChannel.subscribe();
+}
+
+async function checkLowStock() {
+  if (!sb) return;
+  try {
+    const { data: prods } = await sb.from('products').select('id,name,auto_delivery').eq('auto_delivery', true);
+    if (!prods) return;
+    for (const p of prods) {
+      const { count } = await sb.from('credentials').select('id', { count: 'exact', head: true }).eq('product_id', p.id).eq('is_used', false);
+      if (count !== null && count < 3) {
+        showLocalNotification('Low Stock Alert', p.name + ' has only ' + count + ' credentials remaining!', 'low-stock-' + p.id);
+      }
+    }
+  } catch(_) {}
+}
+
+function showLocalNotification(title, body, tag) {
+  if (Notification.permission !== 'granted') return;
+  if (_swRegistration) {
+    _swRegistration.showNotification(title, {
+      body: body,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: tag || 'berry-' + Date.now(),
+      vibrate: [200, 100, 200],
+      data: { url: './dashboard.html' }
+    });
+  }
+}
+
+// ====================================================
 // INIT
 // ====================================================
 document.querySelectorAll('.overlay').forEach(o=>{
@@ -1779,6 +2073,9 @@ document.querySelectorAll('.overlay').forEach(o=>{
   document.getElementById('salFrom').value = t;
   document.getElementById('salTo').value = t;
 
+  // Register service worker
+  registerServiceWorker();
+
   // Restore from localStorage
   const savedUrl = localStorage.getItem('bs_url');
   const savedKey = localStorage.getItem('bs_key');
@@ -1789,6 +2086,8 @@ document.querySelectorAll('.overlay').forEach(o=>{
       _sbKey = savedKey;
       setConn(true);
       startRefresh();
+      // Start realtime listeners if notifications enabled
+      if (Notification.permission === 'granted') setupRealtimeListeners();
     } catch(_) {
       openConnect();
     }
