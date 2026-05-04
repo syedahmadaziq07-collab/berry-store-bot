@@ -610,35 +610,81 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save product list so handle_message can resolve number → product
     context.user_data["shop_products"] = products
 
-    # Fetch all variants stock in one query
+    # Fetch variants (with id) and all credentials for accurate real-time stock display
     try:
         all_variants = await _run_supabase(
             "product_variants.all",
-            lambda: sb_get("product_variants", "select=product_id,stock"),
+            lambda: sb_get("product_variants", "select=id,product_id,stock"),
         ) or []
     except Exception:
         all_variants = []
 
-    # Build dict: product_id -> total variant stock
-    variant_stock = {}
+    try:
+        all_creds = await _run_supabase(
+            "credentials.stock_check",
+            lambda: sb_get("credentials", "select=product_id,variant_id,is_used"),
+        ) or []
+    except Exception:
+        all_creds = []
+
+    # Build variant map: product_id -> list of {id, stock}
+    product_variants_map: dict = {}
     for v in all_variants:
         pid = v.get("product_id")
         if pid:
-            variant_stock[pid] = variant_stock.get(pid, 0) + int(v.get("stock") or 0)
+            product_variants_map.setdefault(pid, []).append(v)
+
+    # Build credential maps from all credential rows
+    has_creds_for_variant: set = set()   # variant_ids that have ANY credential row
+    unused_for_variant: dict  = {}       # variant_id -> count of unused creds
+    has_creds_for_product: set = set()   # product_ids with cred rows where variant_id is null
+    unused_for_product: dict  = {}       # product_id -> count of unused creds (no variant)
+    for c in all_creds:
+        vid = c.get("variant_id")
+        pid = c.get("product_id")
+        if vid:
+            has_creds_for_variant.add(vid)
+            if not c.get("is_used"):
+                unused_for_variant[vid] = unused_for_variant.get(vid, 0) + 1
+        elif pid:
+            has_creds_for_product.add(pid)
+            if not c.get("is_used"):
+                unused_for_product[pid] = unused_for_product.get(pid, 0) + 1
 
     _shop_title = await _setting('shop_title', 'LIST PRODUCT')
     _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
     text = f"╭─────────────────────╮\n┊  {_shop_title}\n┊─────────────────────\n"
     for i, p in enumerate(products, 1):
         pid = p.get("id")
-        has_variants = pid in variant_stock
-        if has_variants:
-            stock = variant_stock[pid]
-            stock_source = "product_variants_sum"
+        variants = product_variants_map.get(pid, [])
+        if variants:
+            # Product has variants — sum up each variant's real available stock
+            total = 0
+            for v in variants:
+                vid = v.get("id")
+                if vid in has_creds_for_variant:
+                    avail   = unused_for_variant.get(vid, 0)
+                    v_src   = "credentials"
+                    v_mode  = "auto"
+                else:
+                    avail   = int(v.get("stock") or 0)
+                    v_src   = "variant_stock"
+                    v_mode  = "manual"
+                log.info(f"[SHOP STOCK] product_id={pid} variant_id={vid} delivery_mode={v_mode} source={v_src} available={avail}")
+                total += avail
+            log.info(f"[SHOP STOCK] product_id={pid} displayed_total={total}")
+            stock = total
         else:
-            stock = p["stock"]
-            stock_source = "products_stock"
-        log.info(f"[SHOP LIST] product_id={pid} has_variants={has_variants} stock_source={stock_source} displayed_stock={stock}")
+            # No variants — use credential count if credentials exist, else products.stock
+            if pid in has_creds_for_product:
+                stock  = unused_for_product.get(pid, 0)
+                p_src  = "credentials"
+                p_mode = "auto"
+            else:
+                stock  = int(p.get("stock") or 0)
+                p_src  = "product_stock"
+                p_mode = "manual"
+            log.info(f"[SHOP STOCK] product_id={pid} delivery_mode={p_mode} source={p_src} available={stock} displayed_total={stock}")
         text += f"┊ {i}. {p['name']} ( {stock} )\n"
     text += f"╰─────────────────────╯\n\n{_shop_footer}"
 
