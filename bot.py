@@ -1151,6 +1151,10 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
         def approve_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
             order_data = rows[0] if rows else {}
+            log.info(f"[AUTO DEBUG] order_data keys: {list(order_data.keys())}")
+            log.info(f"[AUTO DEBUG] variant_id from order: {order_data.get('variant_id')}")
+            log.info(f"[AUTO DEBUG] product_id: {order_data.get('product_id')}")
+            log.info(f"[AUTO DEBUG] auto_delivery: {order_data.get('auto_delivery') if order_data else None}")
             sb_patch("orders", f"id=eq.{order_id}", {"status": "completed"})
             product_data = {}
             cred = None
@@ -1173,6 +1177,8 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                                 "credentials",
                                 f"select=*&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
                             )
+                        log.info(f"[AUTO DEBUG] cred_rows found: {len(cred_rows) if cred_rows else 0}")
+                        log.info(f"[AUTO DEBUG] cred query variant_id={variant_id}")
                         if cred_rows:
                             cred = cred_rows[0]
                             sb_admin_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
@@ -1238,6 +1244,8 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                     log.warning(f"[UNSENT] auto mark sent failed: {_safe_error(exc)}")
             except Exception as exc:
                 log.warning(f"Auto delivery send to user: {_safe_error(exc)}")
+            # Post testimonial
+            await _post_testimonial(context, order)
             # Points notification → customer
             await _send_points_notification(context, order["user_id"])
             # Notify admin: auto delivery success
@@ -1268,6 +1276,10 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
+            # Post testimonial
+            await _post_testimonial(context, order)
+            # Award points
+            await _send_points_notification(context, order["user_id"])
             # Extra message for private/semi/crumbs slot products
             try:
                 _pname = (order.get("product_name") or "").lower()
