@@ -1244,8 +1244,6 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                     log.warning(f"[UNSENT] auto mark sent failed: {_safe_error(exc)}")
             except Exception as exc:
                 log.warning(f"Auto delivery send to user: {_safe_error(exc)}")
-            # Post testimonial
-            await _post_testimonial(context, order)
             # Points notification → customer
             await _send_points_notification(context, order["user_id"])
             # Notify admin: auto delivery success
@@ -1276,8 +1274,6 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
-            # Post testimonial
-            await _post_testimonial(context, order)
             # Award points
             await _send_points_notification(context, order["user_id"])
             # Extra message for private/semi/crumbs slot products
