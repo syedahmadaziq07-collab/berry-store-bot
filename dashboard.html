@@ -2004,23 +2004,41 @@ function sendTestNotification() {
   }
 }
 
+// Track last-seen order statuses to detect transitions
+// (payload.old only has PK unless REPLICA IDENTITY FULL is set)
+const _orderStatusCache = {};
+
+async function seedOrderStatusCache() {
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('orders').select('id,status');
+    if (data) data.forEach(o => { _orderStatusCache[o.id] = o.status; });
+  } catch(_) {}
+}
+
 // Supabase Realtime listeners for push events
 function setupRealtimeListeners() {
   if (!sb || _realtimeChannel) return;
+  seedOrderStatusCache();
   _realtimeChannel = sb.channel('admin-push-notifications');
 
-  // New order or status change
+  // New order
   _realtimeChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-    showLocalNotification('New Order', 'New order from @' + (payload.new.username || 'customer') + ' for ' + (payload.new.product_name || 'product'), 'new-order');
+    const o = payload.new;
+    _orderStatusCache[o.id] = o.status;
+    showLocalNotification('New Order', 'New order from @' + (o.username || 'customer') + ' for ' + (o.product_name || 'product'), 'new-order');
   });
 
+  // Status change detection using local cache
   _realtimeChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
     const o = payload.new;
-    const old = payload.old;
-    if (o.status === 'waiting_approval' && old.status !== 'waiting_approval') {
+    const prevStatus = _orderStatusCache[o.id];
+    _orderStatusCache[o.id] = o.status;
+    if (prevStatus === o.status) return;
+    if (o.status === 'waiting_approval' && prevStatus !== 'waiting_approval') {
       showLocalNotification('Payment Received', '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order'), 'payment');
     }
-    if ((o.status === 'completed' || o.status === 'approved') && old.status !== o.status) {
+    if ((o.status === 'completed' || o.status === 'approved') && prevStatus !== o.status) {
       showLocalNotification('Order Completed', 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status, 'completed');
     }
   });
