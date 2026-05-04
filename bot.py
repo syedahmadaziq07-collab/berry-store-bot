@@ -1151,10 +1151,6 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
         def approve_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
             order_data = rows[0] if rows else {}
-            log.info(f"[AUTO DEBUG] order_data keys: {list(order_data.keys())}")
-            log.info(f"[AUTO DEBUG] variant_id from order: {order_data.get('variant_id')}")
-            log.info(f"[AUTO DEBUG] product_id: {order_data.get('product_id')}")
-            log.info(f"[AUTO DEBUG] auto_delivery: {order_data.get('auto_delivery') if order_data else None}")
             sb_patch("orders", f"id=eq.{order_id}", {"status": "completed"})
             product_data = {}
             cred = None
@@ -1164,24 +1160,32 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                     product_data = prod_rows[0]
                     new_stock = max(0, product_data.get("stock", 0) - order_data.get("quantity", 1))
                     sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
-                    if product_data.get("auto_delivery"):
+                    # Resolve delivery mode: prefer explicit delivery_mode field, fallback to auto_delivery bool
+                    delivery_mode = product_data.get("delivery_mode") or ("auto" if product_data.get("auto_delivery") else "manual")
+                    variant_id = order_data.get("variant_id") or None
+                    log.info(f"[AUTO DELIVERY] order_id={order_id}")
+                    log.info(f"[AUTO DELIVERY] delivery_mode={delivery_mode}")
+                    log.info(f"[AUTO DELIVERY] product_id={order_data.get('product_id')}")
+                    log.info(f"[AUTO DELIVERY] variant_id={variant_id}")
+                    if delivery_mode == "auto":
+                        log.info(f"[AUTO DELIVERY] using column is_used")
                         # Try fetch by variant_id first, fallback to product_id
-                        variant_id = order_data.get("variant_id") or None
                         if variant_id:
                             cred_rows = sb_admin_get(
                                 "credentials",
-                                f"select=*&variant_id=eq.{variant_id}&is_used=eq.false&order=id&limit=1",
+                                f"select=id,email,password&variant_id=eq.{variant_id}&is_used=eq.false&order=id&limit=1",
                             )
                         else:
                             cred_rows = sb_admin_get(
                                 "credentials",
-                                f"select=*&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
+                                f"select=id,email,password&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
                             )
-                        log.info(f"[AUTO DEBUG] cred_rows found: {len(cred_rows) if cred_rows else 0}")
-                        log.info(f"[AUTO DEBUG] cred query variant_id={variant_id}")
+                        log.info(f"[AUTO DELIVERY] credential found={bool(cred_rows)}")
                         if cred_rows:
                             cred = cred_rows[0]
                             sb_admin_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
+                        else:
+                            log.warning(f"[AUTO DELIVERY] no unused credential found — falling back to manual delivery message")
             return order_data, product_data, cred
 
         result = await _run_supabase(f"orders.approve id={order_id}", approve_tx, attempts=1, timeout=15)
@@ -1192,7 +1196,8 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             caption="⚠️ Ralat approve. Sila cuba lagi.", reply_markup=None)
         return
 
-    log.info(f"Order {order_id} approved by admin (auto_delivery={bool(product.get('auto_delivery'))})")
+    _delivery_mode = product.get("delivery_mode") or ("auto" if product.get("auto_delivery") else "manual")
+    log.info(f"Order {order_id} approved by admin (delivery_mode={_delivery_mode})")
     await update.callback_query.edit_message_caption(
         caption=(update.callback_query.message.caption or "") + "\n\n✅ APPROVED", reply_markup=None)
 
@@ -1212,7 +1217,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
         log.warning(f"[POINTS] Award failed (non-fatal): {_safe_error(exc)}")
 
     # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
-    if product.get("auto_delivery"):
+    if _delivery_mode == "auto":
         if cred:
             # Send credential to customer
             try:
