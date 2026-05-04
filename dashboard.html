@@ -185,6 +185,19 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .char-count{font-size:.72rem;color:var(--text-xs);text-align:right;margin-top:.25rem}
 .bcast-preview{background:var(--input-bg);border-radius:var(--r-s);padding:.8rem;min-height:55px;font-size:.86rem;white-space:pre-wrap;color:var(--text-s);border:1px dashed var(--border);margin:.75rem 0}
 
+/* ====== VARIANT TABLE ====== */
+.var-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.var-table th{text-align:left;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-xs);padding:.45rem .4rem;border-bottom:1px solid var(--border)}
+.var-table td{padding:.5rem .4rem;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+.var-table tr:last-child td{border-bottom:none}
+.var-table .var-actions{display:flex;gap:.3rem;justify-content:flex-end}
+.var-edit-input{padding:.3rem .5rem;border:1px solid var(--accent-border);border-radius:var(--r-s);font-size:.82rem;background:var(--input-bg);color:var(--text);outline:none;width:100%}
+.var-edit-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12)}
+.var-add-row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:.4rem;margin-top:.75rem;align-items:end}
+.var-add-row input{padding:.4rem .55rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.82rem;background:var(--input-bg);color:var(--text);outline:none}
+.var-add-row input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12)}
+.chip.has-variants{color:#a855f7;border-color:rgba(168,85,247,.25);background:rgba(168,85,247,.08)}
+
 /* ====== BUTTONS ====== */
 button{cursor:pointer;border:none;border-radius:var(--r-s);font-size:.81rem;font-weight:600;padding:.45rem .9rem;transition:all .15s;font-family:inherit;color:var(--text)}
 button:active{transform:scale(.97)}
@@ -586,6 +599,28 @@ button:active{transform:scale(.97)}
   </div>
 </div>
 
+<!-- ====== MANAGE VARIANTS MODAL ====== -->
+<div class="overlay" id="variantsOverlay">
+  <div class="modal" style="max-width:600px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 id="variantsTitle">Manage Variants</h3>
+      <button class="btn-ghost btn-sm" onclick="closeOverlay('variantsOverlay')" style="padding:.25rem .5rem;font-size:.9rem">&times;</button>
+    </div>
+    <div id="variantsList">
+      <div style="padding:1rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:.75rem">
+      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);margin-bottom:.45rem">Add New Variant</div>
+      <div class="var-add-row">
+        <div><label class="modal-label">Name</label><input id="newVarName" type="text" placeholder="e.g. Basic Plan"/></div>
+        <div><label class="modal-label">Price</label><input id="newVarPrice" type="number" step="0.01" placeholder="0.00"/></div>
+        <div><label class="modal-label">Stock</label><input id="newVarStock" type="number" placeholder="0"/></div>
+        <button class="btn-success btn-sm" onclick="addVariant()" style="height:fit-content;margin-bottom:1px">+ Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ====== ORDER DETAIL MODAL ====== -->
 <div class="overlay" id="orderDetailOverlay">
   <div class="modal" style="max-width:520px">
@@ -645,6 +680,8 @@ let _allOrders = [];
 let _weekChart = null;
 let _spkCharts = {};
 let _refreshTimer = null;
+let _variantsProductId = null;
+let _variantsProductName = '';
 let _lastUpdated = null;
 
 const PAGE_NAMES = {
@@ -1137,16 +1174,26 @@ async function loadProducts() {
   const grid = document.getElementById('prodGrid');
   grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
   try {
-    const {data,error} = await sb.from('products').select('*').order('name');
+    const [{data,error},{data:variants,error:vErr}] = await Promise.all([
+      sb.from('products').select('*').order('name'),
+      sb.from('product_variants').select('id,product_id,stock')
+    ]);
     if (error) throw error;
     if (!data||!data.length) {
       grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products found.</div>';
       return;
     }
+    const varMap = {};
+    (variants||[]).forEach(v => {
+      if (!varMap[v.product_id]) varMap[v.product_id] = [];
+      varMap[v.product_id].push(v);
+    });
     grid.innerHTML = data.map(p=>{
       const active = bool(p.is_active)||(p.status||'').toLowerCase()==='active';
       const delivery = bool(p.auto_delivery);
-      const stock = p.stock??0;
+      const pVars = varMap[p.id] || [];
+      const hasVariants = pVars.length > 0;
+      const stock = hasVariants ? pVars.reduce((s,v)=>s+(v.stock??0),0) : (p.stock??0);
       const price = p.price!=null?'RM '+parseFloat(p.price).toFixed(2):'--';
       return '<div class="prod-card">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
@@ -1157,10 +1204,11 @@ async function loadProducts() {
         '<div class="pc-chips">'+
           '<span class="chip price">'+price+'</span>'+
           '<span class="chip '+(delivery?'auto':'manual')+'">'+(delivery?'Auto':'Manual')+'</span>'+
+          (hasVariants ? '<span class="chip has-variants">Has Variants</span>' : '')+
           (p.duration ? '<span class="chip">'+p.duration+'</span>' : '')+
         '</div>'+
         '<div class="pc-row">'+
-          '<span style="color:var(--text-s);font-size:.82rem">Stock: <strong style="color:var(--text)">'+stock+'</strong></span>'+
+          '<span style="color:var(--text-s);font-size:.82rem">Stock: <strong style="color:var(--text)">'+stock+'</strong>'+(hasVariants?' <span style="font-size:.72rem;color:var(--text-xs)">('+pVars.length+' variants)</span>':'')+'</span>'+
           (stock<=2?'<span class="badge b-red">Low Stock</span>':'')+
         '</div>'+
         '<div class="pc-btns">'+
@@ -1168,6 +1216,7 @@ async function loadProducts() {
           '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+p.id+'\','+active+')">'+
             (active?'Deactivate':'Activate')+
           '</button>'+
+          '<button class="btn-ghost btn-sm btn-pill" style="border-color:rgba(168,85,247,.3);color:#a855f7" onclick=\'openVariants('+JSON.stringify(p.id)+','+JSON.stringify(p.name||'').replace(/'/g,"\\'")+')\'>Manage Variants</button>'+
         '</div>'+
       '</div>';
     }).join('');
@@ -1228,6 +1277,130 @@ async function toggleAutoDelivery(id, checked) {
     loadCredentials();
     loadProducts();
   } catch(e) { toast('Error: '+e.message); }
+}
+
+// ====================================================
+// PRODUCT VARIANTS
+// ====================================================
+function openVariants(productId, productName) {
+  _variantsProductId = productId;
+  _variantsProductName = productName;
+  document.getElementById('variantsTitle').textContent = 'Manage Variants — ' + productName;
+  document.getElementById('newVarName').value = '';
+  document.getElementById('newVarPrice').value = '';
+  document.getElementById('newVarStock').value = '';
+  document.getElementById('variantsOverlay').classList.add('open');
+  loadVariantsList();
+}
+
+async function loadVariantsList() {
+  if (!sb || !_variantsProductId) return;
+  const wrap = document.getElementById('variantsList');
+  wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
+  try {
+    const {data,error} = await sb.from('product_variants').select('*').eq('product_id', _variantsProductId).order('variant_name');
+    if (error) throw error;
+    if (!data || !data.length) {
+      wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-s);font-size:.85rem">No variants yet. Add one below.</div>';
+      return;
+    }
+    wrap.innerHTML = '<table class="var-table"><thead><tr>'+
+      '<th>Name</th><th>Price (RM)</th><th>Stock</th>'+
+      '<th style="text-align:center">Delivery</th>'+
+      '<th style="text-align:center">Status</th>'+
+      '<th style="text-align:right">Actions</th>'+
+      '</tr></thead><tbody>'+
+      data.map(v => {
+        const dm = v.delivery_mode || v.auto_delivery;
+        const dmLabel = dm === true || dm === 'auto' ? 'Auto' : (dm === false || dm === 'manual' ? 'Manual' : '--');
+        const dmClass = dm === true || dm === 'auto' ? 'auto' : (dm === false || dm === 'manual' ? 'manual' : '');
+        const isActive = v.is_active !== undefined ? bool(v.is_active) : (v.status !== undefined ? (v.status||'').toLowerCase() === 'active' : null);
+        const statusBadge = isActive !== null ? '<span class="badge '+(isActive?'b-green':'b-grey')+'" style="font-size:.62rem">'+(isActive?'Active':'Inactive')+'</span>' : '--';
+        return '<tr id="var-row-'+v.id+'">'+
+          '<td><span class="var-display-name">'+escH(v.variant_name||'')+'</span></td>'+
+          '<td><span class="var-display-price">'+(v.price!=null?parseFloat(v.price).toFixed(2):'--')+'</span></td>'+
+          '<td><span class="var-display-stock">'+(v.stock??0)+'</span></td>'+
+          '<td style="text-align:center">'+(dmClass?'<span class="chip '+dmClass+'" style="font-size:.65rem">'+dmLabel+'</span>':'--')+'</td>'+
+          '<td style="text-align:center">'+statusBadge+'</td>'+
+          '<td><div class="var-actions">'+
+            '<button class="btn-primary btn-sm" onclick="editVariantRow(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\','+
+              (v.price??0)+','+(v.stock??0)+')">Edit</button>'+
+            '<button class="btn-danger btn-sm" onclick="deleteVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Delete</button>'+
+          '</div></td></tr>';
+      }).join('')+
+      '</tbody></table>';
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--danger)">Error: '+e.message+'</div>';
+  }
+}
+
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function editVariantRow(id, name, price, stock) {
+  const row = document.getElementById('var-row-'+id);
+  if (!row) return;
+  const cells = row.querySelectorAll('td');
+  cells[0].innerHTML = '<input class="var-edit-input" id="varEditName-'+id+'" value="'+escH(name)+'" />';
+  cells[1].innerHTML = '<input class="var-edit-input" id="varEditPrice-'+id+'" type="number" step="0.01" value="'+price+'" />';
+  cells[2].innerHTML = '<input class="var-edit-input" id="varEditStock-'+id+'" type="number" value="'+stock+'" />';
+  const actionsDiv = cells[5].querySelector('.var-actions');
+  actionsDiv.innerHTML = '<button class="btn-success btn-sm" onclick="saveVariant(\''+id+'\')">Save</button>'+
+    '<button class="btn-ghost btn-sm" onclick="loadVariantsList()">Cancel</button>';
+}
+
+async function saveVariant(id) {
+  if (!sb) return;
+  const name = document.getElementById('varEditName-'+id).value.trim();
+  const price = parseFloat(document.getElementById('varEditPrice-'+id).value);
+  const stock = parseInt(document.getElementById('varEditStock-'+id).value);
+  if (!name) { toast('Variant name is required'); return; }
+  if (isNaN(price) || price < 0) { toast('Valid price is required'); return; }
+  if (isNaN(stock) || stock < 0) { toast('Valid stock is required'); return; }
+  try {
+    const {error} = await sb.from('product_variants').update({variant_name:name, price, stock}).eq('id', id);
+    if (error) throw error;
+    toast('Variant updated successfully');
+    loadVariantsList();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function addVariant() {
+  if (!sb || !_variantsProductId) return;
+  const name = document.getElementById('newVarName').value.trim();
+  const price = parseFloat(document.getElementById('newVarPrice').value);
+  const stock = parseInt(document.getElementById('newVarStock').value);
+  if (!name) { toast('Variant name is required'); return; }
+  if (isNaN(price) || price < 0) { toast('Valid price is required'); return; }
+  if (isNaN(stock) || stock < 0) { toast('Valid stock is required'); return; }
+  try {
+    const {error} = await sb.from('product_variants').insert({
+      product_id: _variantsProductId,
+      variant_name: name,
+      price: price,
+      stock: stock
+    });
+    if (error) throw error;
+    toast('Variant "'+name+'" added successfully');
+    document.getElementById('newVarName').value = '';
+    document.getElementById('newVarPrice').value = '';
+    document.getElementById('newVarStock').value = '';
+    loadVariantsList();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+function deleteVariant(id, name) {
+  showConfirm('Delete Variant', 'Are you sure you want to delete variant "'+name+'"? This cannot be undone.', async () => {
+    if (!sb) return;
+    try {
+      const {error} = await sb.from('product_variants').delete().eq('id', id);
+      if (error) throw error;
+      toast('Variant "'+name+'" deleted');
+      loadVariantsList();
+      loadProducts();
+    } catch(e) { toast('Error: '+e.message); }
+  });
 }
 
 // ====================================================
