@@ -925,17 +925,18 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
 def get_qr_path():
-    possible_paths = [
-        "payment_qr.png",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "payment_qr.png"),
-        "/opt/render/project/src/payment_qr.png",
-        "telegram-bot/payment_qr.png",
-    ]
-    for path in possible_paths:
-        if os.path.exists(path):
-            log.info(f"[QR] Found at: {path}")
-            return path
-    log.warning(f"[QR] Not found. Checked: {possible_paths}")
+    cwd = os.getcwd()
+    try:
+        dir_files = os.listdir(cwd)
+    except Exception:
+        dir_files = []
+    log.info(f"[QR DEBUG] current working directory={cwd}")
+    log.info(f"[QR DEBUG] files in directory={dir_files}")
+    qr = os.path.join(os.getcwd(), "payment_qr.png")
+    if os.path.exists(qr):
+        log.info(f"[QR DEBUG] qr path found={qr}")
+        return qr
+    log.warning(f"[QR DEBUG] qr path found=None — checked: {qr}")
     return None
 
 
@@ -978,7 +979,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             qr_sent = True
             log.info(f"[PAYMENT] QR sent using cached file_id")
         except Exception as exc:
-            log.warning(f"[PAYMENT] cached file_id failed, will re-upload: {_safe_error(exc)}")
+            log.warning(f"[PAYMENT] cached file_id failed, resetting and re-uploading: {_safe_error(exc)}")
             _qr_file_id = None
     if not qr_sent:
         qr = get_qr_path()
@@ -998,7 +999,10 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     log.info(f"[PAYMENT] QR file_id cached: {_qr_file_id[:20]}...")
                 qr_sent = True
             except Exception as exc:
-                log.warning(f"[PAYMENT] send_photo failed: {_safe_error(exc)}")
+                log.warning(f"[PAYMENT] send_photo failed (exact error): {_safe_error(exc)}", exc_info=True)
+        else:
+            log.warning(f"[PAYMENT] QR file not found on disk — skipping send_photo")
+    log.info(f"[PAYMENT] qr_sent={qr_sent}")
     if not qr_sent:
         try:
             await context.bot.send_message(
@@ -1010,8 +1014,9 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     f"⚠️ QR code tidak tersedia. Hubungi admin."
                 ),
             )
+            log.warning(f"[PAYMENT] fell back to text message (QR unavailable)")
         except Exception as exc:
-            log.warning(f"[PAYMENT] text fallback also failed: {_safe_error(exc)}")
+            log.warning(f"[PAYMENT] text fallback also failed (exact error): {_safe_error(exc)}", exc_info=True)
     try:
         await context.bot.send_message(
             chat_id=query.message.chat_id,
@@ -1183,7 +1188,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                         log.info(f"[AUTO DELIVERY] credential found={bool(cred_rows)}")
                         if cred_rows:
                             cred = cred_rows[0]
-                            sb_admin_patch("credentials", f"id=eq.{cred['id']}", {"is_used": True})
+                            # NOTE: do NOT mark is_used here — mark only after send_message succeeds
                         else:
                             log.warning(f"[AUTO DELIVERY] no unused credential found — falling back to manual delivery message")
             return order_data, product_data, cred
@@ -1218,28 +1223,35 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
 
     # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
     if _delivery_mode == "auto":
+        cred_sent = False
         if cred:
-            # Send credential to customer
+            log.info(f"[AUTO DELIVERY] credential selected id={cred['id']}")
+            log.info(f"[AUTO DELIVERY] sending credential to user_id={order['user_id']}")
             try:
                 await context.bot.send_message(
                     chat_id=order["user_id"],
-                    text=(await _setting(
-                        "auto_delivery_msg",
+                    text=(
                         "✅ Pembayaran anda telah disahkan!\n\n"
                         "🎉 Berikut adalah maklumat akaun anda:\n\n"
-                        "📦 Produk: {product_name}\n"
-                        "📧 Email: {email}\n"
-                        "🔑 Password: {password}\n"
-                        "📅 Tempoh: {duration}\n\n"
+                        f"📦 Produk: {order.get('product_name', '-')}\n"
+                        f"📧 Email: {cred['email']}\n"
+                        f"🔑 Password: {cred['password']}\n\n"
                         "⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
-                        "💬 Ada masalah? Hubungi: @berryrc 🙌"
-                    )).format(
-                        product_name=order.get("product_name", "-"),
-                        email=cred["email"],
-                        password=cred["password"],
-                        duration=product.get("duration", "-"),
+                        "💬 Ada masalah? Hubungi admin: @berryrc"
                     ),
                 )
+                cred_sent = True
+                log.info(f"[AUTO DELIVERY] credential send success=True")
+                # Mark is_used ONLY after successful send
+                try:
+                    await _run_supabase(
+                        f"credentials.mark_used id={cred['id']}",
+                        lambda cid=cred["id"]: sb_admin_patch("credentials", f"id=eq.{cid}", {"is_used": True}),
+                    )
+                    log.info(f"[AUTO DELIVERY] marked is_used=True")
+                except Exception as exc:
+                    log.warning(f"[AUTO DELIVERY] failed to mark is_used=True: {_safe_error(exc)}")
+                # Mark order credentials_sent
                 try:
                     await _run_supabase(
                         f"orders.mark_sent id={order_id}",
@@ -1248,10 +1260,12 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 except Exception as exc:
                     log.warning(f"[UNSENT] auto mark sent failed: {_safe_error(exc)}")
             except Exception as exc:
-                log.warning(f"Auto delivery send to user: {_safe_error(exc)}")
-            # Points notification → customer
+                log.warning(f"[AUTO DELIVERY] credential send success=False — {_safe_error(exc)}", exc_info=True)
+
+        if cred_sent:
+            # Credential delivered — skip manual message
+            log.info(f"[AUTO DELIVERY] manual fallback sent=False")
             await _send_points_notification(context, order["user_id"])
-            # Notify admin: auto delivery success
             try:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
@@ -1265,51 +1279,52 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery admin notify: {_safe_error(exc)}")
-        else:
-            # No credentials available — fallback + alert admin
-            try:
+            return
+
+        # Fallback: no cred found OR send failed
+        log.info(f"[AUTO DELIVERY] manual fallback sent=True")
+        try:
+            await context.bot.send_message(
+                chat_id=order["user_id"],
+                text=(
+                    "✅ Pembayaran anda telah disahkan!\n\n"
+                    "Akaun akan dihantar secepat mungkin 🚀\n"
+                    "(biasanya dalam masa 1 jam)\n\n"
+                    "Ada masalah? DM admin: @berryrc 🙌"
+                ),
+            )
+        except Exception as exc:
+            log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
+        await _send_points_notification(context, order["user_id"])
+        # Extra message for private/semi/crumbs slot products
+        try:
+            _pname = (order.get("product_name") or "").lower()
+            if any(kw in _pname for kw in ("private", "semi", "crumbs")):
                 await context.bot.send_message(
                     chat_id=order["user_id"],
                     text=(
-                        "✅ Pembayaran anda telah disahkan!\n\n"
-                        "Akaun akan dihantar secepat mungkin 🚀\n"
-                        "(biasanya dalam masa 1 jam)\n\n"
-                        "Ada masalah? DM admin: @berryrc 🙌"
+                        "📋 Untuk slot ini, sila PM admin @berryrc dengan maklumat berikut:\n\n"
+                        "✦ 𝗣𝗥𝗜𝗩𝗔𝗧𝗘 𝗦𝗟𝗢𝗧 𝗣𝗥𝗢𝗙𝗜𝗟𝗘 𝗢𝗡𝗟𝗬 ✦\n"
+                        "┆𑣲 name : \n"
+                        "┆𑣲 pin 4 digit : \n"
+                        "> pin for netflix only"
                     ),
                 )
-            except Exception as exc:
-                log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
-            # Award points
-            await _send_points_notification(context, order["user_id"])
-            # Extra message for private/semi/crumbs slot products
-            try:
-                _pname = (order.get("product_name") or "").lower()
-                if any(kw in _pname for kw in ("private", "semi", "crumbs")):
-                    await context.bot.send_message(
-                        chat_id=order["user_id"],
-                        text=(
-                            "📋 Untuk slot ini, sila PM admin @berryrc dengan maklumat berikut:\n\n"
-                            "✦ 𝗣𝗥𝗜𝗩𝗔𝗧𝗘 𝗦𝗟𝗢𝗧 𝗣𝗥𝗢𝗙𝗜𝗟𝗘 𝗢𝗡𝗟𝗬 ✦\n"
-                            "┆𑣲 name : \n"
-                            "┆𑣲 pin 4 digit : \n"
-                            "> pin for netflix only"
-                        ),
-                    )
-            except Exception as exc:
-                log.warning(f"Extra slot message failed: {_safe_error(exc)}")
-            try:
-                await context.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=(
-                        f"⚠️ STOK CREDENTIALS HABIS!\n"
-                        f"Produk: {order.get('product_name', '-')}\n"
-                        f"Tiada credentials tersedia.\n"
-                        f"Tambah: /addcred {product.get('id', '')}\n"
-                        f"Atau hantar manual: /send {order_id}"
-                    ),
-                )
-            except Exception as exc:
-                log.warning(f"Auto delivery no-cred admin alert: {_safe_error(exc)}")
+        except Exception as exc:
+            log.warning(f"Extra slot message failed: {_safe_error(exc)}")
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"⚠️ STOK CREDENTIALS HABIS!\n"
+                    f"Produk: {order.get('product_name', '-')}\n"
+                    f"Tiada credentials tersedia.\n"
+                    f"Tambah: /addcred {product.get('id', '')}\n"
+                    f"Atau hantar manual: /send {order_id}"
+                ),
+            )
+        except Exception as exc:
+            log.warning(f"Auto delivery no-cred admin alert: {_safe_error(exc)}")
         return
 
     # ── MANUAL DELIVERY path (existing flow, unchanged) ────────────────────────
