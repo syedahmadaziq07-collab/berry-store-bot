@@ -1426,6 +1426,7 @@ async function openRestock(productId, productName, hasVariants) {
     }
   } else {
     varWrap.style.display = 'none';
+    document.getElementById('restockVariant').value = '';
   }
   document.getElementById('restockOverlay').classList.add('open');
 }
@@ -1433,7 +1434,8 @@ async function openRestock(productId, productName, hasVariants) {
 async function submitRestock() {
   if (!sb) return;
   const productId = document.getElementById('restockProductId').value;
-  const variantId = document.getElementById('restockVariant').value || null;
+  const varWrap = document.getElementById('restockVariantWrap');
+  const variantId = varWrap.style.display !== 'none' ? (document.getElementById('restockVariant').value || null) : null;
   const raw = document.getElementById('restockCreds').value.trim();
   if (!raw) { toast('Please enter credentials'); return; }
 
