@@ -1378,6 +1378,7 @@ async function loadCredentials() {
           '<span class="badge b-amber">Manual</span>'+
         '</div>'+
         '<div style="font-size:.8rem;color:var(--text-s)">Admin delivers credentials manually.</div>'+
+        '<button class="btn-primary btn-sm btn-pill" style="margin-top:.5rem" onclick="openRestock(\''+p.id+'\',\''+p.name.replace(/'/g,"\\'")+'\','+hasVariants+')">Add Credentials</button>'+
       '</div>';
 
       return '<div class="cred-card">'+
