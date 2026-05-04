@@ -2017,9 +2017,9 @@ async function seedOrderStatusCache() {
 }
 
 // Supabase Realtime listeners for push events
-function setupRealtimeListeners() {
+async function setupRealtimeListeners() {
   if (!sb || _realtimeChannel) return;
-  seedOrderStatusCache();
+  await seedOrderStatusCache();
   _realtimeChannel = sb.channel('admin-push-notifications');
 
   // New order

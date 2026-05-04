@@ -28,6 +28,9 @@ self.addEventListener('activate', e => {
 // ====== FETCH (network-first, cache fallback) ======
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Don't cache API requests (Supabase REST, realtime, etc.)
+  const url = new URL(e.request.url);
+  if (url.hostname.includes('supabase') || url.pathname.startsWith('/rest/') || url.pathname.startsWith('/realtime/')) return;
   e.respondWith(
     fetch(e.request)
       .then(r => {

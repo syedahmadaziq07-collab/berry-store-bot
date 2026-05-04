@@ -17,4 +17,4 @@ CREATE INDEX IF NOT EXISTS idx_push_subs_active ON push_subscriptions (is_active
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow service_role full access" ON push_subscriptions
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
