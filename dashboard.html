@@ -1219,6 +1219,17 @@ async function toggleActive(id, cur) {
   } catch(e) { toast('Error: '+e.message); }
 }
 
+async function toggleAutoDelivery(id, checked) {
+  if (!sb) return;
+  try {
+    const {error} = await sb.from('products').update({auto_delivery: checked}).eq('id', id);
+    if (error) throw error;
+    toast(checked ? 'Auto Delivery enabled' : 'Auto Delivery disabled');
+    loadCredentials();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
 // ====================================================
 // SALES
 // ====================================================
@@ -1372,19 +1383,28 @@ async function loadCredentials() {
       const pVars = variantMap[p.id] || [];
       const hasVariants = pVars.length > 0;
 
+      const toggleRow = '<div style="display:flex;align-items:center;justify-content:space-between;margin:.5rem 0 .25rem">'+
+        '<span style="font-size:.8rem;color:var(--text-s)">Auto Delivery</span>'+
+        '<label class="toggle"><input type="checkbox" '+(isAuto?'checked':'')+' onchange="toggleAutoDelivery(\''+p.id+'\',this.checked)"/><span class="slider"></span></label>'+
+      '</div>';
+      const badgeSpan = '<span class="badge '+(isAuto?'b-blue':'b-grey')+'">'+(isAuto?'Auto':'Manual')+'</span>';
+
       if (!isAuto) return '<div class="cred-card">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">'+
           '<div class="card-name">'+p.name+'</div>'+
-          '<span class="badge b-amber">Manual</span>'+
+          badgeSpan+
         '</div>'+
+        toggleRow+
         '<div style="font-size:.8rem;color:var(--text-s)">Admin delivers credentials manually.</div>'+
+        '<button class="btn-primary btn-sm btn-pill" style="margin-top:.5rem" onclick="openRestock(\''+p.id+'\',\''+p.name.replace(/'/g,"\\'")+'\','+hasVariants+')">Add Credentials</button>'+
       '</div>';
 
       return '<div class="cred-card">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">'+
           '<div class="card-name">'+p.name+'</div>'+
-          '<span class="badge b-blue">Auto</span>'+
+          badgeSpan+
         '</div>'+
+        toggleRow+
         '<div style="display:flex;flex-direction:column;gap:.25rem;font-size:.84rem;margin:.5rem 0">'+
           '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Total</span><strong>'+total+'</strong></div>'+
           '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Used</span><strong>'+used+'</strong></div>'+
