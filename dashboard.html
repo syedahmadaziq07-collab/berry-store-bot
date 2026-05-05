@@ -311,6 +311,59 @@ button:active{transform:scale(.97)}
 .notif-events .ne-label{color:var(--text)}
 .notif-events .ne-desc{color:var(--text-xs);font-size:.72rem}
 .notif-test-btn{margin-top:1rem}
+
+
+/* ====== SETTINGS / MOBILE R&D UPGRADE ====== */
+.settings-wrap{max-width:980px;display:grid;grid-template-columns:1fr;gap:1rem}
+.settings-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1rem}
+.settings-card h3{font-size:.95rem;font-weight:800;margin-bottom:.25rem}
+.settings-help{font-size:.78rem;color:var(--text-s);line-height:1.5;margin-bottom:.85rem}
+.setting-row{display:grid;grid-template-columns:220px 1fr auto;gap:.75rem;align-items:start;padding:.85rem 0;border-bottom:1px solid var(--border)}
+.setting-row:last-child{border-bottom:none}
+.setting-key{font-size:.82rem;font-weight:800;color:var(--text);word-break:break-word}
+.setting-desc{font-size:.72rem;color:var(--text-xs);margin-top:.18rem;line-height:1.4}
+.setting-row textarea,.setting-row input,.settings-card textarea,.settings-card input{width:100%;padding:.6rem .75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.86rem;background:var(--input-bg);color:var(--text);outline:none;font-family:inherit}
+.setting-row textarea{min-height:92px;resize:vertical;line-height:1.45}
+.setting-row textarea:focus,.setting-row input:focus,.settings-card textarea:focus,.settings-card input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
+.settings-add{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-top:.75rem}
+.settings-add .full{grid-column:1/-1}
+.notif-bell.has-new{border-color:var(--danger);color:var(--danger);animation:ringBell 1.1s ease-in-out 2}
+.notif-bell.has-new .bell-dot{display:block}
+.notif-count{position:absolute;top:-7px;right:-7px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:.62rem;font-weight:800;display:none;align-items:center;justify-content:center;border:2px solid #12141c}
+.notif-bell.has-new .notif-count{display:flex}
+@keyframes ringBell{0%,100%{transform:rotate(0)}20%{transform:rotate(-10deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-7deg)}80%{transform:rotate(7deg)}}
+.live-alert-row{display:flex;gap:.65rem;align-items:flex-start;padding:.6rem 0;border-bottom:1px solid var(--border)}
+.live-alert-row:last-child{border-bottom:none}
+.live-alert-icon{width:30px;height:30px;border-radius:var(--r-s);display:flex;align-items:center;justify-content:center;background:var(--accent-bg);color:var(--accent);flex-shrink:0}
+.live-alert-title{font-size:.83rem;font-weight:800;color:var(--text)}
+.live-alert-body{font-size:.76rem;color:var(--text-s);line-height:1.4;margin-top:.1rem}
+.live-alert-time{font-size:.68rem;color:var(--text-xs);margin-top:.18rem}
+.variant-stock-list{margin-top:.8rem;border-top:1px solid var(--border);padding-top:.65rem;display:flex;flex-direction:column;gap:.45rem}
+.variant-stock-row{display:grid;grid-template-columns:1fr 82px auto;gap:.45rem;align-items:center;background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:var(--r-s);padding:.45rem}
+.variant-stock-name{font-size:.78rem;font-weight:700;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stock-edit-input{width:82px;padding:.34rem .5rem;border:1px solid var(--border);border-radius:var(--r-s);background:var(--input-bg);color:var(--text);font-size:.82rem;outline:none}
+.stock-edit-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12)}
+.card-note{font-size:.72rem;color:var(--text-xs);line-height:1.4;margin-top:.35rem}
+@media(max-width:640px){
+  .topbar{padding:.7rem 1rem;align-items:flex-start;gap:.65rem;flex-wrap:wrap}
+  .topbar-left{width:100%;justify-content:space-between}
+  .topbar-right{width:100%;justify-content:space-between;gap:.45rem;flex-wrap:wrap}
+  .conn-badge{font-size:.7rem;padding:.22rem .5rem}
+  .updated{display:none}
+  .filter-row input[type=text]{min-width:0;width:100%}
+  .fpill{font-size:.72rem;padding:.28rem .65rem}
+  .sec-row{align-items:flex-start;gap:.5rem;flex-direction:column}
+  .pc-btns button,.cred-card button,.stock-card button{flex:1;min-width:120px}
+  .var-add-row{grid-template-columns:1fr}
+  .var-add-row button{width:100%;margin-top:.1rem}
+  .modal{padding:1rem;max-height:92vh}
+  .modal-btns{flex-direction:column-reverse}.modal-btns button{width:100%}
+  .setting-row{grid-template-columns:1fr;gap:.45rem}
+  .settings-add{grid-template-columns:1fr}
+  .variant-stock-row{grid-template-columns:1fr 72px;gap:.4rem}
+  .variant-stock-row .var-actions{grid-column:1/-1;justify-content:flex-start;flex-wrap:wrap}
+}
+
 </style>
 </head>
 <body>
@@ -358,6 +411,9 @@ button:active{transform:scale(.97)}
       <span class="ic">&#128279;</span>Referral
     </div>
     <div class="sb-section">Settings</div>
+    <div class="nb" data-page="botsettings" onclick="nav(this)">
+      <span class="ic">&#9881;</span>Bot Settings
+    </div>
     <div class="nb" data-page="notifications" onclick="nav(this)">
       <span class="ic">&#128276;</span>Notifications
     </div>
@@ -382,7 +438,7 @@ button:active{transform:scale(.97)}
         <button class="ptab" onclick="setPeriod('week',this)">Week</button>
         <button class="ptab" onclick="setPeriod('month',this)">Month</button>
       </div>
-      <button class="notif-bell" id="notifBell" onclick="nav(document.querySelector('[data-page=notifications]'))" title="Notifications">&#128276;<span class="bell-dot"></span></button>
+      <button class="notif-bell" id="notifBell" onclick="nav(document.querySelector('[data-page=notifications]'))" title="Notifications">&#128276;<span class="bell-dot"></span><span class="notif-count" id="notifCount">0</span></button>
       <div class="conn-badge">
         <span class="cdot off" id="cdot"></span>
         <span id="clabel">Disconnected</span>
@@ -540,7 +596,7 @@ button:active{transform:scale(.97)}
     <div class="page" id="page-stocks">
       <div class="sec-row" style="margin-bottom:1rem">
         <div class="sec-title">Stock Management</div>
-        <span class="badge b-blue" style="font-size:.72rem">Auto-delivery products only</span>
+        <span class="badge b-blue" style="font-size:.72rem">All products & variants</span>
       </div>
       <div class="stock-grid" id="stockGrid">
         <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
@@ -594,6 +650,37 @@ button:active{transform:scale(.97)}
       </div>
     </div>
 
+
+    <!-- ====== BOT SETTINGS ====== -->
+    <div class="page" id="page-botsettings">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div>
+          <div class="sec-title">Bot Settings</div>
+          <div style="font-size:.8rem;color:var(--text-s);margin-top:.2rem">Edit Telegram bot text directly from Supabase <strong>bot_settings</strong>.</div>
+        </div>
+        <button class="btn-ghost btn-sm btn-pill" onclick="loadBotSettings()">Refresh</button>
+      </div>
+      <div class="settings-wrap">
+        <div class="settings-card">
+          <h3>Editable Messages</h3>
+          <div class="settings-help">Common keys such as welcome message, delivery message, testimonial template and force join channel are shown first. Existing keys from your table will also appear here.</div>
+          <div id="botSettingsList">
+            <div style="padding:1rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Add / Update Custom Setting</h3>
+          <div class="settings-help">Use this if your bot has a new key in <code>bot_settings</code>. Same key will update existing row.</div>
+          <div class="settings-add">
+            <div><label class="field-label">Key</label><input id="botSetNewKey" placeholder="e.g. welcome_message"/></div>
+            <div><label class="field-label">Description</label><input id="botSetNewDesc" placeholder="Optional description"/></div>
+            <div class="full"><label class="field-label">Value</label><textarea id="botSetNewValue" rows="4" placeholder="Text/value to save"></textarea></div>
+          </div>
+          <button class="btn-primary btn-pill" style="margin-top:.75rem" onclick="addBotSetting()">Save Custom Setting</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ====== NOTIFICATIONS ====== -->
     <div class="page" id="page-notifications">
       <div class="sec-row" style="margin-bottom:1rem">
@@ -629,6 +716,14 @@ button:active{transform:scale(.97)}
           <button class="btn-ghost notif-test-btn" onclick="sendTestNotification()" style="width:100%">&#128172; Send Test Notification</button>
 
           <button class="btn-ghost" onclick="unsubscribePush()" style="width:100%;margin-top:.5rem;color:var(--danger);border-color:rgba(239,68,68,.25)">&#10005; Disable Notifications</button>
+        </div>
+
+        <div class="notif-events" style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.75rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s)">Recent Live Alerts</div>
+            <button class="btn-ghost btn-sm" onclick="clearLiveAlerts()">Clear</button>
+          </div>
+          <div id="notifLiveFeed" style="font-size:.82rem;color:var(--text-s)">No live alerts yet.</div>
         </div>
       </div>
     </div>
@@ -760,11 +855,16 @@ let _refreshTimer = null;
 let _variantsProductId = null;
 let _variantsProductName = '';
 let _lastUpdated = null;
+let _botSettingsRows = [];
+let _liveAlerts = [];
+let _newAlertCount = 0;
+let _orderPollTimer = null;
+let _latestOrderCreatedAt = null;
 
 const PAGE_NAMES = {
   dashboard:'Dashboard', products:'Products', orders:'Orders',
   sales:'Sales', stocks:'Stocks', credentials:'Credentials',
-  broadcast:'Broadcast', referral:'Referral', notifications:'Notifications'
+  broadcast:'Broadcast', referral:'Referral', botsettings:'Bot Settings', notifications:'Notifications'
 };
 
 // ====================================================
@@ -803,6 +903,12 @@ const timeAgo = ts => {
 };
 
 const bool = v => v===true||v==='true'||v===1;
+const isActiveRecord = r => {
+  if (!r) return true;
+  if (r.is_active !== undefined && r.is_active !== null) return bool(r.is_active);
+  if (r.status !== undefined && r.status !== null && String(r.status).trim() !== '') return String(r.status).toLowerCase() === 'active';
+  return true;
+};
 
 const statusBadge = s => {
   const map = {
@@ -854,6 +960,7 @@ function nav(el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-'+_page).classList.add('active');
   document.getElementById('breadPage').textContent = PAGE_NAMES[_page]||_page;
+  if (_page === 'notifications') { _newAlertCount = 0; updateNotifCount(); renderLiveAlerts(); }
   // Show period tabs only on dashboard
   const ptabs = document.getElementById('periodTabs');
   if (ptabs) ptabs.style.display = _page === 'dashboard' ? 'flex' : 'none';
@@ -911,7 +1018,7 @@ async function doConnect() {
     closeOverlay('connectOverlay');
     toast('Connected successfully' + (role === 'service_role' ? ' (service_role)' : ''));
     startRefresh();
-    if (Notification.permission === 'granted') setupRealtimeListeners();
+    startOrderWatcher();
   } catch(e) {
     err.textContent = 'Connection failed: ' + e.message;
     sb = null;
@@ -936,6 +1043,7 @@ function startRefresh() {
 setInterval(()=>{
   if (_lastUpdated)
     document.getElementById('updLbl').textContent = 'Updated ' + timeAgo(_lastUpdated);
+  if (_page === 'notifications') renderLiveAlerts();
 }, 1000);
 
 function markUpdated() {
@@ -953,7 +1061,8 @@ function loadPage(p) {
   if (p==='credentials') loadCredentials();
   if (p==='broadcast')   loadBcastCount();
   if (p==='referral')    loadReferral();
-  if (p==='notifications') refreshNotifUI();
+  if (p==='botsettings') loadBotSettings();
+  if (p==='notifications') { refreshNotifUI(); renderLiveAlerts(); }
 }
 
 // ====================================================
@@ -1239,8 +1348,8 @@ function showConfirm(title, msg, onConfirm) {
   document.getElementById('confirmTitle').textContent = title;
   document.getElementById('confirmMsg').textContent = msg;
   const btn = document.getElementById('confirmBtn');
-  btn.textContent = title.includes('Reject') ? 'Yes, Reject' : (title.includes('Approve') ? 'Yes, Approve' : 'Confirm');
-  btn.className = title.includes('Reject') ? 'btn-danger' : 'btn-primary';
+  btn.textContent = title.includes('Reject') ? 'Yes, Reject' : (title.includes('Approve') ? 'Yes, Approve' : (title.includes('Deactivate') || title.includes('Delete') ? 'Yes, Continue' : 'Confirm'));
+  btn.className = title.includes('Reject') || title.includes('Delete') || title.includes('Deactivate') ? 'btn-danger' : 'btn-primary';
   btn.onclick = () => { closeOverlay('confirmOverlay'); onConfirm(); };
   document.getElementById('confirmOverlay').classList.add('open');
 }
@@ -1268,7 +1377,7 @@ async function loadProducts() {
       varMap[v.product_id].push(v);
     });
     grid.innerHTML = data.map(p=>{
-      const active = bool(p.is_active)||(p.status||'').toLowerCase()==='active';
+      const active = isActiveRecord(p);
       const delivery = bool(p.auto_delivery);
       const pVars = varMap[p.id] || [];
       const hasVariants = pVars.length > 0;
@@ -1337,13 +1446,50 @@ async function saveEdit() {
   } catch(e) { toast('Error: '+e.message); }
 }
 
-async function toggleActive(id, cur) {
+function toggleActive(id, cur) {
+  if (!sb) return;
+  const nextActive = !cur;
+  if (!nextActive) {
+    showConfirm(
+      'Deactivate Product',
+      'Deactivate this product and set its product stock + all variant stocks to 0? Customers will not be able to buy it until stock is added again.',
+      () => setProductAvailability(id, false)
+    );
+  } else {
+    setProductAvailability(id, true);
+  }
+}
+
+async function tryProductUpdate(id, payload) {
+  const { error } = await sb.from('products').update(payload).eq('id', id);
+  return !error;
+}
+
+async function tryVariantUpdateByProduct(productId, payload) {
+  const { error } = await sb.from('product_variants').update(payload).eq('product_id', productId);
+  return !error;
+}
+
+async function setProductAvailability(id, active) {
   if (!sb) return;
   try {
-    const {error} = await sb.from('products').update({is_active:!cur, status:!cur?'active':'inactive'}).eq('id',id);
-    if (error) throw error;
-    toast(!cur ? 'Product activated' : 'Product deactivated');
+    if (active) {
+      await tryProductUpdate(id, { is_active: true });
+      await tryProductUpdate(id, { status: 'active' });
+      toast('Product activated. Add stock/credentials before selling if stock is 0.');
+    } else {
+      const productStockOk = await tryProductUpdate(id, { stock: 0 });
+      await tryProductUpdate(id, { is_active: false });
+      await tryProductUpdate(id, { status: 'inactive' });
+      await tryVariantUpdateByProduct(id, { stock: 0 });
+      await tryVariantUpdateByProduct(id, { is_active: false });
+      await tryVariantUpdateByProduct(id, { status: 'inactive' });
+      if (!productStockOk) toast('Deactivated, but products.stock could not be updated. Check table column.');
+      else toast('Product deactivated and stock set to 0');
+    }
     loadProducts();
+    if (_page === 'stocks') loadStocks();
+    if (_page === 'credentials') loadCredentials();
   } catch(e) { toast('Error: '+e.message); }
 }
 
@@ -1404,6 +1550,7 @@ async function loadVariantsList() {
           '<td><div class="var-actions">'+
             '<button class="btn-primary btn-sm" onclick="editVariantRow(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\','+
               (v.price??0)+','+(v.stock??0)+')">Edit</button>'+
+            '<button class="btn-warning btn-sm" onclick="deactivateVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Zero</button>'+
             '<button class="btn-danger btn-sm" onclick="deleteVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Delete</button>'+
           '</div></td></tr>';
       }).join('')+
@@ -1534,10 +1681,11 @@ async function loadStocks() {
   grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
   try {
     const [{data:prods,error},{data:variants,error:vErr}] = await Promise.all([
-      sb.from('products').select('id,name,auto_delivery,price').order('name'),
-      sb.from('product_variants').select('id,product_id,variant_name,stock,price')
+      sb.from('products').select('*').order('name'),
+      sb.from('product_variants').select('*')
     ]);
     if (error) throw error;
+    if (vErr) console.warn('product_variants load warning:', vErr.message);
     if (!prods||!prods.length) {
       grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products.</div>';
       return;
@@ -1549,49 +1697,129 @@ async function loadStocks() {
     });
 
     const cards = await Promise.all(prods.map(async p=>{
-      if (!bool(p.auto_delivery)) return null;
-      let total=0,used=0,avail=0;
-      try {
-        const [rU,rA] = await Promise.all([
-          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
-          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
-        ]);
-        used = rU.count??0; avail = rA.count??0; total = used+avail;
-      } catch(_){}
-      const usedPct = total ? Math.round((used/total)*100) : 0;
-      const barCls = usedPct>=90?'danger':usedPct>=60?'warn':'';
-      const low = avail < 3;
+      const isAuto = bool(p.auto_delivery);
       const pVars = variantMap[p.id] || [];
       const hasVariants = pVars.length > 0;
+      const productStock = parseInt(p.stock ?? 0) || 0;
+      const variantStock = pVars.reduce((sum,v)=>sum+(parseInt(v.stock ?? 0)||0),0);
+      const visibleStock = hasVariants ? variantStock : productStock;
+      const active = isActiveRecord(p);
+      let total=0,used=0,avail=0;
+      if (isAuto) {
+        try {
+          const [rU,rA] = await Promise.all([
+            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
+            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
+          ]);
+          used = rU.count??0; avail = rA.count??0; total = used+avail;
+        } catch(_){ }
+      }
+      const usedPct = total ? Math.round((used/total)*100) : 0;
+      const barCls = usedPct>=90?'danger':usedPct>=60?'warn':'';
+      const low = visibleStock < 3;
+      const variantsHtml = hasVariants ?
+        '<div class="variant-stock-list">'+
+          '<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text-xs)">Variant Stock</div>'+
+          pVars.map(v=>{
+            const vActive = v.is_active !== undefined ? bool(v.is_active) : (v.status !== undefined ? (v.status||'').toLowerCase()==='active' : null);
+            const vName = escH(v.variant_name||('Variant #'+v.id));
+            const vId = String(v.id).replace(/'/g,"\\'");
+            return '<div class="variant-stock-row">'+
+              '<div class="variant-stock-name" title="'+vName+'">'+vName+(vActive===false?' <span class="badge b-grey" style="font-size:.58rem">Inactive</span>':'')+'</div>'+
+              '<input class="stock-edit-input" id="stockVar-'+escH(v.id)+'" type="number" min="0" value="'+(v.stock??0)+'" />'+
+              '<div class="var-actions">'+
+                '<button class="btn-success btn-sm" onclick="saveVariantStock(\''+vId+'\')">Save</button>'+
+                '<button class="btn-warning btn-sm" onclick="deactivateVariant(\''+vId+'\',\''+escH(v.variant_name||'Variant').replace(/'/g,"\\'")+'\')">Zero</button>'+
+              '</div>'+ 
+            '</div>';
+          }).join('')+
+        '</div>' :
+        '<div class="variant-stock-list">'+
+          '<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text-xs)">Product Stock</div>'+ 
+          '<div class="variant-stock-row">'+
+            '<div class="variant-stock-name">Main product stock</div>'+ 
+            '<input class="stock-edit-input" id="stockProd-'+escH(p.id)+'" type="number" min="0" value="'+productStock+'" />'+
+            '<div class="var-actions">'+
+              '<button class="btn-success btn-sm" onclick="saveProductStock(\''+String(p.id).replace(/'/g,"\\'")+'\')">Save</button>'+ 
+              '<button class="btn-warning btn-sm" onclick="toggleActive(\''+String(p.id).replace(/'/g,"\\'")+'\',true)">Zero</button>'+ 
+            '</div>'+ 
+          '</div>'+ 
+        '</div>';
 
       return '<div class="stock-card">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.35rem">'+
-          '<div>'+
-            '<div class="card-name">'+p.name+'</div>'+
-            (p.price != null ? '<div class="card-chips"><span class="chip price">RM '+parseFloat(p.price).toFixed(2)+'</span></div>' : '')+
-          '</div>'+
-          '<span class="badge '+(low?'b-red':'b-green')+'">'+(low?'Low Stock':'OK')+'</span>'+
-        '</div>'+
+          '<div>'+ 
+            '<div class="card-name">'+escH(p.name||'--')+'</div>'+ 
+            '<div class="card-chips">'+
+              (p.price != null ? '<span class="chip price">RM '+parseFloat(p.price).toFixed(2)+'</span>' : '')+
+              '<span class="chip '+(isAuto?'auto':'manual')+'">'+(isAuto?'Auto':'Manual')+'</span>'+ 
+              (hasVariants?'<span class="chip has-variants">'+pVars.length+' variants</span>':'')+
+            '</div>'+ 
+          '</div>'+ 
+          '<span class="badge '+(!active?'b-grey':(low?'b-red':'b-green'))+'">'+(!active?'Inactive':(low?'Low Stock':'OK'))+'</span>'+ 
+        '</div>'+ 
         '<div class="stat-boxes">'+
-          '<div class="stat-box"><div class="sb-lbl">Total</div><div class="sb-val">'+total+'</div></div>'+
-          '<div class="stat-box"><div class="sb-lbl">Available</div><div class="sb-val '+(avail>=3?'ok':'bad')+'">'+avail+'</div></div>'+
-          '<div class="stat-box"><div class="sb-lbl">Delivered</div><div class="sb-val">'+used+'</div></div>'+
-        '</div>'+
-        '<div class="prog-bar-wrap">'+
-          '<div class="prog-bg"><div class="prog-fill '+barCls+'" style="width:'+usedPct+'%"></div></div>'+
-          '<div class="prog-lbl">'+usedPct+'% delivered</div>'+
-        '</div>'+
-        '<button class="btn-primary btn-sm btn-pill" style="margin-top:.5rem" onclick="openRestock(\''+p.id+'\',\''+p.name.replace(/'/g,"\\'")+'\','+hasVariants+')">Restock</button>'+
+          '<div class="stat-box"><div class="sb-lbl">Shown Stock</div><div class="sb-val '+(visibleStock>0?'ok':'bad')+'">'+visibleStock+'</div></div>'+ 
+          '<div class="stat-box"><div class="sb-lbl">Available Creds</div><div class="sb-val '+(avail>=3?'ok':(avail>0?'':'bad'))+'">'+avail+'</div></div>'+ 
+          '<div class="stat-box"><div class="sb-lbl">Delivered</div><div class="sb-val">'+used+'</div></div>'+ 
+        '</div>'+ 
+        (isAuto ? '<div class="prog-bar-wrap"><div class="prog-bg"><div class="prog-fill '+barCls+'" style="width:'+usedPct+'%"></div></div><div class="prog-lbl">'+usedPct+'% credentials delivered</div></div>' : '<div class="card-note">Manual product: stock is controlled from products / variants table.</div>')+
+        variantsHtml+
+        '<div class="pc-btns" style="margin-top:.75rem">'+
+          '<button class="btn-primary btn-sm btn-pill" onclick="openRestock(\''+String(p.id).replace(/'/g,"\\'")+'\',\''+escH(p.name||'Product').replace(/'/g,"\\'")+'\','+hasVariants+')">Add Credentials</button>'+ 
+          '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+String(p.id).replace(/'/g,"\\'")+'\','+active+')">'+(active?'Deactivate':'Activate')+'</button>'+ 
+        '</div>'+ 
       '</div>';
     }));
-    const valid = cards.filter(Boolean);
-    grid.innerHTML = valid.length
-      ? valid.join('')
-      : '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No auto-delivery products.</div>';
+    grid.innerHTML = cards.join('');
     markUpdated();
   } catch(e) {
     grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--danger)">Error: '+e.message+'</div>';
   }
+}
+
+async function saveProductStock(id) {
+  if (!sb) return;
+  const el = document.getElementById('stockProd-'+id);
+  const stock = parseInt(el && el.value);
+  if (isNaN(stock) || stock < 0) { toast('Valid stock is required'); return; }
+  try {
+    const { error } = await sb.from('products').update({ stock }).eq('id', id);
+    if (error) throw error;
+    toast('Product stock updated');
+    loadStocks();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function saveVariantStock(id) {
+  if (!sb) return;
+  const el = document.getElementById('stockVar-'+id);
+  const stock = parseInt(el && el.value);
+  if (isNaN(stock) || stock < 0) { toast('Valid stock is required'); return; }
+  try {
+    const { error } = await sb.from('product_variants').update({ stock }).eq('id', id);
+    if (error) throw error;
+    toast('Variant stock updated');
+    loadStocks();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+function deactivateVariant(id, name) {
+  showConfirm('Deactivate Variant', 'Set variant "'+name+'" stock to 0 and mark inactive if your table supports it?', async () => {
+    if (!sb) return;
+    try {
+      const { error } = await sb.from('product_variants').update({ stock: 0 }).eq('id', id);
+      if (error) throw error;
+      await sb.from('product_variants').update({ is_active: false }).eq('id', id);
+      await sb.from('product_variants').update({ status: 'inactive' }).eq('id', id);
+      toast('Variant deactivated and stock set to 0');
+      loadVariantsList();
+      loadStocks();
+      loadProducts();
+    } catch(e) { toast('Error: '+e.message); }
+  });
 }
 
 // ====================================================
@@ -1791,6 +2019,91 @@ async function sendBroadcast() {
     btn.disabled = false;
     btn.textContent = 'Send to All Users';
   }
+}
+
+
+// ====================================================
+// BOT SETTINGS
+// ====================================================
+const DEFAULT_BOT_SETTINGS = [
+  { key:'welcome_message', description:'Message shown when user starts the bot' },
+  { key:'delivery_message', description:'Message sent together with delivered credentials' },
+  { key:'testimonial_template', description:'Template used when posting testimonials' },
+  { key:'force_join_channel', description:'Telegram channel username required before using bot, e.g. @berrystorrel' },
+  { key:'payment_instruction', description:'Payment instruction text shown before QR/payment proof' },
+  { key:'vapid_public_key', description:'Optional key for browser push notifications' }
+];
+
+async function loadBotSettings() {
+  if (!sb) return;
+  const wrap = document.getElementById('botSettingsList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
+  try {
+    const { data, error } = await sb.from('bot_settings').select('*').order('key');
+    if (error) throw error;
+    const map = {};
+    (data||[]).forEach(row => { map[row.key] = row; });
+    const merged = [];
+    DEFAULT_BOT_SETTINGS.forEach(def => merged.push({ ...def, ...(map[def.key] || {}) }));
+    (data||[]).forEach(row => { if (!DEFAULT_BOT_SETTINGS.find(d=>d.key===row.key)) merged.push(row); });
+    _botSettingsRows = merged;
+    if (!merged.length) {
+      wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-s)">No settings found. Add one below.</div>';
+      return;
+    }
+    wrap.innerHTML = merged.map((row,i)=>{
+      const key = escH(row.key || '');
+      const desc = escH(row.description || 'No description');
+      const val = escH(row.value ?? '');
+      return '<div class="setting-row">'+
+        '<div><div class="setting-key">'+key+'</div><div class="setting-desc">'+desc+'</div></div>'+ 
+        '<textarea id="botSetValue-'+i+'" placeholder="Empty value">'+val+'</textarea>'+ 
+        '<button class="btn-primary btn-sm btn-pill" onclick="saveBotSetting('+i+')">Save</button>'+ 
+      '</div>';
+    }).join('');
+    markUpdated();
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:1rem;color:var(--danger);font-size:.84rem">Error loading bot_settings: '+escH(e.message)+'</div>';
+  }
+}
+
+async function upsertBotSetting(payload) {
+  let { error } = await sb.from('bot_settings').upsert(payload, { onConflict: 'key' });
+  if (error && payload.description !== undefined) {
+    const slim = { key: payload.key, value: payload.value };
+    const retry = await sb.from('bot_settings').upsert(slim, { onConflict: 'key' });
+    error = retry.error;
+  }
+  if (error) throw error;
+}
+
+async function saveBotSetting(index) {
+  if (!sb) return;
+  const row = _botSettingsRows[index];
+  if (!row) return;
+  const value = document.getElementById('botSetValue-'+index).value;
+  try {
+    await upsertBotSetting({ key: row.key, value, description: row.description || null });
+    toast('Setting saved: ' + row.key);
+    loadBotSettings();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function addBotSetting() {
+  if (!sb) return;
+  const key = document.getElementById('botSetNewKey').value.trim();
+  const value = document.getElementById('botSetNewValue').value;
+  const description = document.getElementById('botSetNewDesc').value.trim();
+  if (!key) { toast('Setting key is required'); return; }
+  try {
+    await upsertBotSetting({ key, value, description });
+    toast('Setting saved: ' + key);
+    document.getElementById('botSetNewKey').value = '';
+    document.getElementById('botSetNewValue').value = '';
+    document.getElementById('botSetNewDesc').value = '';
+    loadBotSettings();
+  } catch(e) { toast('Error: '+e.message); }
 }
 
 // ====================================================
@@ -2011,9 +2324,91 @@ const _orderStatusCache = {};
 async function seedOrderStatusCache() {
   if (!sb) return;
   try {
-    const { data } = await sb.from('orders').select('id,status');
-    if (data) data.forEach(o => { _orderStatusCache[o.id] = o.status; });
+    const { data } = await sb.from('orders').select('id,status,created_at').order('created_at', { ascending:false }).limit(50);
+    if (data) {
+      data.forEach(o => { _orderStatusCache[o.id] = o.status; });
+      if (data[0] && !_latestOrderCreatedAt) _latestOrderCreatedAt = data[0].created_at;
+    }
   } catch(_) {}
+}
+
+function startOrderWatcher() {
+  if (!sb) return;
+  setupRealtimeListeners();
+  clearInterval(_orderPollTimer);
+  _orderPollTimer = setInterval(pollNewOrders, 15000);
+}
+
+async function pollNewOrders() {
+  if (!sb) return;
+  try {
+    let q = sb.from('orders').select('id,username,product_name,status,created_at,amount').order('created_at', { ascending:true }).limit(25);
+    if (_latestOrderCreatedAt) q = q.gt('created_at', _latestOrderCreatedAt);
+    const { data, error } = await q;
+    if (error) return;
+    if (!data || !data.length) return;
+    for (const o of data) {
+      if (!_latestOrderCreatedAt || o.created_at > _latestOrderCreatedAt) _latestOrderCreatedAt = o.created_at;
+      if (_orderStatusCache[o.id] === undefined) {
+        _orderStatusCache[o.id] = o.status;
+        notifyNewOrder(o, 'poll');
+      }
+    }
+  } catch(_) {}
+}
+
+function notifyNewOrder(o, source) {
+  const key = 'new-order-' + o.id;
+  if (_liveAlerts.find(a => a.key === key)) return;
+  const body = 'New order from @' + (o.username || 'customer') + ' for ' + (o.product_name || 'product') + (o.amount ? ' (' + rm(o.amount) + ')' : '');
+  addLiveAlert(key, 'New Order', body, '🛒');
+  showLocalNotification('New Order', body, 'new-order-' + o.id);
+  if (_page === 'orders') loadOrders();
+  else loadDashboard();
+}
+
+function addLiveAlert(key, title, body, icon) {
+  _liveAlerts.unshift({ key, title, body, icon: icon || '🔔', ts: Date.now() });
+  _liveAlerts = _liveAlerts.slice(0, 12);
+  _newAlertCount++;
+  updateNotifCount();
+  renderLiveAlerts();
+  toast(title + ': ' + body, 6500);
+}
+
+function updateNotifCount() {
+  const bell = document.getElementById('notifBell');
+  const count = document.getElementById('notifCount');
+  if (!bell || !count) return;
+  if (_newAlertCount > 0) {
+    bell.classList.add('has-new');
+    count.textContent = _newAlertCount > 9 ? '9+' : String(_newAlertCount);
+  } else {
+    bell.classList.remove('has-new');
+    count.textContent = '0';
+  }
+}
+
+function renderLiveAlerts() {
+  const feed = document.getElementById('notifLiveFeed');
+  if (!feed) return;
+  if (!_liveAlerts.length) {
+    feed.innerHTML = 'No live alerts yet.';
+    return;
+  }
+  feed.innerHTML = _liveAlerts.map(a => '<div class="live-alert-row">'+
+    '<div class="live-alert-icon">'+a.icon+'</div>'+ 
+    '<div><div class="live-alert-title">'+escH(a.title)+'</div>'+ 
+    '<div class="live-alert-body">'+escH(a.body)+'</div>'+ 
+    '<div class="live-alert-time">'+timeAgo(a.ts)+'</div></div>'+ 
+  '</div>').join('');
+}
+
+function clearLiveAlerts() {
+  _liveAlerts = [];
+  _newAlertCount = 0;
+  updateNotifCount();
+  renderLiveAlerts();
 }
 
 // Supabase Realtime listeners for push events
@@ -2026,7 +2421,8 @@ async function setupRealtimeListeners() {
   _realtimeChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
     const o = payload.new;
     _orderStatusCache[o.id] = o.status;
-    showLocalNotification('New Order', 'New order from @' + (o.username || 'customer') + ' for ' + (o.product_name || 'product'), 'new-order');
+    if (o.created_at && (!_latestOrderCreatedAt || o.created_at > _latestOrderCreatedAt)) _latestOrderCreatedAt = o.created_at;
+    notifyNewOrder(o, 'realtime');
   });
 
   // Status change detection using local cache
@@ -2036,10 +2432,14 @@ async function setupRealtimeListeners() {
     _orderStatusCache[o.id] = o.status;
     if (prevStatus === o.status) return;
     if (o.status === 'waiting_approval' && prevStatus !== 'waiting_approval') {
-      showLocalNotification('Payment Received', '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order'), 'payment');
+      const body = '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order');
+      addLiveAlert('payment-' + o.id + '-' + Date.now(), 'Payment Received', body, '💰');
+      showLocalNotification('Payment Received', body, 'payment-' + o.id);
     }
     if ((o.status === 'completed' || o.status === 'approved') && prevStatus !== o.status) {
-      showLocalNotification('Order Completed', 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status, 'completed');
+      const body = 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status;
+      addLiveAlert('completed-' + o.id + '-' + Date.now(), 'Order Completed', body, '✅');
+      showLocalNotification('Order Completed', body, 'completed-' + o.id);
     }
   });
 
@@ -2059,7 +2459,9 @@ async function checkLowStock() {
     for (const p of prods) {
       const { count } = await sb.from('credentials').select('id', { count: 'exact', head: true }).eq('product_id', p.id).eq('is_used', false);
       if (count !== null && count < 3) {
-        showLocalNotification('Low Stock Alert', p.name + ' has only ' + count + ' credentials remaining!', 'low-stock-' + p.id);
+        const body = p.name + ' has only ' + count + ' credentials remaining!';
+        addLiveAlert('low-stock-' + p.id, 'Low Stock Alert', body, '⚠️');
+        showLocalNotification('Low Stock Alert', body, 'low-stock-' + p.id);
       }
     }
   } catch(_) {}
@@ -2105,7 +2507,7 @@ document.querySelectorAll('.overlay').forEach(o=>{
       setConn(true);
       startRefresh();
       // Start realtime listeners if notifications enabled
-      if (Notification.permission === 'granted') setupRealtimeListeners();
+      startOrderWatcher();
     } catch(_) {
       openConnect();
     }
