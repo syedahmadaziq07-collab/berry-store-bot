@@ -651,26 +651,6 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not c.get("is_used"):
                 unused_for_product[pid] = unused_for_product.get(pid, 0) + 1
 
-    # Send banner image
-    banner_paths = [
-        "banner.png",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "banner.png"),
-    ]
-    for banner_path in banner_paths:
-        if os.path.exists(banner_path):
-            try:
-                chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
-                with open(banner_path, "rb") as banner_file:
-                    await context.bot.send_photo(
-                        chat_id=chat_id,
-                        photo=banner_file,
-                        read_timeout=30,
-                        write_timeout=30,
-                    )
-            except Exception as exc:
-                log.warning(f"[BANNER] Failed to send banner: {_safe_error(exc)}")
-            break
-
     _shop_title = await _setting('shop_title', 'LIST PRODUCT')
     _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
     text = f"╭─────────────────────╮\n┊  {_shop_title}\n┊─────────────────────\n"
@@ -708,11 +688,38 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"┊ {i}. {p['name']} ( {stock} )\n"
     text += f"╰─────────────────────╯\n\n{_shop_footer}"
 
-    # ReplyKeyboardMarkup cannot go on edit_message_text — must use send_message.
-    # When triggered via inline button: the loading message stays; new message has the keyboard.
+    banner_paths = [
+        "banner.png",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "banner.png"),
+    ]
+    banner_path = None
+    for bp in banner_paths:
+        if os.path.exists(bp):
+            banner_path = bp
+            break
+
+    chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
+
+    if banner_path:
+        try:
+            with open(banner_path, "rb") as banner_file:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=banner_file,
+                    caption=text,
+                    read_timeout=30,
+                    write_timeout=30,
+                    reply_markup=build_product_keyboard(products),
+                )
+            log.info("[BANNER] Sent banner with caption")
+            return
+        except Exception as exc:
+            log.warning(f"[BANNER] Failed: {_safe_error(exc)}")
+
+    # Fallback: no banner, send text only
     if update.callback_query:
         await context.bot.send_message(
-            chat_id=update.callback_query.message.chat_id,
+            chat_id=chat_id,
             text=text,
             reply_markup=build_product_keyboard(products),
         )
