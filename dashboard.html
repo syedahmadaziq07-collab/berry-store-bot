@@ -19,2243 +19,1945 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --sb-w:260px;
-  --bg:#0a0e14;
-  --card:#13171f;
-  --card-hover:#1a1f2a;
+  --sb-w:240px;
+  --bg:#0f1117;
+  --card:#1a1d27;
+  --card-hover:#1f2330;
   --accent:#4f8ef7;
-  --accent-hover:#5c9bff;
   --accent-bg:rgba(79,142,247,.12);
   --accent-border:rgba(79,142,247,.25);
   --success:#22c55e;
   --warning:#f59e0b;
   --danger:#ef4444;
-  --text:#e8eaed;
-  --text-s:#9ca3af;
-  --text-xs:#6b7280;
-  --border:#1f2937;
-  --border-l:#374151;
-  --shadow:0 4px 16px rgba(0,0,0,.4);
-  --r:14px;--r-s:10px;--r-pill:999px;
-  --input-bg:#0f1319;
+  --text:#e4e7ec;
+  --text-s:#8b8fa3;
+  --text-xs:#5c6070;
+  --border:#262938;
+  --border-l:#2f3347;
+  --shadow:0 2px 8px rgba(0,0,0,.3);
+  --r:12px;--r-s:8px;--r-pill:999px;
+  --input-bg:#12141c;
 }
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;overflow-x:hidden}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
 
 /* ====== SCROLLBAR ====== */
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:#4b5563}
+::-webkit-scrollbar-thumb{background:#2f3347;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#3d4259}
 
 /* ====== SIDEBAR ====== */
-.sb{width:var(--sb-w);background:#0d1117;min-height:100vh;border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:300;transition:transform .3s cubic-bezier(0.4,0,0.2,1);box-shadow:var(--shadow)}
-.sb.hidden{transform:translateX(-100%)}
-.sb-brand{padding:1.75rem 1.5rem 1.5rem;border-bottom:1px solid var(--border)}
-.sb-brand-row{display:flex;align-items:center;gap:.85rem}
-.sb-avatar{width:44px;height:44px;border-radius:var(--r-s);background:linear-gradient(135deg,#4f8ef7,#a855f7);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.9rem;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(79,142,247,.3)}
-.sb-name{font-size:1rem;font-weight:800;color:var(--text)}
-.sb-sub{font-size:.72rem;color:var(--text-s);margin-top:2px}
-.sb-section{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-xs);padding:1.5rem 1.5rem .5rem}
-.sb-nav{flex:1;padding:.5rem .75rem}
-.nb{display:flex;align-items:center;gap:.8rem;padding:.7rem 1rem;border-radius:var(--r-s);color:var(--text-s);font-size:.87rem;font-weight:500;cursor:pointer;transition:all .2s cubic-bezier(0.4,0,0.2,1);margin-bottom:3px;border:1px solid transparent}
-.nb:hover{background:rgba(255,255,255,.05);color:var(--text);transform:translateX(2px)}
-.nb.active{background:var(--accent-bg);color:var(--accent);font-weight:600;border-color:var(--accent-border);box-shadow:0 2px 8px rgba(79,142,247,.15)}
-.nb .ic{font-size:1.1rem;width:22px;text-align:center;flex-shrink:0;opacity:.8}
+.sb{width:var(--sb-w);background:#12141c;min-height:100vh;border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:300;transition:transform .25s}
+.sb-brand{padding:1.5rem 1.2rem 1.2rem;border-bottom:1px solid var(--border)}
+.sb-brand-row{display:flex;align-items:center;gap:.75rem}
+.sb-avatar{width:40px;height:40px;border-radius:var(--r-s);background:linear-gradient(135deg,#4f8ef7,#a855f7);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.85rem;font-weight:800;flex-shrink:0}
+.sb-name{font-size:.95rem;font-weight:800;color:var(--text)}
+.sb-sub{font-size:.7rem;color:var(--text-s);margin-top:1px}
+.sb-section{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-xs);padding:1.2rem 1.2rem .4rem}
+.sb-nav{flex:1;padding:.25rem .6rem}
+.nb{display:flex;align-items:center;gap:.7rem;padding:.6rem .85rem;border-radius:var(--r-s);color:var(--text-s);font-size:.84rem;font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:2px;border:1px solid transparent}
+.nb:hover{background:rgba(255,255,255,.04);color:var(--text)}
+.nb.active{background:var(--accent-bg);color:var(--accent);font-weight:600;border-color:var(--accent-border)}
+.nb .ic{font-size:1rem;width:20px;text-align:center;flex-shrink:0;opacity:.8}
 .nb.active .ic{opacity:1}
-.sb-bottom{padding:.85rem .75rem 1.25rem;border-top:1px solid var(--border)}
+.sb-bottom{padding:.75rem .6rem 1rem;border-top:1px solid var(--border)}
 
 /* ====== MAIN ====== */
-.main{margin-left:var(--sb-w);flex:1;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .3s cubic-bezier(0.4,0,0.2,1)}
-.main.full{margin-left:0}
-.topbar{background:#0d1117;border-bottom:1px solid var(--border);padding:.9rem 1.75rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;backdrop-filter:blur(10px);box-shadow:0 1px 3px rgba(0,0,0,.2)}
-.topbar-left{display:flex;align-items:center;gap:.9rem}
-.hamburger{background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text);padding:.4rem;border-radius:var(--r-s);transition:all .2s;display:none}
-.hamburger:hover{background:rgba(255,255,255,.05)}
-.breadcrumb{font-size:.85rem;color:var(--text-s);font-weight:500}
-.breadcrumb strong{color:var(--text);font-weight:700}
-.topbar-right{display:flex;align-items:center;gap:.85rem}
-.period-tabs{display:flex;background:rgba(255,255,255,.04);border-radius:var(--r-pill);padding:4px;gap:3px;border:1px solid var(--border)}
-.ptab{padding:.35rem .9rem;border-radius:var(--r-pill);font-size:.8rem;font-weight:600;color:var(--text-s);cursor:pointer;border:none;background:none;transition:all .2s cubic-bezier(0.4,0,0.2,1)}
-.ptab.active{background:var(--accent);color:#fff;box-shadow:0 2px 6px rgba(79,142,247,.4)}
-.ptab:hover:not(.active){color:var(--text);background:rgba(255,255,255,.03)}
-.conn-badge{display:flex;align-items:center;gap:.45rem;font-size:.77rem;font-weight:600;padding:.3rem .75rem;background:rgba(255,255,255,.04);border-radius:var(--r-pill);border:1px solid var(--border)}
-.cdot{width:9px;height:9px;border-radius:50%}
+.main{margin-left:var(--sb-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:#12141c;border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.topbar-left{display:flex;align-items:center;gap:.75rem}
+.hamburger{display:none;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text)}
+.breadcrumb{font-size:.82rem;color:var(--text-s)}
+.breadcrumb strong{color:var(--text)}
+.topbar-right{display:flex;align-items:center;gap:.75rem}
+.period-tabs{display:flex;background:rgba(255,255,255,.05);border-radius:var(--r-pill);padding:3px;gap:2px}
+.ptab{padding:.3rem .8rem;border-radius:var(--r-pill);font-size:.78rem;font-weight:600;color:var(--text-s);cursor:pointer;border:none;background:none;transition:all .15s}
+.ptab.active{background:var(--accent);color:#fff;box-shadow:0 1px 4px rgba(79,142,247,.3)}
+.ptab:hover:not(.active){color:var(--text)}
+.conn-badge{display:flex;align-items:center;gap:.4rem;font-size:.75rem;font-weight:500;padding:.25rem .65rem;background:rgba(255,255,255,.05);border-radius:var(--r-pill);border:1px solid var(--border)}
+.cdot{width:8px;height:8px;border-radius:50%}
 .cdot.on{background:var(--success);box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:pulse 2s infinite}
 .cdot.off{background:var(--danger)}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.2)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.05)}}
-.updated{font-size:.75rem;color:var(--text-xs)}
+.updated{font-size:.73rem;color:var(--text-xs)}
 
 /* ====== CONTENT ====== */
-.content{padding:1.75rem;flex:1;max-width:100%;overflow-x:hidden}
-.page{display:none;animation:fadeIn .3s ease-in-out}.page.active{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.content{padding:1.5rem;flex:1}
+.page{display:none}.page.active{display:block}
 
 /* ====== SECTION HEADER ====== */
-.sec-label{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-xs);margin-bottom:.6rem}
-.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.75rem}
-.sec-title{font-size:1.15rem;font-weight:800;color:var(--text)}
-.sec-pill{display:inline-flex;align-items:center;padding:.3rem .85rem;background:var(--accent);color:#fff;font-size:.75rem;font-weight:700;border-radius:var(--r-pill);box-shadow:0 2px 6px rgba(79,142,247,.3)}
+.sec-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-xs);margin-bottom:.5rem}
+.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
+.sec-title{font-size:1.05rem;font-weight:800;color:var(--text)}
+.sec-pill{display:inline-flex;align-items:center;padding:.25rem .75rem;background:var(--accent);color:#fff;font-size:.72rem;font-weight:700;border-radius:var(--r-pill)}
 
 /* ====== STAT CARDS ====== */
-.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.15rem;margin-bottom:1.75rem}
-.stat-card{background:var(--card);border-radius:var(--r);padding:1.3rem 1.4rem;border:1px solid var(--border);position:relative;overflow:hidden;transition:all .25s cubic-bezier(0.4,0,0.2,1);cursor:pointer}
-.stat-card:hover{border-color:var(--border-l);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
-.sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.75rem}
-.sc-label{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s)}
-.sc-icon{width:40px;height:40px;border-radius:var(--r-s);display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:800;flex-shrink:0}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--card);border-radius:var(--r);padding:1.15rem 1.25rem;border:1px solid var(--border);position:relative;overflow:hidden}
+.sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.65rem}
+.sc-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-s)}
+.sc-icon{width:36px;height:36px;border-radius:var(--r-s);display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;flex-shrink:0}
 .sc-icon.amber{background:rgba(245,158,11,.15);color:#f59e0b}
 .sc-icon.blue{background:var(--accent-bg);color:var(--accent)}
 .sc-icon.green{background:rgba(34,197,94,.12);color:var(--success)}
 .sc-icon.purple{background:rgba(168,85,247,.12);color:#a855f7}
-.sc-spark{height:50px;width:100%;display:block;margin:-4px 0 .5rem}
-.sc-val{font-size:1.9rem;font-weight:800;line-height:1;color:var(--text);margin-bottom:.3rem}
-.sc-trend{font-size:.75rem;font-weight:600;display:inline-block}
+.sc-spark{height:48px;width:100%;display:block;margin:-4px 0 .4rem}
+.sc-val{font-size:1.8rem;font-weight:800;line-height:1;color:var(--text);margin-bottom:.25rem}
+.sc-trend{font-size:.72rem;font-weight:600;display:inline-block}
 .sc-trend.up{color:var(--success)}
 .sc-trend.dn{color:var(--danger)}
 
 /* ====== CHART CARD ====== */
-.chart-card{background:var(--card);border-radius:var(--r);padding:1.4rem;border:1px solid var(--border);margin-bottom:1.75rem}
-.chart-wrap{position:relative;height:240px}
+.chart-card{background:var(--card);border-radius:var(--r);padding:1.25rem;border:1px solid var(--border);margin-bottom:1.5rem}
+.chart-wrap{position:relative;height:220px}
 
 /* ====== TABLE ====== */
-.clean-table{width:100%;border-collapse:collapse;font-size:.87rem}
-.clean-table thead th{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-xs);padding:.6rem 0;border-bottom:1px solid var(--border);text-align:left}
+.clean-table{width:100%;border-collapse:collapse;font-size:.84rem}
+.clean-table thead th{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-xs);padding:.5rem 0;border-bottom:1px solid var(--border);text-align:left}
 .clean-table tbody tr{border-bottom:1px solid var(--border)}
 .clean-table tbody tr:last-child{border-bottom:none}
-.clean-table tbody td{padding:.7rem 0;vertical-align:middle}
+.clean-table tbody td{padding:.6rem 0;vertical-align:middle}
 
-.table-card{background:var(--card);border-radius:var(--r);border:1px solid var(--border);overflow:hidden;margin-bottom:1.75rem;transition:all .2s}
-.table-card:hover{border-color:var(--border-l)}
-.tc-hdr{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}
-.tc-hdr h3{font-size:.95rem;font-weight:700}
+.table-card{background:var(--card);border-radius:var(--r);border:1px solid var(--border);overflow:hidden;margin-bottom:1.5rem}
+.tc-hdr{padding:.85rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.tc-hdr h3{font-size:.88rem;font-weight:700}
 .overflow-x{overflow-x:auto}
-.box-table{width:100%;border-collapse:collapse;font-size:.87rem}
+.box-table{width:100%;border-collapse:collapse;font-size:.84rem}
 .box-table thead{background:rgba(255,255,255,.02)}
-.box-table thead th{padding:.7rem 1.15rem;text-align:left;font-size:.65rem;font-weight:700;color:var(--text-xs);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:1px solid var(--border)}
-.box-table tbody tr{border-bottom:1px solid var(--border);transition:background .15s}
+.box-table thead th{padding:.6rem 1rem;text-align:left;font-size:.6rem;font-weight:700;color:var(--text-xs);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:1px solid var(--border)}
+.box-table tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
 .box-table tbody tr:last-child{border-bottom:none}
-.box-table tbody tr:hover{background:rgba(255,255,255,.025)}
-.box-table tbody td{padding:.75rem 1.15rem;vertical-align:middle}
-.empty-r td{text-align:center;padding:2.5rem;color:var(--text-s);font-size:.87rem}
+.box-table tbody tr:hover{background:rgba(255,255,255,.02)}
+.box-table tbody td{padding:.65rem 1rem;vertical-align:middle}
+.empty-r td{text-align:center;padding:2rem;color:var(--text-s);font-size:.84rem}
 .clickable-row{cursor:pointer}
 
 /* ====== BADGES ====== */
-.badge{display:inline-flex;align-items:center;padding:.25rem .7rem;border-radius:var(--r-pill);font-size:.72rem;font-weight:700;letter-spacing:.2px;white-space:nowrap}
-.b-green{background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.2)}
-.b-blue{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
-.b-amber{background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.2)}
-.b-red{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.2)}
-.b-grey{background:rgba(255,255,255,.06);color:var(--text-s);border:1px solid var(--border)}
-.b-orange{background:rgba(249,115,22,.12);color:#f97316;border:1px solid rgba(249,115,22,.2)}
-.b-purple{background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.2)}
+.badge{display:inline-flex;align-items:center;padding:.2rem .6rem;border-radius:var(--r-pill);font-size:.69rem;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+.b-green{background:rgba(34,197,94,.12);color:#22c55e}
+.b-blue{background:var(--accent-bg);color:var(--accent)}
+.b-amber{background:rgba(245,158,11,.12);color:#f59e0b}
+.b-red{background:rgba(239,68,68,.12);color:#ef4444}
+.b-grey{background:rgba(255,255,255,.06);color:var(--text-s)}
+.b-orange{background:rgba(249,115,22,.12);color:#f97316}
+.b-purple{background:rgba(168,85,247,.12);color:#a855f7}
 
 /* ====== FILTER ROW ====== */
-.filter-row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1.15rem}
-.filter-row input,.filter-row select{padding:.5rem .85rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.85rem;background:var(--input-bg);outline:none;color:var(--text);font-family:inherit;transition:all .2s}
+.filter-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
+.filter-row input,.filter-row select{padding:.42rem .75rem;border:1px solid var(--border);border-radius:var(--r-pill);font-size:.82rem;background:var(--input-bg);outline:none;color:var(--text);font-family:inherit}
 .filter-row input:focus,.filter-row select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
-.filter-row input[type=text]{min-width:240px}
-.filter-pills{display:flex;gap:.4rem;flex-wrap:wrap}
-.fpill{padding:.35rem .9rem;border-radius:var(--r-pill);font-size:.8rem;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--text-s);cursor:pointer;transition:all .15s}
+.filter-row input[type=text]{min-width:220px}
+.filter-pills{display:flex;gap:.3rem;flex-wrap:wrap}
+.fpill{padding:.3rem .8rem;border-radius:var(--r-pill);font-size:.77rem;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--text-s);cursor:pointer;transition:all .12s}
 .fpill:hover{border-color:var(--accent);color:var(--accent)}
-.fpill.active{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 6px rgba(79,142,247,.3)}
+.fpill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ====== PRODUCT GRID ====== */
-.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.15rem}
-.prod-card{background:var(--card);border-radius:var(--r);padding:1.3rem;border:1px solid var(--border);transition:all .25s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden}
-.prod-card:hover{border-color:var(--border-l);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.25)}
-.prod-card.deactivated{opacity:.5;border-color:var(--danger)}
-.prod-card.deactivated::after{content:'DEACTIVATED';position:absolute;top:10px;right:10px;background:var(--danger);color:#fff;padding:.2rem .6rem;border-radius:var(--r-pill);font-size:.65rem;font-weight:700;letter-spacing:.5px}
-.pc-name{font-size:1rem;font-weight:800;margin-bottom:.6rem}
-.pc-desc{font-size:.8rem;color:var(--text-s);margin-bottom:.7rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.pc-footer{display:flex;align-items:center;justify-content:space-between;margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border)}
-.pc-stock{font-size:.78rem;font-weight:600;color:var(--text-s)}
-.pc-stock strong{color:var(--text)}
-.pc-actions{display:flex;gap:.5rem}
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem}
+.prod-card{background:var(--card);border-radius:var(--r);padding:1.15rem;border:1px solid var(--border);transition:border-color .15s}
+.prod-card:hover{border-color:var(--border-l)}
+.pc-name{font-size:.95rem;font-weight:800;margin-bottom:.5rem}
+.pc-desc{font-size:.78rem;color:var(--text-s);margin-bottom:.6rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pc-chips{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem}
+.chip{font-size:.72rem;font-weight:600;padding:.18rem .55rem;border-radius:var(--r-pill);border:1px solid var(--border);color:var(--text-s)}
+.chip.price{color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+.chip.auto{color:var(--success);border-color:rgba(34,197,94,.25);background:rgba(34,197,94,.08)}
+.chip.manual{color:var(--warning);border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.08)}
+.pc-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem;font-size:.83rem}
+.pc-btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+
+/* ====== STOCK & CRED GRID ====== */
+.cred-grid,.stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem}
+.cred-card,.stock-card{background:var(--card);border-radius:var(--r);padding:1.15rem;border:1px solid var(--border)}
+.card-name{font-size:.95rem;font-weight:800;margin-bottom:.35rem}
+.card-chips{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.65rem}
+.stat-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin:.65rem 0}
+.stat-box{background:rgba(255,255,255,.03);border-radius:var(--r-s);padding:.55rem .4rem;text-align:center;border:1px solid var(--border)}
+.sb-lbl{font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-xs)}
+.sb-val{font-size:1.3rem;font-weight:800;color:var(--text);line-height:1.2}
+.sb-val.ok{color:var(--success)}
+.sb-val.bad{color:var(--danger)}
+.prog-bar-wrap{margin:.45rem 0}
+.prog-bg{height:5px;background:rgba(255,255,255,.06);border-radius:var(--r-pill);overflow:hidden}
+.prog-fill{height:100%;background:var(--accent);border-radius:var(--r-pill);transition:width .4s}
+.prog-fill.warn{background:var(--warning)}
+.prog-fill.danger{background:var(--danger)}
+.prog-lbl{font-size:.72rem;color:var(--text-xs);margin-top:.25rem}
+
+/* ====== BROADCAST ====== */
+.bcast-wrap{max-width:640px}
+.bcast-card{background:var(--card);border-radius:var(--r);border:1px solid var(--border);padding:1.5rem}
+.bcast-card h3{font-size:.95rem;font-weight:800;margin-bottom:.25rem}
+.bcast-meta{font-size:.8rem;color:var(--text-s);margin-bottom:1rem}
+.field-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);display:block;margin-bottom:.3rem}
+.bcast-card textarea{width:100%;min-height:120px;padding:.75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.88rem;font-family:inherit;resize:vertical;outline:none;color:var(--text);background:var(--input-bg)}
+.bcast-card textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
+.char-count{font-size:.72rem;color:var(--text-xs);text-align:right;margin-top:.25rem}
+.bcast-preview{background:var(--input-bg);border-radius:var(--r-s);padding:.8rem;min-height:55px;font-size:.86rem;white-space:pre-wrap;color:var(--text-s);border:1px dashed var(--border);margin:.75rem 0}
+
+/* ====== VARIANT TABLE ====== */
+.var-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.var-table th{text-align:left;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-xs);padding:.45rem .4rem;border-bottom:1px solid var(--border)}
+.var-table td{padding:.5rem .4rem;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+.var-table tr:last-child td{border-bottom:none}
+.var-table .var-actions{display:flex;gap:.3rem;justify-content:flex-end}
+.var-edit-input{padding:.3rem .5rem;border:1px solid var(--accent-border);border-radius:var(--r-s);font-size:.82rem;background:var(--input-bg);color:var(--text);outline:none;width:100%}
+.var-edit-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12)}
+.var-add-row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:.4rem;margin-top:.75rem;align-items:end}
+.var-add-row input{padding:.4rem .55rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.82rem;background:var(--input-bg);color:var(--text);outline:none}
+.var-add-row input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12)}
+.chip.has-variants{color:#a855f7;border-color:rgba(168,85,247,.25);background:rgba(168,85,247,.08)}
 
 /* ====== BUTTONS ====== */
-.btn{padding:.5rem 1.1rem;border-radius:var(--r-s);font-size:.85rem;font-weight:600;border:none;cursor:pointer;transition:all .2s cubic-bezier(0.4,0,0.2,1);display:inline-flex;align-items:center;gap:.5rem;font-family:inherit;white-space:nowrap}
-.btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
-.btn:active{transform:translateY(0)}
-.btn-primary{background:var(--accent);color:#fff}
-.btn-primary:hover{background:var(--accent-hover)}
-.btn-success{background:var(--success);color:#fff}
-.btn-success:hover{background:#16a34a}
-.btn-danger{background:var(--danger);color:#fff}
-.btn-danger:hover{background:#dc2626}
-.btn-warning{background:var(--warning);color:#fff}
-.btn-warning:hover{background:#d97706}
-.btn-secondary{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border)}
-.btn-secondary:hover{background:rgba(255,255,255,.12)}
-.btn-sm{padding:.35rem .75rem;font-size:.78rem}
-.btn-xs{padding:.25rem .6rem;font-size:.72rem}
-.btn-icon{padding:.5rem;aspect-ratio:1;justify-content:center}
+button{cursor:pointer;border:none;border-radius:var(--r-s);font-size:.81rem;font-weight:600;padding:.45rem .9rem;transition:all .15s;font-family:inherit;color:var(--text)}
+button:active{transform:scale(.97)}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#3d7de5}
+.btn-success{background:var(--success);color:#fff}.btn-success:hover{background:#16a34a}
+.btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border)}.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.btn-sm{padding:.3rem .65rem;font-size:.75rem}
+.btn-pill{border-radius:var(--r-pill)}
+.btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
+.btn-warning{background:var(--warning);color:#000}.btn-warning:hover{background:#d97706}
 
-/* ====== FORM ====== */
-.form-group{margin-bottom:1.15rem}
-.form-label{display:block;font-size:.8rem;font-weight:600;color:var(--text-s);margin-bottom:.5rem}
-.form-input,.form-textarea,.form-select{width:100%;padding:.6rem .9rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.87rem;background:var(--input-bg);color:var(--text);font-family:inherit;transition:all .2s;outline:none}
-.form-input:focus,.form-textarea:focus,.form-select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
-.form-textarea{resize:vertical;min-height:100px}
-.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
+/* ====== SALES ====== */
+.sales-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;margin:1rem 0 1.25rem}
+.sales-card{background:var(--card);border-radius:var(--r);border:1px solid var(--border);padding:1rem 1.1rem}
+.sales-lbl{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-s);margin-bottom:.35rem}
+.sales-val{font-size:1.6rem;font-weight:800;color:var(--text)}
 
-/* ====== OVERLAY/MODAL ====== */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:999;backdrop-filter:blur(4px);animation:fadeInOverlay .2s ease-in-out}
+/* ====== SPINNER / SKELETON ====== */
+.spin{display:inline-block;width:15px;height:15px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.35rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skeleton{background:linear-gradient(90deg,var(--card) 25%,rgba(255,255,255,.06) 50%,var(--card) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--r-s);height:16px;margin:4px 0}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ====== MODAL OVERLAY ====== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem}
 .overlay.open{display:flex}
-@keyframes fadeInOverlay{from{opacity:0}to{opacity:1}}
-.modal{background:var(--card);border-radius:var(--r);padding:1.75rem;max-width:600px;width:90%;max-height:85vh;overflow-y:auto;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,.5);animation:slideUp .3s cubic-bezier(0.4,0,0.2,1)}
-@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-.modal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
-.modal-title{font-size:1.15rem;font-weight:800}
-.close-modal{background:none;border:none;font-size:1.5rem;color:var(--text-s);cursor:pointer;padding:.25rem;border-radius:var(--r-s);transition:all .2s}
-.close-modal:hover{background:rgba(255,255,255,.05);color:var(--text)}
-.modal-footer{margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;gap:.75rem;justify-content:flex-end}
+.modal{background:#1a1d27;border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:.85rem;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:1rem;font-weight:800}
+.modal-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);display:block;margin-bottom:.3rem}
+.modal input,.modal select,.modal textarea{width:100%;padding:.55rem .75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.88rem;outline:none;font-family:inherit;background:var(--input-bg);color:var(--text)}
+.modal input:focus,.modal select:focus,.modal textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
+.modal textarea{min-height:100px;resize:vertical}
+.modal-btns{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.25rem}
+
+/* ====== CONNECT SCREEN ====== */
+.connect-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;background:var(--bg)}
+.connect-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:2rem;width:100%;max-width:440px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:1rem}
+.connect-card h2{font-size:1.1rem;font-weight:800;display:flex;align-items:center;gap:.5rem}
+.connect-card p{font-size:.84rem;color:var(--text-s)}
+.cf{display:flex;flex-direction:column;gap:.3rem}
+.cf label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s)}
+.cf input{padding:.6rem .75rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.88rem;outline:none;font-family:inherit;background:var(--input-bg);color:var(--text)}
+.cf input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
 
 /* ====== TOAST ====== */
-.toast{position:fixed;bottom:2rem;right:2rem;background:var(--card);color:var(--text);padding:1rem 1.5rem;border-radius:var(--r);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9999;display:none;animation:slideInToast .3s cubic-bezier(0.4,0,0.2,1);font-size:.87rem;font-weight:600;max-width:400px}
-.toast.show{display:block}
-@keyframes slideInToast{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}
-.toast.success{border-left:4px solid var(--success)}
-.toast.error{border-left:4px solid var(--danger)}
-.toast.warning{border-left:4px solid var(--warning)}
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);color:var(--text);padding:.65rem 1.25rem;border-radius:var(--r-pill);font-size:.84rem;transition:transform .3s;z-index:999;pointer-events:none;max-width:90vw;text-align:center;border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#toast.show{transform:translateX(-50%) translateY(0)}
 
-/* ====== VARIANT LIST ====== */
-.variant-list{display:flex;flex-direction:column;gap:.7rem;margin-top:.85rem}
-.variant-item{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r-s);padding:.75rem .9rem;display:flex;align-items:center;justify-content:space-between;transition:all .2s}
-.variant-item:hover{background:rgba(255,255,255,.05);border-color:var(--border-l)}
-.vi-left{flex:1}
-.vi-name{font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:.2rem}
-.vi-price{font-size:.75rem;color:var(--text-s)}
-.vi-stock{font-size:.78rem;font-weight:600;margin-right:.75rem}
-.vi-stock.low{color:var(--warning)}
-.vi-stock.zero{color:var(--danger)}
-.vi-actions{display:flex;gap:.5rem;align-items:center}
+/* ====== ORDER DETAIL PANEL ====== */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem .8rem;font-size:.84rem;margin:1rem 0}
+.detail-grid .dl{color:var(--text-s);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.detail-grid .dv{color:var(--text);font-weight:600}
 
-/* ====== STOCK EDITOR ====== */
-.stock-editor{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.04);padding:.4rem;border-radius:var(--r-s);border:1px solid var(--border)}
-.stock-input{width:60px;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--r-s);font-size:.8rem;background:var(--input-bg);color:var(--text);text-align:center;font-weight:700;outline:none}
-.stock-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.1)}
-.stock-btn{background:rgba(255,255,255,.08);border:none;color:var(--text);padding:.3rem .6rem;border-radius:var(--r-s);cursor:pointer;font-size:.75rem;font-weight:700;transition:all .15s}
-.stock-btn:hover{background:rgba(255,255,255,.12)}
-
-/* ====== BOT SETTINGS SPECIFIC ====== */
-.settings-grid{display:grid;gap:1.25rem}
-.setting-card{background:var(--card);border-radius:var(--r);padding:1.5rem;border:1px solid var(--border);transition:all .2s}
-.setting-card:hover{border-color:var(--border-l)}
-.setting-card h4{font-size:.95rem;font-weight:700;margin-bottom:.6rem;color:var(--text)}
-.setting-card p{font-size:.78rem;color:var(--text-s);margin-bottom:1rem;line-height:1.5}
-.char-count{font-size:.72rem;color:var(--text-xs);text-align:right;margin-top:.4rem}
-
-/* ====== MOBILE OVERLAY ====== */
-.mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:250;backdrop-filter:blur(2px)}
-.mobile-overlay.open{display:block}
+/* ====== SIDEBAR OVERLAY (mobile) ====== */
+.sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:290}
 
 /* ====== RESPONSIVE ====== */
-@media (max-width: 968px) {
-  :root{--sb-w:0px}
+@media(max-width:768px){
   .sb{transform:translateX(-100%)}
   .sb.open{transform:translateX(0)}
+  .sb-overlay.open{display:block}
   .main{margin-left:0}
   .hamburger{display:block}
-  .mobile-overlay.open{display:block}
-  .stat-row{grid-template-columns:1fr}
-  .prod-grid{grid-template-columns:1fr}
-  .content{padding:1.25rem 1rem}
-  .topbar{padding:.75rem 1rem}
+  .stat-row{grid-template-columns:1fr 1fr}
+  .content{padding:1rem}
   .period-tabs{display:none}
-  .filter-row input[type=text]{min-width:100%}
-  .form-row{grid-template-columns:1fr}
-  .modal{width:95%;padding:1.25rem;max-height:90vh}
-  .toast{bottom:1rem;right:1rem;left:1rem;max-width:none}
-  .sec-row{flex-direction:column;align-items:flex-start}
-  .tc-hdr{flex-direction:column;align-items:flex-start}
-  .box-table{font-size:.8rem}
-  .box-table thead th,.box-table tbody td{padding:.6rem .8rem}
 }
-@media (max-width: 480px) {
-  .sc-val{font-size:1.6rem}
-  .btn{padding:.45rem .9rem;font-size:.8rem}
-  .btn-sm{padding:.3rem .65rem;font-size:.75rem}
+@media(max-width:480px){
+  .stat-row{grid-template-columns:1fr}
+  .prod-grid,.cred-grid,.stock-grid{grid-template-columns:1fr}
+  .detail-grid{grid-template-columns:1fr}
 }
+
+/* ====== TOGGLE SWITCH ====== */
+.toggle{position:relative;display:inline-block;width:36px;height:20px}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,.1);border-radius:20px;transition:.2s}
+.toggle .slider::before{content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.slider{background:var(--accent)}
+.toggle input:checked+.slider::before{transform:translateX(16px)}
+
+/* ====== NOTIFICATION BELL ====== */
+.notif-bell{background:none;border:1px solid var(--border);border-radius:var(--r-s);padding:.35rem .5rem;cursor:pointer;font-size:1rem;color:var(--text-s);transition:.2s;position:relative}
+.notif-bell:hover{border-color:var(--accent);color:var(--accent)}
+.notif-bell.active{border-color:var(--success);color:var(--success)}
+.notif-bell .bell-dot{position:absolute;top:4px;right:4px;width:6px;height:6px;background:var(--danger);border-radius:50%;display:none}
+.notif-bell.needs-setup .bell-dot{display:block}
+
+/* ====== NOTIFICATION PANEL ====== */
+.notif-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.2rem;max-width:480px;margin:0 auto}
+.notif-panel h3{font-size:.95rem;margin-bottom:.75rem}
+.notif-ios-hint{background:rgba(79,142,247,.08);border:1px solid var(--accent-border);border-radius:var(--r-s);padding:.75rem;margin-bottom:1rem;font-size:.78rem;color:var(--text-s);line-height:1.5}
+.notif-ios-hint strong{color:var(--accent)}
+.notif-status{display:flex;align-items:center;gap:.5rem;padding:.5rem .65rem;border-radius:var(--r-s);font-size:.82rem;margin-bottom:.75rem}
+.notif-status.granted{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);color:var(--success)}
+.notif-status.denied{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--danger)}
+.notif-status.default{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--warning)}
+.notif-events{margin-top:.75rem}
+.notif-events .ne-row{display:flex;justify-content:space-between;align-items:center;padding:.45rem 0;border-bottom:1px solid var(--border);font-size:.82rem}
+.notif-events .ne-row:last-child{border-bottom:none}
+.notif-events .ne-label{color:var(--text)}
+.notif-events .ne-desc{color:var(--text-xs);font-size:.72rem}
+.notif-test-btn{margin-top:1rem}
 </style>
 </head>
 <body>
 
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div class="sb-overlay" id="sbOverlay" onclick="closeSb()"></div>
+
 <!-- SIDEBAR -->
-<aside class="sb" id="sidebar">
+<nav class="sb" id="sb">
   <div class="sb-brand">
     <div class="sb-brand-row">
-      <div class="sb-avatar">🍓</div>
+      <div class="sb-avatar">BS</div>
       <div>
         <div class="sb-name">Berry Store</div>
         <div class="sb-sub">Admin Dashboard</div>
       </div>
     </div>
   </div>
-  
-  <div class="sb-section">MAIN</div>
-  <nav class="sb-nav">
-    <div class="nb active" onclick="switchPage('overview')">
-      <span class="ic">📊</span> Overview
+  <div class="sb-section">Main</div>
+  <div class="sb-nav">
+    <div class="nb active" data-page="dashboard" onclick="nav(this)">
+      <span class="ic">&#9776;</span>Dashboard
     </div>
-    <div class="nb" onclick="switchPage('products')">
-      <span class="ic">🛍️</span> Products
+    <div class="nb" data-page="products" onclick="nav(this)">
+      <span class="ic">&#9741;</span>Products
     </div>
-    <div class="nb" onclick="switchPage('orders')">
-      <span class="ic">📦</span> Orders
+    <div class="nb" data-page="orders" onclick="nav(this)">
+      <span class="ic">&#128722;</span>Orders
     </div>
-    <div class="nb" onclick="switchPage('credentials')">
-      <span class="ic">🔑</span> Credentials
+    <div class="nb" data-page="sales" onclick="nav(this)">
+      <span class="ic">&#128200;</span>Sales
     </div>
-    <div class="nb" onclick="switchPage('sales')">
-      <span class="ic">💰</span> Sales Analysis
+    <div class="sb-section">Inventory</div>
+    <div class="nb" data-page="stocks" onclick="nav(this)">
+      <span class="ic">&#128451;</span>Stocks
     </div>
-  </nav>
-  
-  <div class="sb-section">TOOLS</div>
-  <nav class="sb-nav">
-    <div class="nb" onclick="switchPage('broadcast')">
-      <span class="ic">📢</span> Broadcast
+    <div class="nb" data-page="credentials" onclick="nav(this)">
+      <span class="ic">&#128273;</span>Credentials
     </div>
-    <div class="nb" onclick="switchPage('settings')">
-      <span class="ic">⚙️</span> Bot Settings
+    <div class="sb-section">Communication</div>
+    <div class="nb" data-page="broadcast" onclick="nav(this)">
+      <span class="ic">&#128226;</span>Broadcast
     </div>
-  </nav>
-  
-  <div class="sb-bottom">
-    <div class="nb" onclick="logout()">
-      <span class="ic">🚪</span> Disconnect
+    <div class="nb" data-page="referral" onclick="nav(this)">
+      <span class="ic">&#128279;</span>Referral
+    </div>
+    <div class="sb-section">Settings</div>
+    <div class="nb" data-page="notifications" onclick="nav(this)">
+      <span class="ic">&#128276;</span>Notifications
     </div>
   </div>
-</aside>
-
-<!-- MOBILE OVERLAY -->
-<div class="mobile-overlay" id="mobileOverlay" onclick="closeSidebar()"></div>
+  <div class="sb-bottom">
+    <div class="nb" onclick="openConnect()" style="color:var(--text-xs)">
+      <span class="ic">&#9881;</span>Connection Settings
+    </div>
+  </div>
+</nav>
 
 <!-- MAIN -->
-<main class="main" id="mainContent">
-  <!-- TOPBAR -->
+<div class="main">
   <div class="topbar">
     <div class="topbar-left">
-      <button class="hamburger" onclick="toggleSidebar()">☰</button>
-      <div class="breadcrumb">Dashboard / <strong id="currentPage">Overview</strong></div>
+      <button class="hamburger" onclick="openSb()">&#9776;</button>
+      <span class="breadcrumb">Berry Store &rsaquo; <strong id="breadPage">Dashboard</strong></span>
     </div>
     <div class="topbar-right">
-      <div class="period-tabs">
-        <button class="ptab active" data-period="today" onclick="setPeriod('today')">Today</button>
-        <button class="ptab" data-period="week" onclick="setPeriod('week')">Week</button>
-        <button class="ptab" data-period="month" onclick="setPeriod('month')">Month</button>
+      <div class="period-tabs" id="periodTabs">
+        <button class="ptab active" onclick="setPeriod('today',this)">Today</button>
+        <button class="ptab" onclick="setPeriod('week',this)">Week</button>
+        <button class="ptab" onclick="setPeriod('month',this)">Month</button>
       </div>
+      <button class="notif-bell" id="notifBell" onclick="nav(document.querySelector('[data-page=notifications]'))" title="Notifications">&#128276;<span class="bell-dot"></span></button>
       <div class="conn-badge">
-        <div class="cdot off" id="connDot"></div>
-        <span id="connText">Connecting...</span>
+        <span class="cdot off" id="cdot"></span>
+        <span id="clabel">Disconnected</span>
       </div>
-      <button class="btn btn-icon btn-sm" id="bellBtn" onclick="openNotifSettings()" title="Notification Settings">🔔</button>
+      <span class="updated" id="updLbl"></span>
     </div>
   </div>
 
-  <!-- CONTENT -->
   <div class="content">
-    
-    <!-- ========== OVERVIEW PAGE ========== -->
-    <div class="page active" id="page-overview">
-      <div class="sec-row">
-        <div class="sec-title">Overview</div>
-        <div class="updated" id="overviewUpdated">Updated: Never</div>
-      </div>
-      
-      <!-- Stats -->
+
+    <!-- ====== DASHBOARD ====== -->
+    <div class="page active" id="page-dashboard">
       <div class="stat-row">
         <div class="stat-card">
           <div class="sc-top">
-            <div class="sc-label">Total Revenue</div>
-            <div class="sc-icon blue">💰</div>
+            <div class="sc-label">Total Users</div>
+            <div class="sc-icon amber">&#128100;</div>
           </div>
-          <canvas id="sparkRev" class="sc-spark"></canvas>
-          <div class="sc-val" id="statRevenue">RM 0</div>
-          <div class="sc-trend up" id="statRevTrend">+0%</div>
+          <div class="sc-val" id="dUsers"><div class="skeleton" style="width:80px;height:28px"></div></div>
+          <div style="font-size:.72rem;color:var(--text-xs);margin-top:.3rem">All registered users</div>
         </div>
         <div class="stat-card">
           <div class="sc-top">
-            <div class="sc-label">Orders</div>
-            <div class="sc-icon green">📦</div>
+            <div class="sc-label">Revenue</div>
+            <div class="sc-icon blue">$</div>
           </div>
-          <canvas id="sparkOrders" class="sc-spark"></canvas>
-          <div class="sc-val" id="statOrders">0</div>
-          <div class="sc-trend up" id="statOrdTrend">+0%</div>
+          <canvas class="sc-spark" id="spkRev" height="48"></canvas>
+          <div class="sc-val" id="dRev"><div class="skeleton" style="width:100px;height:28px"></div></div>
+          <div class="sc-trend up" id="dRevTrend"></div>
         </div>
         <div class="stat-card">
           <div class="sc-top">
-            <div class="sc-label">Pending Approval</div>
-            <div class="sc-icon amber">⏳</div>
+            <div class="sc-label">Approved Orders</div>
+            <div class="sc-icon green">&#10003;</div>
           </div>
-          <div class="sc-val" id="statPending">0</div>
+          <canvas class="sc-spark" id="spkApp" height="48"></canvas>
+          <div class="sc-val" id="dApp"><div class="skeleton" style="width:60px;height:28px"></div></div>
+          <div class="sc-trend up" id="dAppTrend"></div>
         </div>
         <div class="stat-card">
           <div class="sc-top">
-            <div class="sc-label">Active Products</div>
-            <div class="sc-icon purple">🛍️</div>
+            <div class="sc-label">Pending Orders</div>
+            <div class="sc-icon purple">&#8987;</div>
           </div>
-          <div class="sc-val" id="statProducts">0</div>
+          <div class="sc-val" id="dPending"><div class="skeleton" style="width:40px;height:28px"></div></div>
+          <div style="font-size:.72rem;color:var(--text-xs);margin-top:.3rem">Awaiting action</div>
         </div>
       </div>
 
-      <!-- Chart -->
       <div class="chart-card">
-        <div class="sec-row">
-          <div class="sec-title">Revenue Trend</div>
+        <div class="sec-row" style="margin-bottom:1rem">
+          <div>
+            <div class="sec-label">Performance</div>
+            <div class="sec-title">Revenue Trend (Last 7 Days)</div>
+          </div>
+          <span class="sec-pill" id="weekPill">RM -- this week</span>
         </div>
         <div class="chart-wrap">
-          <canvas id="mainChart"></canvas>
+          <canvas id="weekChart"></canvas>
         </div>
       </div>
 
-      <!-- Recent Orders -->
-      <div class="table-card">
-        <div class="tc-hdr">
-          <h3>Recent Orders</h3>
-          <button class="btn btn-sm btn-primary" onclick="switchPage('orders')">View All</button>
-        </div>
-        <div class="overflow-x">
-          <table class="box-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Customer</th>
-                <th>Product</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody id="recentOrdersBody">
-              <tr class="empty-r"><td colspan="6">No recent orders</td></tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="chart-card">
+        <div class="sec-label" style="margin-bottom:.65rem">Top Products (by units sold)</div>
+        <table class="clean-table">
+          <thead>
+            <tr><th>#</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
+          </thead>
+          <tbody id="topProdBody">
+            <tr><td colspan="4" style="padding:.8rem 0;color:var(--text-s)"><span class="spin"></span>Loading...</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <!-- ========== PRODUCTS PAGE ========== -->
+    <!-- ====== PRODUCTS ====== -->
     <div class="page" id="page-products">
-      <div class="sec-row">
-        <div class="sec-title">Products</div>
-        <button class="btn btn-primary" onclick="openAddProduct()">+ Add Product</button>
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div class="sec-title">All Products</div>
       </div>
-      
-      <div class="prod-grid" id="productsGrid">
-        <div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-s)">Loading products...</div>
+      <div class="prod-grid" id="prodGrid">
+        <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
       </div>
     </div>
 
-    <!-- ========== ORDERS PAGE ========== -->
+    <!-- ====== ORDERS ====== -->
     <div class="page" id="page-orders">
-      <div class="sec-row">
-        <div class="sec-title">Orders Management</div>
-      </div>
-      
       <div class="filter-row">
-        <input type="text" id="orderSearch" placeholder="🔍 Search username, product..." onkeyup="filterOrders()">
-        <div class="filter-pills">
-          <button class="fpill active" data-status="all" onclick="filterOrderStatus('all')">All</button>
-          <button class="fpill" data-status="pending" onclick="filterOrderStatus('pending')">Pending</button>
-          <button class="fpill" data-status="waiting_approval" onclick="filterOrderStatus('waiting_approval')">Waiting Approval</button>
-          <button class="fpill" data-status="approved" onclick="filterOrderStatus('approved')">Approved</button>
-          <button class="fpill" data-status="completed" onclick="filterOrderStatus('completed')">Completed</button>
-          <button class="fpill" data-status="rejected" onclick="filterOrderStatus('rejected')">Rejected</button>
+        <input type="text" id="ordSearch" placeholder="Search order ID or @username..." oninput="filterOrders()"/>
+        <div class="filter-pills" id="statusPills">
+          <span class="fpill active" onclick="setStatusFilter(this,'')">All</span>
+          <span class="fpill" onclick="setStatusFilter(this,'pending')">Pending</span>
+          <span class="fpill" onclick="setStatusFilter(this,'waiting_approval')">Waiting</span>
+          <span class="fpill" onclick="setStatusFilter(this,'completed')">Completed</span>
+          <span class="fpill" onclick="setStatusFilter(this,'cancelled')">Cancelled</span>
+          <span class="fpill" onclick="setStatusFilter(this,'rejected')">Rejected</span>
         </div>
       </div>
-
+      <div class="filter-row" style="margin-top:.5rem">
+        <div class="filter-pills" id="datePills">
+          <span class="fpill active" onclick="setDateFilter(this,'all')">All Time</span>
+          <span class="fpill" onclick="setDateFilter(this,'today')">Today</span>
+          <span class="fpill" onclick="setDateFilter(this,'yesterday')">Yesterday</span>
+          <span class="fpill" onclick="setDateFilter(this,'week')">This Week</span>
+          <span class="fpill" onclick="setDateFilter(this,'month')">This Month</span>
+          <span class="fpill" onclick="setDateFilter(this,'custom')">Custom</span>
+        </div>
+        <span id="ordCustomRange" style="display:none;align-items:center;gap:.4rem;font-size:.82rem">
+          <input type="date" id="ordFrom" onchange="loadOrders()"/>
+          <span style="color:var(--text-s)">&rarr;</span>
+          <input type="date" id="ordTo" onchange="loadOrders()"/>
+        </span>
+      </div>
       <div class="table-card">
+        <div class="tc-hdr">
+          <h3>Orders</h3>
+          <span class="badge b-grey" id="ordCount">--</span>
+        </div>
         <div class="overflow-x">
           <table class="box-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Customer</th>
-                <th>Product</th>
-                <th>Variant</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="ordersTableBody">
-              <tr class="empty-r"><td colspan="8">Loading orders...</td></tr>
-            </tbody>
+            <thead><tr><th>Order ID</th><th>Customer</th><th>Product</th><th>Qty</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody id="ordBody"><tr class="empty-r"><td colspan="7"><span class="spin"></span>Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
     </div>
 
-    <!-- ========== CREDENTIALS PAGE ========== -->
-    <div class="page" id="page-credentials">
-      <div class="sec-row">
-        <div class="sec-title">Credentials Stock</div>
-        <button class="btn btn-primary" onclick="openAddCredential()">+ Add Credential</button>
-      </div>
-
-      <div class="filter-row">
-        <select id="credProductFilter" onchange="filterCredentials()" class="form-select" style="max-width:300px">
-          <option value="all">All Products</option>
-        </select>
-        <div class="filter-pills">
-          <button class="fpill active" data-used="all" onclick="filterCredUsed('all')">All</button>
-          <button class="fpill" data-used="available" onclick="filterCredUsed('available')">Available</button>
-          <button class="fpill" data-used="used" onclick="filterCredUsed('used')">Used</button>
-        </div>
-      </div>
-
-      <div class="table-card">
-        <div class="overflow-x">
-          <table class="box-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Product</th>
-                <th>Variant</th>
-                <th>Username</th>
-                <th>Password</th>
-                <th>Status</th>
-                <th>Added</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="credTableBody">
-              <tr class="empty-r"><td colspan="8">Loading credentials...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== SALES PAGE ========== -->
+    <!-- ====== SALES ====== -->
     <div class="page" id="page-sales">
-      <div class="sec-row">
-        <div class="sec-title">Sales Analysis</div>
-      </div>
-
+      <div class="sec-title" style="margin-bottom:1rem">Sales Analytics</div>
       <div class="filter-row">
-        <input type="date" id="salFrom" class="form-input" style="max-width:180px">
-        <span style="color:var(--text-s)">to</span>
-        <input type="date" id="salTo" class="form-input" style="max-width:180px">
-        <button class="btn btn-primary btn-sm" onclick="loadSales()">Apply</button>
+        <span style="font-size:.82rem;color:var(--text-s)">From</span>
+        <input type="date" id="salFrom"/>
+        <span style="font-size:.82rem;color:var(--text-s)">To</span>
+        <input type="date" id="salTo"/>
+        <button class="btn-primary btn-sm btn-pill" onclick="loadSales()">Apply</button>
       </div>
-
-      <div class="stat-row">
-        <div class="stat-card">
-          <div class="sc-top">
-            <div class="sc-label">Period Revenue</div>
-            <div class="sc-icon blue">💵</div>
-          </div>
-          <div class="sc-val" id="salRevenue">RM 0</div>
-        </div>
-        <div class="stat-card">
-          <div class="sc-top">
-            <div class="sc-label">Total Orders</div>
-            <div class="sc-icon green">📦</div>
-          </div>
-          <div class="sc-val" id="salOrders">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="sc-top">
-            <div class="sc-label">Average Order</div>
-            <div class="sc-icon amber">📊</div>
-          </div>
-          <div class="sc-val" id="salAvg">RM 0</div>
-        </div>
+      <div class="sales-cards">
+        <div class="sales-card"><div class="sales-lbl">Total Orders</div><div class="sales-val" id="sTotalOrd">--</div></div>
+        <div class="sales-card"><div class="sales-lbl">Revenue (RM)</div><div class="sales-val" id="sTotalRev">--</div></div>
+        <div class="sales-card"><div class="sales-lbl">Avg Order Value</div><div class="sales-val" id="sAvgOrd">--</div></div>
       </div>
-
-      <div class="chart-card">
-        <div class="sec-title">Daily Breakdown</div>
-        <div class="chart-wrap">
-          <canvas id="salesChart"></canvas>
-        </div>
-      </div>
-
       <div class="table-card">
-        <div class="tc-hdr">
-          <h3>Top Products</h3>
-        </div>
-        <div class="overflow-x">
-          <table class="clean-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Orders</th>
-                <th>Revenue</th>
-              </tr>
-            </thead>
-            <tbody id="topProductsBody">
-              <tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text-s)">No data</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== BROADCAST PAGE ========== -->
-    <div class="page" id="page-broadcast">
-      <div class="sec-row">
-        <div class="sec-title">Broadcast Message</div>
-      </div>
-
-      <div class="chart-card">
-        <p style="font-size:.85rem;color:var(--text-s);margin-bottom:1.25rem">Send a message to all users who have ever interacted with the bot.</p>
-        <div class="form-group">
-          <label class="form-label">Message</label>
-          <textarea class="form-textarea" id="broadcastMsg" placeholder="Type your broadcast message here..." rows="6"></textarea>
-          <div class="char-count"><span id="bcCharCount">0</span> characters</div>
-        </div>
-        <button class="btn btn-primary" onclick="sendBroadcast()">📢 Send Broadcast</button>
-      </div>
-
-      <div class="table-card">
-        <div class="tc-hdr">
-          <h3>Broadcast History</h3>
-        </div>
+        <div class="tc-hdr"><h3>Product Breakdown</h3></div>
         <div class="overflow-x">
           <table class="box-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Message Preview</th>
-                <th>Recipients</th>
-                <th>Success</th>
-              </tr>
-            </thead>
-            <tbody id="broadcastHistory">
-              <tr class="empty-r"><td colspan="4">No broadcasts yet</td></tr>
-            </tbody>
+            <thead><tr><th>#</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr></thead>
+            <tbody id="salBody"><tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
     </div>
 
-    <!-- ========== BOT SETTINGS PAGE ========== -->
-    <div class="page" id="page-settings">
-      <div class="sec-row">
-        <div class="sec-title">Bot Settings</div>
-        <button class="btn btn-success" onclick="saveBotSettings()">💾 Save All Changes</button>
+    <!-- ====== STOCKS ====== -->
+    <div class="page" id="page-stocks">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div class="sec-title">Stock Management</div>
+        <span class="badge b-blue" style="font-size:.72rem">Auto-delivery products only</span>
       </div>
+      <div class="stock-grid" id="stockGrid">
+        <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
+      </div>
+    </div>
 
-      <div class="settings-grid">
-        <!-- Welcome Message -->
-        <div class="setting-card">
-          <h4>🏠 Welcome Message</h4>
-          <p>This message is sent when users first start the bot or use /start command.</p>
-          <div class="form-group">
-            <textarea class="form-textarea" id="setWelcome" placeholder="Welcome to Berry Store! 🍓" rows="5"></textarea>
-            <div class="char-count"><span id="wcCharCount">0</span> characters</div>
+    <!-- ====== CREDENTIALS ====== -->
+    <div class="page" id="page-credentials">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div class="sec-title">Credentials Overview</div>
+      </div>
+      <div class="cred-grid" id="credGrid">
+        <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
+      </div>
+    </div>
+
+    <!-- ====== BROADCAST ====== -->
+    <div class="page" id="page-broadcast">
+      <div class="bcast-wrap">
+        <div class="bcast-card">
+          <h3>Broadcast Message</h3>
+          <div class="bcast-meta">Send a message to <strong id="bcastCount">--</strong> registered users.</div>
+          <label class="field-label">Message</label>
+          <textarea id="bcastMsg" placeholder="Type your broadcast message here..." oninput="bcastInput()"></textarea>
+          <div class="char-count"><span id="bcastChars">0</span> characters</div>
+          <label class="field-label" style="margin-top:.65rem">Preview</label>
+          <div class="bcast-preview" id="bcastPreview">Your message will appear here...</div>
+          <div style="display:flex;gap:.6rem;align-items:center">
+            <button class="btn-primary btn-pill" id="bcastBtn" onclick="confirmBroadcast()">Send to All Users</button>
+            <button class="btn-ghost btn-sm btn-pill" onclick="document.getElementById('bcastMsg').value='';bcastInput()">Clear</button>
           </div>
-        </div>
-
-        <!-- Delivery Message -->
-        <div class="setting-card">
-          <h4>📦 Delivery Message Template</h4>
-          <p>Template for credentials delivery. Use {username} and {password} as placeholders.</p>
-          <div class="form-group">
-            <textarea class="form-textarea" id="setDelivery" placeholder="Here are your credentials:
-Username: {username}
-Password: {password}
-
-Thank you for your purchase! 🎉" rows="6"></textarea>
-            <div class="char-count"><span id="dcCharCount">0</span> characters</div>
-          </div>
-        </div>
-
-        <!-- Testimonial Template -->
-        <div class="setting-card">
-          <h4>⭐ Testimonial Post Template</h4>
-          <p>Template for testimonial posts. Use {username} and {product} as placeholders.</p>
-          <div class="form-group">
-            <textarea class="form-textarea" id="setTestimonial" placeholder="✅ SUCCESSFUL ORDER
-
-Customer: @{username}
-Product: {product}
-
-Thank you for trusting Berry Store! 🍓" rows="7"></textarea>
-            <div class="char-count"><span id="tcCharCount">0</span> characters</div>
-          </div>
-        </div>
-
-        <!-- Payment Instructions -->
-        <div class="setting-card">
-          <h4>💳 Payment Instructions</h4>
-          <p>Instructions shown to users when they select a product to purchase.</p>
-          <div class="form-group">
-            <textarea class="form-textarea" id="setPayment" placeholder="Please transfer the amount to:
-Bank: Maybank
-Account: 1234567890
-Name: Berry Store
-
-After payment, click 'I Have Paid' button." rows="6"></textarea>
-            <div class="char-count"><span id="pcCharCount">0</span> characters</div>
-          </div>
-        </div>
-
-        <!-- Channel Settings -->
-        <div class="setting-card">
-          <h4>📢 Channel Settings</h4>
-          <p>Configure required channel and testimonial channels.</p>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Required Channel Username</label>
-              <input type="text" class="form-input" id="setRequiredChannel" placeholder="@berrystorrel">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Testimonial Channel 1</label>
-              <input type="text" class="form-input" id="setTestChannel1" placeholder="@berrytestimonials">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Testimonial Channel 2 (optional)</label>
-              <input type="text" class="form-input" id="setTestChannel2" placeholder="@berrystore">
-            </div>
-          </div>
-        </div>
-
-        <!-- Points System -->
-        <div class="setting-card">
-          <h4>🎯 Points System</h4>
-          <p>Configure points earned per purchase and reset threshold.</p>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Points per Purchase</label>
-              <input type="number" class="form-input" id="setPointsPerPurchase" value="10" min="0">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Points Reset Threshold</label>
-              <input type="number" class="form-input" id="setPointsReset" value="50" min="0">
-            </div>
-          </div>
-        </div>
-
-        <!-- Banner Settings -->
-        <div class="setting-card">
-          <h4>🖼️ Shop Banner</h4>
-          <p>Telegram File ID for the banner image shown at the top of the shop list.</p>
-          <div class="form-group">
-            <input type="text" class="form-input" id="setBannerFileId" placeholder="AgACAgUAAxkDAAI...">
-          </div>
+          <div id="bcastRes" style="margin-top:.65rem;font-size:.82rem"></div>
         </div>
       </div>
     </div>
 
-  </div>
-</main>
+    <!-- ====== REFERRAL ====== -->
+    <div class="page" id="page-referral">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div class="sec-title">Referral Summary</div>
+        <span class="badge b-purple" style="font-size:.72rem">Optional</span>
+      </div>
+      <div class="table-card">
+        <div class="tc-hdr"><h3>Referral Data</h3></div>
+        <div class="overflow-x">
+          <table class="box-table">
+            <thead><tr><th>User</th><th>Username</th><th>Referrals</th><th>Points Earned</th></tr></thead>
+            <tbody id="refBody"><tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-<!-- ========== MODALS ========== -->
+    <!-- ====== NOTIFICATIONS ====== -->
+    <div class="page" id="page-notifications">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div class="sec-title">Web Push Notifications</div>
+      </div>
 
-<!-- Connect Modal -->
-<div class="overlay open" id="connectOverlay">
-  <div class="modal" style="max-width:450px">
-    <div class="modal-hdr">
-      <div class="modal-title">🔌 Connect to Supabase</div>
+      <div class="notif-panel">
+        <h3>&#128276; Enable Notifications</h3>
+
+        <div class="notif-ios-hint">
+          <strong>&#63743; iPhone / iPad:</strong> For notifications to work, open this page in <strong>Safari</strong>, tap <strong>Share &#8599;</strong>, then <strong>Add to Home Screen</strong>. Open the app from your Home Screen, then tap the button below to enable notifications.
+        </div>
+
+        <div class="notif-status default" id="notifStatus">
+          <span id="notifStatusIcon">&#9888;</span>
+          <span id="notifStatusText">Notifications not yet enabled</span>
+        </div>
+
+        <button class="btn-primary" id="notifEnableBtn" onclick="enableNotifications()" style="width:100%">
+          &#128276; Enable Web Notifications
+        </button>
+
+        <div id="notifEnabledSection" style="display:none">
+          <div class="notif-events">
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);margin-bottom:.5rem;margin-top:.5rem">Notification Events</div>
+            <div class="ne-row"><div><div class="ne-label">&#128230; New Order</div><div class="ne-desc">When a customer places a new order</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#128176; Customer Paid</div><div class="ne-desc">When customer clicks "I Have Paid"</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#9989; Order Completed</div><div class="ne-desc">When an order is approved or completed</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#9888; Auto Delivery Failed</div><div class="ne-desc">When auto credential delivery fails</div></div><span class="badge b-green">Active</span></div>
+            <div class="ne-row"><div><div class="ne-label">&#128232; Low Stock Alert</div><div class="ne-desc">When available credentials drop below 3</div></div><span class="badge b-green">Active</span></div>
+          </div>
+
+          <button class="btn-ghost notif-test-btn" onclick="sendTestNotification()" style="width:100%">&#128172; Send Test Notification</button>
+
+          <button class="btn-ghost" onclick="unsubscribePush()" style="width:100%;margin-top:.5rem;color:var(--danger);border-color:rgba(239,68,68,.25)">&#10005; Disable Notifications</button>
+        </div>
+      </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Supabase URL</label>
-      <input type="text" class="form-input" id="sbUrl" placeholder="https://xxx.supabase.co">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Supabase Anon Key</label>
-      <input type="password" class="form-input" id="sbKey" placeholder="eyJhbGciOi...">
-    </div>
-    <button class="btn btn-primary" onclick="connectSupabase()" style="width:100%">Connect</button>
+
   </div>
 </div>
 
-<!-- Product Modal -->
-<div class="overlay" id="productModal">
+<!-- ====== CONNECT OVERLAY ====== -->
+<div class="overlay" id="connectOverlay">
+  <div class="connect-card">
+    <h2><span style="font-size:1.2rem">&#9881;</span> Connect to Supabase</h2>
+    <p>Enter your Supabase project credentials to access the dashboard.</p>
+    <div class="cf">
+      <label>Supabase URL</label>
+      <input id="cfgUrl" type="text" placeholder="https://xxxx.supabase.co"/>
+    </div>
+    <div class="cf">
+      <label>Service Role Key <span style="color:var(--danger);font-weight:700">*</span></label>
+      <input id="cfgKey" type="password" placeholder="eyJhbGci... (service_role key only)"/>
+      <div style="font-size:.72rem;color:var(--text-xs);margin-top:.35rem">Use the <strong style="color:var(--text-s)">service_role</strong> key from Supabase &rarr; Settings &rarr; API. The anon key is blocked by RLS.</div>
+    </div>
+    <div id="cfgErr" style="font-size:.82rem;color:var(--danger);margin-top:.3rem"></div>
+    <button class="btn-primary btn-pill" onclick="doConnect()" style="margin-top:.5rem">Connect</button>
+  </div>
+</div>
+
+<!-- ====== EDIT PRODUCT MODAL ====== -->
+<div class="overlay" id="editOverlay">
   <div class="modal">
-    <div class="modal-hdr">
-      <div class="modal-title" id="prodModalTitle">Add Product</div>
-      <button class="close-modal" onclick="closeProductModal()">×</button>
+    <h3>Edit Product</h3>
+    <input type="hidden" id="editId"/>
+    <div><label class="modal-label">Name</label><input id="editName" type="text"/></div>
+    <div><label class="modal-label">Price (RM)</label><input id="editPrice" type="number" step="0.01"/></div>
+    <div><label class="modal-label">Stock</label><input id="editStock" type="number"/></div>
+    <div><label class="modal-label">Duration</label><input id="editDuration" type="text" placeholder="e.g. 30 days"/></div>
+    <div><label class="modal-label">Description</label><textarea id="editDesc" rows="3" style="min-height:60px"></textarea></div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <label class="modal-label" style="margin-bottom:0">Auto Delivery</label>
+      <label class="toggle"><input type="checkbox" id="editAuto"/><span class="slider"></span></label>
     </div>
-    <div class="form-group">
-      <label class="form-label">Product Name</label>
-      <input type="text" class="form-input" id="prodName" placeholder="Netflix Premium">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Description</label>
-      <textarea class="form-textarea" id="prodDesc" placeholder="1 Month Premium Access" rows="3"></textarea>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Auto Delivery</label>
-        <select class="form-select" id="prodAutoDelivery">
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Order</label>
-        <input type="number" class="form-input" id="prodOrder" value="0" min="0">
-      </div>
-    </div>
-    
-    <div style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-        <h4 style="font-size:.95rem;font-weight:700">Product Variants</h4>
-        <button class="btn btn-sm btn-secondary" onclick="addVariantField()">+ Add Variant</button>
-      </div>
-      <div id="variantsContainer"></div>
-    </div>
-
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveProduct()" id="saveProdBtn">Save Product</button>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeOverlay('editOverlay')">Cancel</button>
+      <button class="btn-primary" onclick="saveEdit()">Save Changes</button>
     </div>
   </div>
 </div>
 
-<!-- Order Detail Modal -->
-<div class="overlay" id="orderModal">
+<!-- ====== MANAGE VARIANTS MODAL ====== -->
+<div class="overlay" id="variantsOverlay">
+  <div class="modal" style="max-width:600px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 id="variantsTitle">Manage Variants</h3>
+      <button class="btn-ghost btn-sm" onclick="closeOverlay('variantsOverlay')" style="padding:.25rem .5rem;font-size:.9rem">&times;</button>
+    </div>
+    <div id="variantsList">
+      <div style="padding:1rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:.75rem">
+      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-s);margin-bottom:.45rem">Add New Variant</div>
+      <div class="var-add-row">
+        <div><label class="modal-label">Name</label><input id="newVarName" type="text" placeholder="e.g. Basic Plan"/></div>
+        <div><label class="modal-label">Price</label><input id="newVarPrice" type="number" step="0.01" placeholder="0.00"/></div>
+        <div><label class="modal-label">Stock</label><input id="newVarStock" type="number" placeholder="0"/></div>
+        <button class="btn-success btn-sm" onclick="addVariant()" style="height:fit-content;margin-bottom:1px">+ Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== ORDER DETAIL MODAL ====== -->
+<div class="overlay" id="orderDetailOverlay">
+  <div class="modal" style="max-width:520px">
+    <h3>Order Details</h3>
+    <div id="orderDetailContent"></div>
+    <div class="modal-btns" id="orderDetailBtns"></div>
+  </div>
+</div>
+
+<!-- ====== RESTOCK / ADD CREDENTIALS MODAL ====== -->
+<div class="overlay" id="restockOverlay">
   <div class="modal">
-    <div class="modal-hdr">
-      <div class="modal-title">Order Details</div>
-      <button class="close-modal" onclick="closeOrderModal()">×</button>
+    <h3 id="restockTitle">Add Credentials</h3>
+    <input type="hidden" id="restockProductId"/>
+    <div id="restockVariantWrap" style="display:none">
+      <label class="modal-label">Variant</label>
+      <select id="restockVariant"></select>
     </div>
-    <div id="orderModalContent">Loading...</div>
-    <div class="modal-footer" id="orderModalActions"></div>
-  </div>
-</div>
-
-<!-- Credential Modal -->
-<div class="overlay" id="credentialModal">
-  <div class="modal" style="max-width:500px">
-    <div class="modal-hdr">
-      <div class="modal-title">Add Credential</div>
-      <button class="close-modal" onclick="closeCredentialModal()">×</button>
+    <div>
+      <label class="modal-label">Credentials (email:password format, one per line)</label>
+      <textarea id="restockCreds" rows="8" placeholder="email1@example.com:password1&#10;email2@example.com:password2&#10;email3@example.com:password3"></textarea>
     </div>
-    <div class="form-group">
-      <label class="form-label">Product</label>
-      <select class="form-select" id="credProduct" onchange="loadCredVariants()">
-        <option value="">Select Product</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Variant</label>
-      <select class="form-select" id="credVariant">
-        <option value="">Select Variant</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Username / Email</label>
-      <input type="text" class="form-input" id="credUsername" placeholder="user@example.com">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <input type="text" class="form-input" id="credPassword" placeholder="password123">
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeCredentialModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveCredential()">Add Credential</button>
+    <div style="font-size:.75rem;color:var(--text-xs)">Each line should be in <strong style="color:var(--text-s)">email:password</strong> format.</div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeOverlay('restockOverlay')">Cancel</button>
+      <button class="btn-primary" onclick="submitRestock()">Add Credentials</button>
     </div>
   </div>
 </div>
 
-<!-- Edit Stock Modal -->
-<div class="overlay" id="stockModal">
-  <div class="modal" style="max-width:450px">
-    <div class="modal-hdr">
-      <div class="modal-title">Edit Stock</div>
-      <button class="close-modal" onclick="closeStockModal()">×</button>
-    </div>
-    <div style="margin-bottom:1.25rem">
-      <div style="font-size:.85rem;color:var(--text-s);margin-bottom:.5rem">Product: <strong id="stockProductName" style="color:var(--text)"></strong></div>
-      <div style="font-size:.85rem;color:var(--text-s)">Variant: <strong id="stockVariantName" style="color:var(--text)"></strong></div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Current Available Stock</label>
-      <div style="font-size:1.5rem;font-weight:800;color:var(--accent);margin-bottom:1rem" id="stockCurrentCount">0</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Add/Remove Stock</label>
-      <div style="display:flex;gap:.75rem;align-items:center">
-        <button class="btn btn-danger" onclick="adjustStock(-10)">-10</button>
-        <button class="btn btn-danger btn-sm" onclick="adjustStock(-1)">-1</button>
-        <input type="number" class="form-input" id="stockAdjust" value="0" style="max-width:100px;text-align:center;font-weight:700;font-size:1.1rem">
-        <button class="btn btn-success btn-sm" onclick="adjustStock(1)">+1</button>
-        <button class="btn btn-success" onclick="adjustStock(10)">+10</button>
-      </div>
-    </div>
-    <div style="padding:1rem;background:rgba(79,142,247,.08);border-radius:var(--r-s);border:1px solid var(--accent-border);margin-top:1rem">
-      <div style="font-size:.8rem;color:var(--text-s);margin-bottom:.3rem">New Stock After Adjustment:</div>
-      <div style="font-size:1.3rem;font-weight:800;color:var(--success)" id="stockNewCount">0</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeStockModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveStockAdjustment()">💾 Save Changes</button>
+<!-- ====== CONFIRM MODAL ====== -->
+<div class="overlay" id="confirmOverlay">
+  <div class="modal" style="max-width:380px">
+    <h3 id="confirmTitle">Confirm Action</h3>
+    <p style="font-size:.86rem;color:var(--text-s)" id="confirmMsg"></p>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeOverlay('confirmOverlay')">Cancel</button>
+      <button class="btn-primary" id="confirmBtn" onclick="">Confirm</button>
     </div>
   </div>
 </div>
 
-<!-- Notification Settings Modal -->
-<div class="overlay" id="notifModal">
-  <div class="modal" style="max-width:500px">
-    <div class="modal-hdr">
-      <div class="modal-title">🔔 Notification Settings</div>
-      <button class="close-modal" onclick="closeNotifModal()">×</button>
-    </div>
-    <div style="padding:1rem;background:rgba(79,142,247,.08);border-radius:var(--r-s);border:1px solid var(--accent-border);margin-bottom:1.25rem">
-      <div style="font-size:.85rem;color:var(--text);line-height:1.6">
-        Get instant alerts for:
-        <ul style="margin-top:.5rem;margin-left:1.25rem;color:var(--text-s)">
-          <li>New orders placed</li>
-          <li>Payment confirmations ("I Have Paid")</li>
-          <li>Order completions</li>
-          <li>Low stock warnings (< 3 credentials)</li>
-        </ul>
-      </div>
-    </div>
-    <div id="notifStatus"></div>
-    <div class="modal-footer" id="notifActions"></div>
-  </div>
-</div>
-
-<!-- Toast -->
-<div class="toast" id="toast"></div>
+<div id="toast"></div>
 
 <script>
 // ====================================================
-// GLOBALS
+// STATE
 // ====================================================
 let sb = null;
 let _sbUrl = '';
 let _sbKey = '';
-let _currentPeriod = 'today';
-let _currentPage = 'overview';
-let _filterOrderStatus = 'all';
-let _filterCredProduct = 'all';
-let _filterCredUsed = 'all';
-let _editingProductId = null;
-let _refreshInterval = null;
-let _charts = {};
+let _page = 'dashboard';
+let _period = 'today';
+let _ordStatusFilter = '';
+let _ordDateFilter = 'all';
 let _allOrders = [];
-let _allCredentials = [];
-let _allProducts = [];
-let _allVariants = [];
+let _weekChart = null;
+let _spkCharts = {};
+let _refreshTimer = null;
+let _variantsProductId = null;
+let _variantsProductName = '';
+let _lastUpdated = null;
 
-// Stock modal state
-let _stockModalVariantId = null;
-let _stockModalCurrentStock = 0;
-
-// Push notification support
-let _swRegistration = null;
-let _pushSubscription = null;
-let _realtimeChannel = null;
+const PAGE_NAMES = {
+  dashboard:'Dashboard', products:'Products', orders:'Orders',
+  sales:'Sales', stocks:'Stocks', credentials:'Credentials',
+  broadcast:'Broadcast', referral:'Referral', notifications:'Notifications'
+};
 
 // ====================================================
-// UTILS
+// UTILITIES
 // ====================================================
-function toast(msg, type = 'success') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast ' + type;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3500);
+const toast = (msg, ms=3500) => {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), ms);
+};
+
+const today = () => new Date().toISOString().slice(0,10);
+
+const dateOffset = days => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0,10);
+};
+
+const fmtDT = dt => {
+  if (!dt) return '--';
+  const d = new Date(dt);
+  return d.toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+    d.toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
+};
+
+const timeAgo = ts => {
+  if (!ts) return '';
+  const s = Math.floor((Date.now()-ts)/1000);
+  if (s < 5)  return 'just now';
+  if (s < 60) return s+'s ago';
+  if (s < 3600) return Math.floor(s/60)+'m ago';
+  return Math.floor(s/3600)+'h ago';
+};
+
+const bool = v => v===true||v==='true'||v===1;
+
+const statusBadge = s => {
+  const map = {
+    completed:'b-green', approved:'b-green',
+    pending:'b-amber', waiting_approval:'b-blue', waiting:'b-blue',
+    cancelled:'b-grey', rejected:'b-red'
+  };
+  const key = (s||'').toLowerCase();
+  const label = (s||'--').replace(/_/g,' ');
+  return '<span class="badge '+(map[key]||'b-grey')+'">'+label+'</span>';
+};
+
+const rm = v => 'RM ' + parseFloat(v||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+const closeOverlay = id => document.getElementById(id).classList.remove('open');
+
+function setTrend(id, a, b) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!b) { el.textContent = ''; el.className = 'sc-trend'; return; }
+  const p = Math.round(((a - b) / b) * 100);
+  el.className = 'sc-trend ' + (p >= 0 ? 'up' : 'dn');
+  el.textContent = (p >= 0 ? '\u25B2' : '\u25BC') + ' ' + Math.abs(p) + '% vs prev 7d';
 }
 
-function today() {
-  return new Date().toISOString().split('T')[0];
+function jwtRole(key) {
+  try {
+    const payload = JSON.parse(atob(key.split('.')[1]));
+    return payload.role || '';
+  } catch(_) { return ''; }
 }
 
-function formatDate(d) {
-  if (!d) return '-';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+// ====================================================
+// SIDEBAR / NAV
+// ====================================================
+const openSb = () => {
+  document.getElementById('sb').classList.add('open');
+  document.getElementById('sbOverlay').classList.add('open');
+};
+const closeSb = () => {
+  document.getElementById('sb').classList.remove('open');
+  document.getElementById('sbOverlay').classList.remove('open');
+};
+
+function nav(el) {
+  _page = el.dataset.page;
+  document.querySelectorAll('.nb').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-'+_page).classList.add('active');
+  document.getElementById('breadPage').textContent = PAGE_NAMES[_page]||_page;
+  // Show period tabs only on dashboard
+  const ptabs = document.getElementById('periodTabs');
+  if (ptabs) ptabs.style.display = _page === 'dashboard' ? 'flex' : 'none';
+  closeSb();
+  if (sb) loadPage(_page);
 }
 
-function formatMoney(v) {
-  return 'RM ' + parseFloat(v || 0).toFixed(2);
+// ====================================================
+// PERIOD TABS
+// ====================================================
+function setPeriod(p, el) {
+  _period = p;
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  if (sb) loadPage(_page);
 }
 
-function setConn(connected) {
-  const dot = document.getElementById('connDot');
-  const txt = document.getElementById('connText');
-  if (connected) {
-    dot.className = 'cdot on';
-    txt.textContent = 'Connected';
-    document.getElementById('connectOverlay').classList.remove('open');
-  } else {
-    dot.className = 'cdot off';
-    txt.textContent = 'Disconnected';
-  }
+function periodRange() {
+  const t = today();
+  if (_period==='today') return { from: t+'T00:00:00', to: t+'T23:59:59' };
+  if (_period==='week')  return { from: dateOffset(-6)+'T00:00:00', to: t+'T23:59:59' };
+  return { from: dateOffset(-29)+'T00:00:00', to: t+'T23:59:59' };
 }
 
+// ====================================================
+// CONNECT
+// ====================================================
 function openConnect() {
+  document.getElementById('cfgUrl').value = localStorage.getItem('bs_url') || '';
+  document.getElementById('cfgKey').value = localStorage.getItem('bs_key') || '';
+  document.getElementById('cfgErr').textContent = '';
   document.getElementById('connectOverlay').classList.add('open');
 }
 
-async function connectSupabase() {
-  const url = document.getElementById('sbUrl').value.trim();
-  const key = document.getElementById('sbKey').value.trim();
-  if (!url || !key) {
-    toast('Please enter both URL and Key', 'error');
+async function doConnect() {
+  const url = document.getElementById('cfgUrl').value.trim();
+  const key = document.getElementById('cfgKey').value.trim();
+  const err = document.getElementById('cfgErr');
+  if (!url||!key) { err.textContent='Both fields are required.'; return; }
+  const role = jwtRole(key);
+  if (role === 'anon') {
+    err.textContent = 'This is an anon key. RLS will block admin reads. Use the service_role key from Supabase Settings > API.';
     return;
   }
   try {
     sb = supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    _sbUrl = url;
+    _sbKey = key;
     // Test connection
     const { error } = await sb.from('products').select('id', { count: 'exact', head: true });
     if (error) throw error;
-    
-    _sbUrl = url;
-    _sbKey = key;
     localStorage.setItem('bs_url', url);
     localStorage.setItem('bs_key', key);
     setConn(true);
-    toast('Connected successfully! 🎉');
+    closeOverlay('connectOverlay');
+    toast('Connected successfully' + (role === 'service_role' ? ' (service_role)' : ''));
     startRefresh();
-    
-    // Setup realtime listeners if notifications enabled
-    if (Notification.permission === 'granted') {
-      setupRealtimeListeners();
-    }
-  } catch (e) {
-    toast('Connection failed: ' + e.message, 'error');
+    if (Notification.permission === 'granted') setupRealtimeListeners();
+  } catch(e) {
+    err.textContent = 'Connection failed: ' + e.message;
+    sb = null;
+    setConn(false);
   }
 }
 
-function logout() {
-  if (!confirm('Disconnect from Supabase?')) return;
-  localStorage.removeItem('bs_url');
-  localStorage.removeItem('bs_key');
-  sb = null;
-  _sbUrl = '';
-  _sbKey = '';
-  setConn(false);
-  stopRefresh();
-  openConnect();
-  toast('Disconnected');
+function setConn(on) {
+  document.getElementById('cdot').className = 'cdot ' + (on?'on':'off');
+  document.getElementById('clabel').textContent = on?'Connected':'Disconnected';
 }
 
 // ====================================================
-// SIDEBAR & NAVIGATION
-// ====================================================
-function toggleSidebar() {
-  const sb = document.getElementById('sidebar');
-  const overlay = document.getElementById('mobileOverlay');
-  sb.classList.toggle('open');
-  overlay.classList.toggle('open');
-}
-
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('mobileOverlay').classList.remove('open');
-}
-
-function switchPage(page) {
-  _currentPage = page;
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nb').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  document.querySelector(`.nb[onclick="switchPage('${page}')"]`)?.classList.add('active');
-  document.getElementById('currentPage').textContent = page.charAt(0).toUpperCase() + page.slice(1);
-  closeSidebar();
-  
-  // Load page data
-  if (page === 'overview') loadOverview();
-  else if (page === 'products') loadProducts();
-  else if (page === 'orders') loadOrders();
-  else if (page === 'credentials') loadCredentials();
-  else if (page === 'sales') loadSales();
-  else if (page === 'broadcast') loadBroadcastHistory();
-  else if (page === 'settings') loadBotSettings();
-}
-
-function setPeriod(p) {
-  _currentPeriod = p;
-  document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`.ptab[data-period="${p}"]`).classList.add('active');
-  loadOverview();
-}
-
-// ====================================================
-// AUTO REFRESH
+// REFRESH ENGINE
 // ====================================================
 function startRefresh() {
-  stopRefresh();
-  loadOverview();
-  _refreshInterval = setInterval(() => {
-    if (_currentPage === 'overview') loadOverview();
-    else if (_currentPage === 'orders') loadOrders();
-    else if (_currentPage === 'credentials') loadCredentials();
-  }, 30000); // 30s
+  clearInterval(_refreshTimer);
+  loadPage(_page);
+  _refreshTimer = setInterval(()=>loadPage(_page), 30000);
 }
 
-function stopRefresh() {
-  if (_refreshInterval) {
-    clearInterval(_refreshInterval);
-    _refreshInterval = null;
-  }
+setInterval(()=>{
+  if (_lastUpdated)
+    document.getElementById('updLbl').textContent = 'Updated ' + timeAgo(_lastUpdated);
+}, 1000);
+
+function markUpdated() {
+  _lastUpdated = Date.now();
+  document.getElementById('updLbl').textContent = 'Updated just now';
+}
+
+function loadPage(p) {
+  if (!sb) return;
+  if (p==='dashboard')   loadDashboard();
+  if (p==='orders')      loadOrders();
+  if (p==='products')    loadProducts();
+  if (p==='sales')       loadSales();
+  if (p==='stocks')      loadStocks();
+  if (p==='credentials') loadCredentials();
+  if (p==='broadcast')   loadBcastCount();
+  if (p==='referral')    loadReferral();
+  if (p==='notifications') refreshNotifUI();
 }
 
 // ====================================================
-// OVERVIEW PAGE
+// SPARKLINE CHARTS
 // ====================================================
-async function loadOverview() {
+function drawSpark(id, data, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (_spkCharts[id]) _spkCharts[id].destroy();
+  _spkCharts[id] = new Chart(ctx, {
+    type:'line',
+    data:{ labels:data.map((_,i)=>i), datasets:[{data, borderColor:color, borderWidth:2, pointRadius:0, fill:false, tension:.4}]},
+    options:{plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},animation:false,responsive:false,maintainAspectRatio:false}
+  });
+}
+
+// ====================================================
+// DASHBOARD
+// ====================================================
+async function loadDashboard() {
   if (!sb) return;
   try {
-    // Date range based on period
-    let from, to;
-    const now = new Date();
-    to = now.toISOString();
-    if (_currentPeriod === 'today') {
-      from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    } else if (_currentPeriod === 'week') {
-      from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    } else {
-      from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const t = today();
+    const w0 = dateOffset(-6);
+    const pw0 = dateOffset(-13);
+
+    const [uRes, oRes, pendRes] = await Promise.all([
+      sb.from('users').select('id',{count:'exact',head:true}),
+      sb.from('orders').select('amount,status,created_at,product_name')
+        .gte('created_at', pw0+'T00:00:00').order('created_at'),
+      sb.from('orders').select('id',{count:'exact',head:true}).in('status',['pending','waiting_approval','waiting']),
+    ]);
+
+    const totalUsers = uRes.count ?? 0;
+    const allO = oRes.data || [];
+    const pendingCount = pendRes.count ?? 0;
+
+    const isOk = o => ['approved','completed'].includes((o.status||'').toLowerCase());
+    const thisW = allO.filter(o => o.created_at >= w0+'T00:00:00');
+    const prevW = allO.filter(o => o.created_at < w0+'T00:00:00');
+    const appT = thisW.filter(isOk);
+    const appP = prevW.filter(isOk);
+    const revT = appT.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
+    const revP = appP.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
+
+    document.getElementById('dUsers').textContent = totalUsers;
+    document.getElementById('dRev').textContent = rm(revT);
+    document.getElementById('dApp').textContent = appT.length;
+    document.getElementById('dPending').textContent = pendingCount;
+    setTrend('dRevTrend', revT, revP);
+    setTrend('dAppTrend', appT.length, appP.length);
+
+    // Daily data for sparklines + chart
+    const labels=[], revDay=[], appDay=[];
+    for (let i=6;i>=0;i--) {
+      const d = dateOffset(-i);
+      const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      labels.push(dayNames[new Date(d).getDay()]);
+      const day = thisW.filter(o=>o.created_at.startsWith(d));
+      revDay.push(day.filter(isOk).reduce((s,o)=>s+(parseFloat(o.amount)||0),0));
+      appDay.push(day.filter(isOk).length);
     }
 
-    // Revenue & Orders
-    const { data: orders } = await sb.from('orders').select('*').gte('created_at', from).lte('created_at', to);
-    const completed = orders?.filter(o => o.status === 'completed' || o.status === 'approved') || [];
-    const revenue = completed.reduce((sum, o) => sum + parseFloat(o.amount || 0), 0);
-    
-    // Pending
-    const { count: pending } = await sb.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'waiting_approval');
-    
-    // Products
-    const { count: products } = await sb.from('products').select('id', { count: 'exact', head: true });
+    drawSpark('spkRev', revDay, '#4f8ef7');
+    drawSpark('spkApp', appDay, '#22c55e');
 
-    // Update stats
-    document.getElementById('statRevenue').textContent = formatMoney(revenue);
-    document.getElementById('statOrders').textContent = completed.length;
-    document.getElementById('statPending').textContent = pending || 0;
-    document.getElementById('statProducts').textContent = products || 0;
+    document.getElementById('weekPill').textContent = rm(revT) + ' this week';
+    drawWeekChart(labels, revDay);
 
-    // Sparklines (dummy data for now)
-    renderSparkline('sparkRev', [revenue * 0.7, revenue * 0.85, revenue * 1, revenue * 0.9, revenue]);
-    renderSparkline('sparkOrders', [completed.length * 0.6, completed.length * 0.8, completed.length, completed.length * 0.95, completed.length]);
-
-    // Main chart
-    renderMainChart(orders || []);
-
-    // Recent orders
-    const { data: recent } = await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(5);
-    renderRecentOrders(recent || []);
-
-    document.getElementById('overviewUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to load overview', 'error');
-  }
-}
-
-function renderSparkline(canvasId, data) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  if (_charts[canvasId]) _charts[canvasId].destroy();
-  _charts[canvasId] = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: data.map((_, i) => ''),
-      datasets: [{
-        data: data,
-        borderColor: '#4f8ef7',
-        backgroundColor: 'rgba(79,142,247,0.1)',
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
-      scales: {
-        x: { display: false },
-        y: { display: false }
-      }
+    // Top products
+    const byProd = {};
+    for (const o of thisW.filter(isOk)) {
+      const k = o.product_name||'--';
+      if (!byProd[k]) byProd[k]={count:0,rev:0};
+      byProd[k].count++;
+      byProd[k].rev += parseFloat(o.amount)||0;
     }
-  });
+    const topRows = Object.entries(byProd).sort((a,b)=>b[1].count-a[1].count).slice(0,10);
+    const tb = document.getElementById('topProdBody');
+    tb.innerHTML = topRows.length
+      ? topRows.map(([name,d],i)=>'<tr>'+
+          '<td style="color:var(--text-xs);font-weight:700">'+(i+1)+'</td>'+
+          '<td><strong>'+name+'</strong></td>'+
+          '<td style="color:var(--text-s)">'+d.count+' units</td>'+
+          '<td>'+rm(d.rev)+'</td>'+
+        '</tr>').join('')
+      : '<tr><td colspan="4" style="padding:.8rem 0;color:var(--text-s)">No sales data yet.</td></tr>';
+
+    markUpdated();
+  } catch(e) { toast('Dashboard error: '+e.message); }
 }
 
-function renderMainChart(orders) {
-  const canvas = document.getElementById('mainChart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  // Group by date
-  const grouped = {};
-  orders.forEach(o => {
-    if (o.status !== 'completed' && o.status !== 'approved') return;
-    const date = new Date(o.created_at).toISOString().split('T')[0];
-    if (!grouped[date]) grouped[date] = 0;
-    grouped[date] += parseFloat(o.amount || 0);
-  });
-  
-  const labels = Object.keys(grouped).sort();
-  const data = labels.map(d => grouped[d]);
-
-  if (_charts.mainChart) _charts.mainChart.destroy();
-  _charts.mainChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels.map(d => new Date(d).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })),
-      datasets: [{
-        label: 'Revenue',
-        data: data,
-        borderColor: '#4f8ef7',
-        backgroundColor: 'rgba(79,142,247,0.1)',
-        borderWidth: 3,
-        fill: true,
-        tension: 0.4
+function drawWeekChart(labels, data) {
+  const ctx = document.getElementById('weekChart');
+  if (!ctx) return;
+  if (_weekChart) _weekChart.destroy();
+  _weekChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'Revenue',
+        data,
+        borderColor:'#4f8ef7',
+        backgroundColor:'rgba(79,142,247,.08)',
+        borderWidth:2.5,
+        pointRadius:5,
+        pointBackgroundColor:'#4f8ef7',
+        pointBorderColor:'#1a1d27',
+        pointBorderWidth:2,
+        fill:true,
+        tension:.4,
       }]
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#13171f',
-          titleColor: '#e8eaed',
-          bodyColor: '#9ca3af',
-          borderColor: '#1f2937',
-          borderWidth: 1,
-          padding: 12,
-          displayColors: false,
-          callbacks: {
-            label: (ctx) => formatMoney(ctx.parsed.y)
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: '#1f2937', drawBorder: false },
-          ticks: { color: '#6b7280', font: { size: 11 } }
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'#1a1d27',
+          borderColor:'#2f3347',
+          borderWidth:1,
+          titleColor:'#e4e7ec',
+          bodyColor:'#8b8fa3',
+          callbacks:{label:c=>'RM '+c.parsed.y.toFixed(2)}
         },
-        y: {
-          grid: { color: '#1f2937', drawBorder: false },
-          ticks: {
-            color: '#6b7280',
-            font: { size: 11 },
-            callback: (v) => 'RM ' + v
-          }
-        }
+      },
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:11},color:'#5c6070'}},
+        y:{display:false,beginAtZero:true}
       }
     }
   });
 }
 
-function renderRecentOrders(orders) {
-  const tbody = document.getElementById('recentOrdersBody');
-  if (!orders.length) {
-    tbody.innerHTML = '<tr class="empty-r"><td colspan="6">No recent orders</td></tr>';
-    return;
-  }
-  tbody.innerHTML = orders.map(o => `
-    <tr class="clickable-row" onclick="openOrderDetail(${o.id})">
-      <td>#${o.id}</td>
-      <td>@${o.username || 'N/A'}</td>
-      <td>${o.product_name || 'N/A'}</td>
-      <td>${formatMoney(o.amount)}</td>
-      <td>${getStatusBadge(o.status)}</td>
-      <td style="color:var(--text-s);font-size:.78rem">${formatDate(o.created_at)}</td>
-    </tr>
-  `).join('');
-}
-
 // ====================================================
-// PRODUCTS PAGE
+// ORDERS
 // ====================================================
-async function loadProducts() {
-  if (!sb) return;
-  try {
-    const { data: products } = await sb.from('products').select('*').order('display_order');
-    const { data: variants } = await sb.from('product_variants').select('*');
-    _allProducts = products || [];
-    _allVariants = variants || [];
-    
-    const grid = document.getElementById('productsGrid');
-    if (!products || !products.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-s)">No products yet. Add your first product!</div>';
-      return;
-    }
+function setStatusFilter(el, st) {
+  _ordStatusFilter = st;
+  document.querySelectorAll('#statusPills .fpill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  loadOrders();
+}
 
-    grid.innerHTML = products.map(p => {
-      const pVariants = variants.filter(v => v.product_id === p.id);
-      const totalStock = pVariants.reduce((sum, v) => sum + (v.stock || 0), 0);
-      const isDeactivated = totalStock === 0;
-      
-      return `
-        <div class="prod-card ${isDeactivated ? 'deactivated' : ''}">
-          <div class="pc-name">${p.name}</div>
-          <div class="pc-desc">${p.description || 'No description'}</div>
-          <div class="variant-list">
-            ${pVariants.map(v => `
-              <div class="variant-item">
-                <div class="vi-left">
-                  <div class="vi-name">${v.name}</div>
-                  <div class="vi-price">${formatMoney(v.price)}</div>
-                </div>
-                <div class="vi-actions">
-                  <span class="vi-stock ${v.stock < 5 ? 'low' : ''} ${v.stock === 0 ? 'zero' : ''}">${v.stock || 0} left</span>
-                  <button class="btn btn-xs btn-secondary" onclick="openStockModal(${v.id}, '${p.name}', '${v.name}', ${v.stock || 0})">✏️ Edit</button>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-          <div class="pc-footer">
-            <div class="pc-stock">Total: <strong>${totalStock}</strong></div>
-            <div class="pc-actions">
-              <button class="btn btn-xs btn-secondary" onclick="openEditProduct(${p.id})">✏️ Edit</button>
-              <button class="btn btn-xs ${isDeactivated ? 'btn-success' : 'btn-danger'}" onclick="toggleProductActivation(${p.id}, ${isDeactivated})">${isDeactivated ? '✅ Activate' : '❌ Deactivate'}</button>
-              <button class="btn btn-xs btn-danger" onclick="deleteProduct(${p.id})">🗑️</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-  } catch (e) {
-    console.error(e);
-    toast('Failed to load products', 'error');
+function setDateFilter(el, df) {
+  _ordDateFilter = df;
+  document.querySelectorAll('#datePills .fpill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  const customEl = document.getElementById('ordCustomRange');
+  if (df === 'custom') {
+    customEl.style.display = 'flex';
+    const t = today();
+    if (!document.getElementById('ordFrom').value) document.getElementById('ordFrom').value = t;
+    if (!document.getElementById('ordTo').value) document.getElementById('ordTo').value = t;
+  } else {
+    customEl.style.display = 'none';
+    loadOrders();
   }
 }
 
-function openAddProduct() {
-  _editingProductId = null;
-  document.getElementById('prodModalTitle').textContent = 'Add Product';
-  document.getElementById('prodName').value = '';
-  document.getElementById('prodDesc').value = '';
-  document.getElementById('prodAutoDelivery').value = 'true';
-  document.getElementById('prodOrder').value = '0';
-  document.getElementById('variantsContainer').innerHTML = '';
-  addVariantField(); // Add one default variant
-  document.getElementById('productModal').classList.add('open');
-}
-
-async function openEditProduct(id) {
-  _editingProductId = id;
-  const product = _allProducts.find(p => p.id === id);
-  if (!product) return;
-  
-  document.getElementById('prodModalTitle').textContent = 'Edit Product';
-  document.getElementById('prodName').value = product.name;
-  document.getElementById('prodDesc').value = product.description || '';
-  document.getElementById('prodAutoDelivery').value = product.auto_delivery ? 'true' : 'false';
-  document.getElementById('prodOrder').value = product.display_order || 0;
-  
-  // Load variants
-  const variants = _allVariants.filter(v => v.product_id === id);
-  const container = document.getElementById('variantsContainer');
-  container.innerHTML = '';
-  variants.forEach(v => {
-    addVariantField(v);
-  });
-  if (!variants.length) addVariantField();
-  
-  document.getElementById('productModal').classList.add('open');
-}
-
-function closeProductModal() {
-  document.getElementById('productModal').classList.remove('open');
-}
-
-let _variantCounter = 0;
-function addVariantField(variant = null) {
-  const container = document.getElementById('variantsContainer');
-  const idx = _variantCounter++;
-  const div = document.createElement('div');
-  div.className = 'variant-item';
-  div.style.marginBottom = '0.75rem';
-  div.innerHTML = `
-    <div class="form-row" style="margin-bottom:0">
-      <div class="form-group" style="margin-bottom:0">
-        <input type="text" class="form-input" placeholder="Variant name (e.g. 1 Month)" value="${variant?.name || ''}" data-variant-id="${variant?.id || ''}" data-variant-field="name">
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <input type="number" class="form-input" placeholder="Price (RM)" step="0.01" value="${variant?.price || ''}" data-variant-field="price">
-      </div>
-      <div class="form-group" style="margin-bottom:0;max-width:100px">
-        <button class="btn btn-danger btn-sm" onclick="this.closest('.variant-item').remove()" style="width:100%">🗑️</button>
-      </div>
-    </div>
-  `;
-  container.appendChild(div);
-}
-
-async function saveProduct() {
-  if (!sb) return;
-  const name = document.getElementById('prodName').value.trim();
-  const desc = document.getElementById('prodDesc').value.trim();
-  const autoDelivery = document.getElementById('prodAutoDelivery').value === 'true';
-  const order = parseInt(document.getElementById('prodOrder').value);
-  
-  if (!name) {
-    toast('Product name is required', 'error');
-    return;
+function ordDateRange() {
+  const t = today();
+  if (_ordDateFilter === 'today') return { from: t+'T00:00:00', to: t+'T23:59:59' };
+  if (_ordDateFilter === 'yesterday') {
+    const y = dateOffset(-1);
+    return { from: y+'T00:00:00', to: y+'T23:59:59' };
   }
-
-  // Collect variants
-  const variantInputs = document.querySelectorAll('#variantsContainer .variant-item');
-  const variants = [];
-  variantInputs.forEach(item => {
-    const nameInput = item.querySelector('[data-variant-field="name"]');
-    const priceInput = item.querySelector('[data-variant-field="price"]');
-    const variantId = nameInput.dataset.variantId;
-    const vName = nameInput.value.trim();
-    const vPrice = parseFloat(priceInput.value);
-    
-    if (vName && vPrice > 0) {
-      variants.push({
-        id: variantId || undefined,
-        name: vName,
-        price: vPrice
-      });
-    }
-  });
-
-  if (!variants.length) {
-    toast('At least one variant is required', 'error');
-    return;
+  if (_ordDateFilter === 'week') return { from: dateOffset(-6)+'T00:00:00', to: t+'T23:59:59' };
+  if (_ordDateFilter === 'month') return { from: dateOffset(-29)+'T00:00:00', to: t+'T23:59:59' };
+  if (_ordDateFilter === 'custom') {
+    const from = document.getElementById('ordFrom').value;
+    const to = document.getElementById('ordTo').value;
+    if (from && to) return { from: from+'T00:00:00', to: to+'T23:59:59' };
   }
-
-  try {
-    let productId = _editingProductId;
-    
-    // Save product
-    if (productId) {
-      // Update
-      await sb.from('products').update({
-        name,
-        description: desc,
-        auto_delivery: autoDelivery,
-        display_order: order
-      }).eq('id', productId);
-    } else {
-      // Insert
-      const { data, error } = await sb.from('products').insert({
-        name,
-        description: desc,
-        auto_delivery: autoDelivery,
-        display_order: order
-      }).select();
-      if (error) throw error;
-      productId = data[0].id;
-    }
-
-    // Save variants
-    for (const v of variants) {
-      if (v.id) {
-        // Update existing
-        await sb.from('product_variants').update({
-          name: v.name,
-          price: v.price
-        }).eq('id', v.id);
-      } else {
-        // Insert new
-        await sb.from('product_variants').insert({
-          product_id: productId,
-          name: v.name,
-          price: v.price,
-          stock: 0
-        });
-      }
-    }
-
-    toast('Product saved successfully! 🎉');
-    closeProductModal();
-    loadProducts();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to save product: ' + e.message, 'error');
-  }
+  return null;
 }
 
-async function deleteProduct(id) {
-  if (!confirm('Delete this product and all its variants? This cannot be undone!')) return;
-  if (!sb) return;
-  try {
-    await sb.from('product_variants').delete().eq('product_id', id);
-    await sb.from('products').delete().eq('id', id);
-    toast('Product deleted');
-    loadProducts();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to delete product', 'error');
-  }
-}
-
-async function toggleProductActivation(productId, isCurrentlyDeactivated) {
-  if (!sb) return;
-  const action = isCurrentlyDeactivated ? 'activate' : 'deactivate';
-  if (!confirm(`Are you sure you want to ${action} this product?`)) return;
-  
-  try {
-    const newStock = isCurrentlyDeactivated ? 1 : 0; // If activating, set to 1; if deactivating, set to 0
-    const { data: variants } = await sb.from('product_variants').select('id').eq('product_id', productId);
-    
-    if (variants && variants.length) {
-      for (const v of variants) {
-        await sb.from('product_variants').update({ stock: newStock }).eq('id', v.id);
-      }
-    }
-    
-    toast(`Product ${action}d successfully!`);
-    loadProducts();
-  } catch (e) {
-    console.error(e);
-    toast(`Failed to ${action} product`, 'error');
-  }
-}
-
-// ====================================================
-// STOCK MODAL
-// ====================================================
-function openStockModal(variantId, productName, variantName, currentStock) {
-  _stockModalVariantId = variantId;
-  _stockModalCurrentStock = currentStock;
-  
-  document.getElementById('stockProductName').textContent = productName;
-  document.getElementById('stockVariantName').textContent = variantName;
-  document.getElementById('stockCurrentCount').textContent = currentStock;
-  document.getElementById('stockAdjust').value = '0';
-  updateStockNewCount();
-  
-  document.getElementById('stockModal').classList.add('open');
-}
-
-function closeStockModal() {
-  document.getElementById('stockModal').classList.remove('open');
-  _stockModalVariantId = null;
-  _stockModalCurrentStock = 0;
-}
-
-function adjustStock(delta) {
-  const input = document.getElementById('stockAdjust');
-  const current = parseInt(input.value) || 0;
-  input.value = current + delta;
-  updateStockNewCount();
-}
-
-function updateStockNewCount() {
-  const adjust = parseInt(document.getElementById('stockAdjust').value) || 0;
-  const newStock = Math.max(0, _stockModalCurrentStock + adjust);
-  document.getElementById('stockNewCount').textContent = newStock;
-}
-
-document.getElementById('stockAdjust')?.addEventListener('input', updateStockNewCount);
-
-async function saveStockAdjustment() {
-  if (!sb || !_stockModalVariantId) return;
-  
-  const adjust = parseInt(document.getElementById('stockAdjust').value) || 0;
-  if (adjust === 0) {
-    toast('No changes to save', 'warning');
-    return;
-  }
-  
-  const newStock = Math.max(0, _stockModalCurrentStock + adjust);
-  
-  try {
-    await sb.from('product_variants').update({ stock: newStock }).eq('id', _stockModalVariantId);
-    toast('Stock updated successfully! 🎉');
-    closeStockModal();
-    loadProducts();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to update stock', 'error');
-  }
-}
-
-// ====================================================
-// ORDERS PAGE
-// ====================================================
 async function loadOrders() {
   if (!sb) return;
+  const tbody = document.getElementById('ordBody');
+  tbody.innerHTML = '<tr class="empty-r"><td colspan="7"><span class="spin"></span>Loading...</td></tr>';
+
   try {
-    const { data: orders } = await sb.from('orders').select('*').order('created_at', { ascending: false });
-    _allOrders = orders || [];
-    renderOrders();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to load orders', 'error');
-  }
-}
+    const range = ordDateRange();
+    let q = sb.from('orders')
+      .select('id,user_id,username,product_id,product_name,quantity,amount,status,created_at,credentials_sent,variant_id')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (_ordStatusFilter) q = q.eq('status', _ordStatusFilter);
+    if (range) q = q.gte('created_at', range.from).lte('created_at', range.to);
 
-function renderOrders() {
-  let filtered = _allOrders;
-  
-  // Filter by status
-  if (_filterOrderStatus !== 'all') {
-    filtered = filtered.filter(o => o.status === _filterOrderStatus);
-  }
-  
-  // Filter by search
-  const search = document.getElementById('orderSearch').value.toLowerCase();
-  if (search) {
-    filtered = filtered.filter(o => 
-      (o.username || '').toLowerCase().includes(search) ||
-      (o.product_name || '').toLowerCase().includes(search)
-    );
-  }
+    const { data, error } = await q;
+    if (error) throw error;
 
-  const tbody = document.getElementById('ordersTableBody');
-  if (!filtered.length) {
-    tbody.innerHTML = '<tr class="empty-r"><td colspan="8">No orders found</td></tr>';
-    return;
+    _allOrders = data || [];
+    renderOrders(_allOrders);
+    document.getElementById('ordCount').textContent = _allOrders.length + ' orders';
+    markUpdated();
+  } catch(e) {
+    tbody.innerHTML = '<tr class="empty-r"><td colspan="7" style="color:var(--danger)">Error: '+e.message+'</td></tr>';
   }
-
-  tbody.innerHTML = filtered.map(o => `
-    <tr class="clickable-row" onclick="openOrderDetail(${o.id})">
-      <td style="font-weight:700">#${o.id}</td>
-      <td>@${o.username || 'N/A'}</td>
-      <td>${o.product_name || 'N/A'}</td>
-      <td>${o.variant_name || 'N/A'}</td>
-      <td style="font-weight:700">${formatMoney(o.amount)}</td>
-      <td>${getStatusBadge(o.status)}</td>
-      <td style="color:var(--text-s);font-size:.78rem">${formatDate(o.created_at)}</td>
-      <td>
-        ${o.status === 'waiting_approval' ? '<button class="btn btn-xs btn-success" onclick="event.stopPropagation(); approveOrder(' + o.id + ')">✅ Approve</button>' : ''}
-        ${o.status === 'waiting_approval' ? '<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); rejectOrder(' + o.id + ')">❌ Reject</button>' : ''}
-      </td>
-    </tr>
-  `).join('');
 }
 
 function filterOrders() {
-  renderOrders();
+  const q = document.getElementById('ordSearch').value.toLowerCase();
+  if (!q) { renderOrders(_allOrders); return; }
+  renderOrders(_allOrders.filter(o=>
+    String(o.id||'').toLowerCase().includes(q)||
+    (o.username||'').toLowerCase().includes(q)||
+    (o.product_name||'').toLowerCase().includes(q)
+  ));
 }
 
-function filterOrderStatus(status) {
-  _filterOrderStatus = status;
-  document.querySelectorAll('.filter-pills .fpill[data-status]').forEach(p => p.classList.remove('active'));
-  document.querySelector(`.fpill[data-status="${status}"]`).classList.add('active');
-  renderOrders();
+function renderOrders(rows) {
+  const tb = document.getElementById('ordBody');
+  if (!rows.length) {
+    tb.innerHTML = '<tr class="empty-r"><td colspan="7">No orders found.</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(o => {
+    const cust = o.username ? '@'+o.username : (o.user_id ? String(o.user_id) : '--');
+    const oid = String(o.id||'').length > 8 ? String(o.id).slice(0,8)+'...' : String(o.id||'');
+    return '<tr class="clickable-row" onclick=\'showOrderDetail('+JSON.stringify(o).replace(/'/g,"\\'")+')\'>' +
+      '<td style="font-family:monospace;font-size:.78rem;color:var(--text-s)">'+oid+'</td>'+
+      '<td>'+cust+'</td>'+
+      '<td>'+( o.product_name||'--')+'</td>'+
+      '<td>'+(o.quantity||1)+'</td>'+
+      '<td><strong>'+rm(o.amount)+'</strong></td>'+
+      '<td>'+statusBadge(o.status)+'</td>'+
+      '<td style="font-size:.78rem;white-space:nowrap">'+fmtDT(o.created_at)+'</td>'+
+    '</tr>';
+  }).join('');
 }
 
-function getStatusBadge(status) {
-  const badges = {
-    pending: '<span class="badge b-grey">Pending</span>',
-    waiting_approval: '<span class="badge b-amber">Waiting Approval</span>',
-    approved: '<span class="badge b-blue">Approved</span>',
-    completed: '<span class="badge b-green">Completed</span>',
-    rejected: '<span class="badge b-red">Rejected</span>'
-  };
-  return badges[status] || '<span class="badge b-grey">' + status + '</span>';
-}
+function showOrderDetail(o) {
+  const content = document.getElementById('orderDetailContent');
+  const btns = document.getElementById('orderDetailBtns');
+  const cust = o.username ? '@'+o.username : (o.user_id ? String(o.user_id) : '--');
+  content.innerHTML =
+    '<div class="detail-grid">'+
+      '<div><div class="dl">Order ID</div><div class="dv" style="font-family:monospace;font-size:.78rem">'+String(o.id||'')+'</div></div>'+
+      '<div><div class="dl">Status</div><div class="dv">'+statusBadge(o.status)+'</div></div>'+
+      '<div><div class="dl">Customer</div><div class="dv">'+cust+'</div></div>'+
+      '<div><div class="dl">Product</div><div class="dv">'+(o.product_name||'--')+'</div></div>'+
+      '<div><div class="dl">Quantity</div><div class="dv">'+(o.quantity||1)+'</div></div>'+
+      '<div><div class="dl">Amount</div><div class="dv">'+rm(o.amount)+'</div></div>'+
+      '<div><div class="dl">Date</div><div class="dv">'+fmtDT(o.created_at)+'</div></div>'+
+      '<div><div class="dl">Credentials Sent</div><div class="dv">'+(o.credentials_sent ? 'Yes' : 'No')+'</div></div>'+
+      (o.variant_id ? '<div><div class="dl">Variant ID</div><div class="dv" style="font-family:monospace;font-size:.78rem">'+o.variant_id+'</div></div>' : '')+
+    '</div>';
 
-async function openOrderDetail(id) {
-  const order = _allOrders.find(o => o.id === id);
-  if (!order) return;
-  
-  const content = document.getElementById('orderModalContent');
-  content.innerHTML = `
-    <div style="display:grid;gap:1rem">
-      <div><strong>Order ID:</strong> #${order.id}</div>
-      <div><strong>Customer:</strong> @${order.username || 'N/A'} (ID: ${order.user_id})</div>
-      <div><strong>Product:</strong> ${order.product_name || 'N/A'}</div>
-      <div><strong>Variant:</strong> ${order.variant_name || 'N/A'}</div>
-      <div><strong>Amount:</strong> ${formatMoney(order.amount)}</div>
-      <div><strong>Status:</strong> ${getStatusBadge(order.status)}</div>
-      <div><strong>Created:</strong> ${formatDate(order.created_at)}</div>
-      ${order.payment_proof_file_id ? '<div><strong>Payment Proof:</strong> Uploaded</div>' : ''}
-    </div>
-  `;
-  
-  const actions = document.getElementById('orderModalActions');
-  if (order.status === 'waiting_approval') {
-    actions.innerHTML = `
-      <button class="btn btn-success" onclick="approveOrder(${order.id}); closeOrderModal()">✅ Approve Order</button>
-      <button class="btn btn-danger" onclick="rejectOrder(${order.id}); closeOrderModal()">❌ Reject Order</button>
-    `;
+  const st = (o.status||'').toLowerCase();
+  if (st === 'waiting_approval' || st === 'waiting' || st === 'pending') {
+    btns.innerHTML =
+      '<button class="btn-ghost" onclick="closeOverlay(\'orderDetailOverlay\')">Close</button>'+
+      '<button class="btn-danger btn-sm" onclick="orderAction(\''+o.id+'\',\'rejected\')">Reject</button>'+
+      '<button class="btn-success btn-sm" onclick="orderAction(\''+o.id+'\',\'approved\')">Approve</button>';
   } else {
-    actions.innerHTML = '<button class="btn btn-secondary" onclick="closeOrderModal()">Close</button>';
+    btns.innerHTML = '<button class="btn-ghost" onclick="closeOverlay(\'orderDetailOverlay\')">Close</button>';
   }
-  
-  document.getElementById('orderModal').classList.add('open');
+  document.getElementById('orderDetailOverlay').classList.add('open');
 }
 
-function closeOrderModal() {
-  document.getElementById('orderModal').classList.remove('open');
+async function orderAction(orderId, newStatus) {
+  const action = newStatus === 'approved' ? 'approve' : 'reject';
+  showConfirm(
+    'Confirm ' + action.charAt(0).toUpperCase() + action.slice(1),
+    'Are you sure you want to ' + action + ' order #' + String(orderId).slice(0,8) + '...?',
+    async () => {
+      try {
+        const { error } = await sb.from('orders').update({ status: newStatus }).eq('id', orderId);
+        if (error) throw error;
+        toast('Order ' + action + 'd successfully');
+        closeOverlay('orderDetailOverlay');
+        loadOrders();
+      } catch(e) { toast('Error: ' + e.message); }
+    }
+  );
 }
 
-async function approveOrder(id) {
-  if (!sb) return;
-  try {
-    await sb.from('orders').update({ status: 'approved' }).eq('id', id);
-    toast('Order approved! ✅');
-    loadOrders();
-    if (_currentPage === 'overview') loadOverview();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to approve order', 'error');
-  }
-}
-
-async function rejectOrder(id) {
-  if (!confirm('Reject this order?')) return;
-  if (!sb) return;
-  try {
-    await sb.from('orders').update({ status: 'rejected' }).eq('id', id);
-    toast('Order rejected');
-    loadOrders();
-    if (_currentPage === 'overview') loadOverview();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to reject order', 'error');
-  }
+function showConfirm(title, msg, onConfirm) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent = msg;
+  const btn = document.getElementById('confirmBtn');
+  btn.textContent = title.includes('Reject') ? 'Yes, Reject' : (title.includes('Approve') ? 'Yes, Approve' : 'Confirm');
+  btn.className = title.includes('Reject') ? 'btn-danger' : 'btn-primary';
+  btn.onclick = () => { closeOverlay('confirmOverlay'); onConfirm(); };
+  document.getElementById('confirmOverlay').classList.add('open');
 }
 
 // ====================================================
-// CREDENTIALS PAGE
+// PRODUCTS
 // ====================================================
-async function loadCredentials() {
+async function loadProducts() {
   if (!sb) return;
+  const grid = document.getElementById('prodGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
   try {
-    const { data: creds } = await sb.from('credentials').select(`
-      *,
-      product:products(name),
-      variant:product_variants(name)
-    `).order('created_at', { ascending: false });
-    
-    _allCredentials = creds || [];
-    
-    // Populate product filter
-    const filterSelect = document.getElementById('credProductFilter');
-    const products = [...new Set(creds.map(c => c.product?.name).filter(Boolean))];
-    filterSelect.innerHTML = '<option value="all">All Products</option>' + 
-      products.map(p => `<option value="${p}">${p}</option>`).join('');
-    
-    renderCredentials();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to load credentials', 'error');
-  }
-}
-
-function renderCredentials() {
-  let filtered = _allCredentials;
-  
-  // Filter by product
-  if (_filterCredProduct !== 'all') {
-    filtered = filtered.filter(c => c.product?.name === _filterCredProduct);
-  }
-  
-  // Filter by used status
-  if (_filterCredUsed === 'available') {
-    filtered = filtered.filter(c => !c.is_used);
-  } else if (_filterCredUsed === 'used') {
-    filtered = filtered.filter(c => c.is_used);
-  }
-
-  const tbody = document.getElementById('credTableBody');
-  if (!filtered.length) {
-    tbody.innerHTML = '<tr class="empty-r"><td colspan="8">No credentials found</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = filtered.map(c => `
-    <tr>
-      <td style="font-weight:700">#${c.id}</td>
-      <td>${c.product?.name || 'N/A'}</td>
-      <td>${c.variant?.name || 'N/A'}</td>
-      <td style="font-family:monospace;font-size:.8rem">${c.username || 'N/A'}</td>
-      <td style="font-family:monospace;font-size:.8rem">${c.password ? '••••••••' : 'N/A'}</td>
-      <td>${c.is_used ? '<span class="badge b-red">Used</span>' : '<span class="badge b-green">Available</span>'}</td>
-      <td style="color:var(--text-s);font-size:.78rem">${formatDate(c.created_at)}</td>
-      <td>
-        ${!c.is_used ? '<button class="btn btn-xs btn-danger" onclick="deleteCredential(' + c.id + ')">🗑️ Delete</button>' : ''}
-      </td>
-    </tr>
-  `).join('');
-}
-
-function filterCredentials() {
-  _filterCredProduct = document.getElementById('credProductFilter').value;
-  renderCredentials();
-}
-
-function filterCredUsed(status) {
-  _filterCredUsed = status;
-  document.querySelectorAll('.filter-pills .fpill[data-used]').forEach(p => p.classList.remove('active'));
-  document.querySelector(`.fpill[data-used="${status}"]`).classList.add('active');
-  renderCredentials();
-}
-
-function openAddCredential() {
-  if (!_allProducts.length) {
-    toast('Please add products first', 'warning');
-    return;
-  }
-  
-  const select = document.getElementById('credProduct');
-  select.innerHTML = '<option value="">Select Product</option>' + 
-    _allProducts.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  
-  document.getElementById('credVariant').innerHTML = '<option value="">Select Variant</option>';
-  document.getElementById('credUsername').value = '';
-  document.getElementById('credPassword').value = '';
-  document.getElementById('credentialModal').classList.add('open');
-}
-
-function closeCredentialModal() {
-  document.getElementById('credentialModal').classList.remove('open');
-}
-
-async function loadCredVariants() {
-  const productId = document.getElementById('credProduct').value;
-  const variantSelect = document.getElementById('credVariant');
-  
-  if (!productId) {
-    variantSelect.innerHTML = '<option value="">Select Variant</option>';
-    return;
-  }
-  
-  const variants = _allVariants.filter(v => v.product_id == productId);
-  variantSelect.innerHTML = '<option value="">Select Variant</option>' + 
-    variants.map(v => `<option value="${v.id}">${v.name} - ${formatMoney(v.price)}</option>`).join('');
-}
-
-async function saveCredential() {
-  if (!sb) return;
-  const productId = document.getElementById('credProduct').value;
-  const variantId = document.getElementById('credVariant').value;
-  const username = document.getElementById('credUsername').value.trim();
-  const password = document.getElementById('credPassword').value.trim();
-  
-  if (!productId || !variantId || !username || !password) {
-    toast('All fields are required', 'error');
-    return;
-  }
-
-  try {
-    await sb.from('credentials').insert({
-      product_id: parseInt(productId),
-      variant_id: parseInt(variantId),
-      username,
-      password,
-      is_used: false
+    const [{data,error},{data:variants,error:vErr}] = await Promise.all([
+      sb.from('products').select('*').order('name'),
+      sb.from('product_variants').select('id,product_id,stock')
+    ]);
+    if (error) throw error;
+    if (!data||!data.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products found.</div>';
+      return;
+    }
+    const varMap = {};
+    (variants||[]).forEach(v => {
+      if (!varMap[v.product_id]) varMap[v.product_id] = [];
+      varMap[v.product_id].push(v);
     });
-    
-    // Increment variant stock
-    const variant = _allVariants.find(v => v.id == variantId);
-    if (variant) {
-      await sb.from('product_variants').update({ stock: (variant.stock || 0) + 1 }).eq('id', variantId);
-    }
-    
-    toast('Credential added successfully! 🎉');
-    closeCredentialModal();
-    loadCredentials();
-    if (_currentPage === 'products') loadProducts();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to add credential', 'error');
+    grid.innerHTML = data.map(p=>{
+      const active = bool(p.is_active)||(p.status||'').toLowerCase()==='active';
+      const delivery = bool(p.auto_delivery);
+      const pVars = varMap[p.id] || [];
+      const hasVariants = pVars.length > 0;
+      const stock = hasVariants ? pVars.reduce((s,v)=>s+(v.stock??0),0) : (p.stock??0);
+      const price = p.price!=null?'RM '+parseFloat(p.price).toFixed(2):'--';
+      return '<div class="prod-card">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+          '<div class="pc-name">'+(p.name||'--')+'</div>'+
+          '<span class="badge '+(active?'b-green':'b-grey')+'">'+(active?'Active':'Inactive')+'</span>'+
+        '</div>'+
+        (p.description ? '<div class="pc-desc">'+p.description+'</div>' : '')+
+        '<div class="pc-chips">'+
+          '<span class="chip price">'+price+'</span>'+
+          '<span class="chip '+(delivery?'auto':'manual')+'">'+(delivery?'Auto':'Manual')+'</span>'+
+          (hasVariants ? '<span class="chip has-variants">Has Variants</span>' : '')+
+          (p.duration ? '<span class="chip">'+p.duration+'</span>' : '')+
+        '</div>'+
+        '<div class="pc-row">'+
+          '<span style="color:var(--text-s);font-size:.82rem">Stock: <strong style="color:var(--text)">'+stock+'</strong>'+(hasVariants?' <span style="font-size:.72rem;color:var(--text-xs)">('+pVars.length+' variants)</span>':'')+'</span>'+
+          (stock<=2?'<span class="badge b-red">Low Stock</span>':'')+
+        '</div>'+
+        '<div class="pc-btns">'+
+          '<button class="btn-primary btn-sm btn-pill" onclick=\'openEdit('+JSON.stringify(p).replace(/'/g,"\\'")+')\'> Edit</button>'+
+          '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+p.id+'\','+active+')">'+
+            (active?'Deactivate':'Activate')+
+          '</button>'+
+          '<button class="btn-ghost btn-sm btn-pill" style="border-color:rgba(168,85,247,.3);color:#a855f7" onclick=\'openVariants('+JSON.stringify(p.id)+','+JSON.stringify(p.name||'').replace(/'/g,"\\'")+')\'>Manage Variants</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+    markUpdated();
+  } catch(e) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--danger)">Error: '+e.message+'</div>';
   }
 }
 
-async function deleteCredential(id) {
-  if (!confirm('Delete this credential?')) return;
+function openEdit(p) {
+  document.getElementById('editId').value = p.id;
+  document.getElementById('editName').value = p.name||'';
+  document.getElementById('editPrice').value = p.price??'';
+  document.getElementById('editStock').value = p.stock??0;
+  document.getElementById('editDuration').value = p.duration||'';
+  document.getElementById('editDesc').value = p.description||'';
+  document.getElementById('editAuto').checked = bool(p.auto_delivery);
+  document.getElementById('editOverlay').classList.add('open');
+}
+
+async function saveEdit() {
+  if (!sb) return;
+  const id = document.getElementById('editId').value;
+  const name = document.getElementById('editName').value.trim();
+  const price = parseFloat(document.getElementById('editPrice').value);
+  const stock = parseInt(document.getElementById('editStock').value);
+  const duration = document.getElementById('editDuration').value.trim();
+  const description = document.getElementById('editDesc').value.trim();
+  const autod = document.getElementById('editAuto').checked;
+  if (!name) { toast('Name is required'); return; }
+  try {
+    const {error} = await sb.from('products').update({
+      name, price, stock, duration, description, auto_delivery: autod
+    }).eq('id', id);
+    if (error) throw error;
+    toast('Product saved successfully');
+    closeOverlay('editOverlay');
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function toggleActive(id, cur) {
   if (!sb) return;
   try {
-    const cred = _allCredentials.find(c => c.id === id);
-    await sb.from('credentials').delete().eq('id', id);
-    
-    // Decrement variant stock
-    if (cred && cred.variant_id) {
-      const variant = _allVariants.find(v => v.id === cred.variant_id);
-      if (variant && variant.stock > 0) {
-        await sb.from('product_variants').update({ stock: variant.stock - 1 }).eq('id', cred.variant_id);
-      }
-    }
-    
-    toast('Credential deleted');
+    const {error} = await sb.from('products').update({is_active:!cur, status:!cur?'active':'inactive'}).eq('id',id);
+    if (error) throw error;
+    toast(!cur ? 'Product activated' : 'Product deactivated');
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function toggleAutoDelivery(id, checked) {
+  if (!sb) return;
+  try {
+    const {error} = await sb.from('products').update({auto_delivery: checked}).eq('id', id);
+    if (error) throw error;
+    toast(checked ? 'Auto Delivery enabled' : 'Auto Delivery disabled');
     loadCredentials();
-    if (_currentPage === 'products') loadProducts();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to delete credential', 'error');
-  }
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
 }
 
 // ====================================================
-// SALES PAGE
+// PRODUCT VARIANTS
+// ====================================================
+function openVariants(productId, productName) {
+  _variantsProductId = productId;
+  _variantsProductName = productName;
+  document.getElementById('variantsTitle').textContent = 'Manage Variants — ' + productName;
+  document.getElementById('newVarName').value = '';
+  document.getElementById('newVarPrice').value = '';
+  document.getElementById('newVarStock').value = '';
+  document.getElementById('variantsOverlay').classList.add('open');
+  loadVariantsList();
+}
+
+async function loadVariantsList() {
+  if (!sb || !_variantsProductId) return;
+  const wrap = document.getElementById('variantsList');
+  wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
+  try {
+    const {data,error} = await sb.from('product_variants').select('*').eq('product_id', _variantsProductId).order('variant_name');
+    if (error) throw error;
+    if (!data || !data.length) {
+      wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-s);font-size:.85rem">No variants yet. Add one below.</div>';
+      return;
+    }
+    wrap.innerHTML = '<table class="var-table"><thead><tr>'+
+      '<th>Name</th><th>Price (RM)</th><th>Stock</th>'+
+      '<th style="text-align:center">Delivery</th>'+
+      '<th style="text-align:center">Status</th>'+
+      '<th style="text-align:right">Actions</th>'+
+      '</tr></thead><tbody>'+
+      data.map(v => {
+        const dm = v.delivery_mode || v.auto_delivery;
+        const dmLabel = dm === true || dm === 'auto' ? 'Auto' : (dm === false || dm === 'manual' ? 'Manual' : '--');
+        const dmClass = dm === true || dm === 'auto' ? 'auto' : (dm === false || dm === 'manual' ? 'manual' : '');
+        const isActive = v.is_active !== undefined ? bool(v.is_active) : (v.status !== undefined ? (v.status||'').toLowerCase() === 'active' : null);
+        const statusBadge = isActive !== null ? '<span class="badge '+(isActive?'b-green':'b-grey')+'" style="font-size:.62rem">'+(isActive?'Active':'Inactive')+'</span>' : '--';
+        return '<tr id="var-row-'+v.id+'">'+
+          '<td><span class="var-display-name">'+escH(v.variant_name||'')+'</span></td>'+
+          '<td><span class="var-display-price">'+(v.price!=null?parseFloat(v.price).toFixed(2):'--')+'</span></td>'+
+          '<td><span class="var-display-stock">'+(v.stock??0)+'</span></td>'+
+          '<td style="text-align:center">'+(dmClass?'<span class="chip '+dmClass+'" style="font-size:.65rem">'+dmLabel+'</span>':'--')+'</td>'+
+          '<td style="text-align:center">'+statusBadge+'</td>'+
+          '<td><div class="var-actions">'+
+            '<button class="btn-primary btn-sm" onclick="editVariantRow(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\','+
+              (v.price??0)+','+(v.stock??0)+')">Edit</button>'+
+            '<button class="btn-danger btn-sm" onclick="deleteVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Delete</button>'+
+          '</div></td></tr>';
+      }).join('')+
+      '</tbody></table>';
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--danger)">Error: '+e.message+'</div>';
+  }
+}
+
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function editVariantRow(id, name, price, stock) {
+  const row = document.getElementById('var-row-'+id);
+  if (!row) return;
+  const cells = row.querySelectorAll('td');
+  cells[0].innerHTML = '<input class="var-edit-input" id="varEditName-'+id+'" value="'+escH(name)+'" />';
+  cells[1].innerHTML = '<input class="var-edit-input" id="varEditPrice-'+id+'" type="number" step="0.01" value="'+price+'" />';
+  cells[2].innerHTML = '<input class="var-edit-input" id="varEditStock-'+id+'" type="number" value="'+stock+'" />';
+  const actionsDiv = cells[5].querySelector('.var-actions');
+  actionsDiv.innerHTML = '<button class="btn-success btn-sm" onclick="saveVariant(\''+id+'\')">Save</button>'+
+    '<button class="btn-ghost btn-sm" onclick="loadVariantsList()">Cancel</button>';
+}
+
+async function saveVariant(id) {
+  if (!sb) return;
+  const name = document.getElementById('varEditName-'+id).value.trim();
+  const price = parseFloat(document.getElementById('varEditPrice-'+id).value);
+  const stock = parseInt(document.getElementById('varEditStock-'+id).value);
+  if (!name) { toast('Variant name is required'); return; }
+  if (isNaN(price) || price < 0) { toast('Valid price is required'); return; }
+  if (isNaN(stock) || stock < 0) { toast('Valid stock is required'); return; }
+  try {
+    const {error} = await sb.from('product_variants').update({variant_name:name, price, stock}).eq('id', id);
+    if (error) throw error;
+    toast('Variant updated successfully');
+    loadVariantsList();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function addVariant() {
+  if (!sb || !_variantsProductId) return;
+  const name = document.getElementById('newVarName').value.trim();
+  const price = parseFloat(document.getElementById('newVarPrice').value);
+  const stock = parseInt(document.getElementById('newVarStock').value);
+  if (!name) { toast('Variant name is required'); return; }
+  if (isNaN(price) || price < 0) { toast('Valid price is required'); return; }
+  if (isNaN(stock) || stock < 0) { toast('Valid stock is required'); return; }
+  try {
+    const {error} = await sb.from('product_variants').insert({
+      product_id: _variantsProductId,
+      variant_name: name,
+      price: price,
+      stock: stock
+    });
+    if (error) throw error;
+    toast('Variant "'+name+'" added successfully');
+    document.getElementById('newVarName').value = '';
+    document.getElementById('newVarPrice').value = '';
+    document.getElementById('newVarStock').value = '';
+    loadVariantsList();
+    loadProducts();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+function deleteVariant(id, name) {
+  showConfirm('Delete Variant', 'Are you sure you want to delete variant "'+name+'"? This cannot be undone.', async () => {
+    if (!sb) return;
+    try {
+      const {error} = await sb.from('product_variants').delete().eq('id', id);
+      if (error) throw error;
+      toast('Variant "'+name+'" deleted');
+      loadVariantsList();
+      loadProducts();
+    } catch(e) { toast('Error: '+e.message); }
+  });
+}
+
+// ====================================================
+// SALES
 // ====================================================
 async function loadSales() {
   if (!sb) return;
-  const from = document.getElementById('salFrom').value;
-  const to = document.getElementById('salTo').value;
-  
-  if (!from || !to) {
-    toast('Please select date range', 'warning');
-    return;
-  }
-
+  const from = document.getElementById('salFrom').value || today();
+  const to = document.getElementById('salTo').value || today();
+  const tb = document.getElementById('salBody');
+  tb.innerHTML = '<tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr>';
   try {
-    const { data: orders } = await sb.from('orders').select('*')
-      .gte('created_at', from + 'T00:00:00')
-      .lte('created_at', to + 'T23:59:59');
-    
-    const completed = orders?.filter(o => o.status === 'completed' || o.status === 'approved') || [];
-    const revenue = completed.reduce((sum, o) => sum + parseFloat(o.amount || 0), 0);
-    const avg = completed.length ? revenue / completed.length : 0;
-
-    document.getElementById('salRevenue').textContent = formatMoney(revenue);
-    document.getElementById('salOrders').textContent = completed.length;
-    document.getElementById('salAvg').textContent = formatMoney(avg);
-
-    // Daily breakdown chart
-    renderSalesChart(completed);
-
-    // Top products
-    const productStats = {};
-    completed.forEach(o => {
-      const name = o.product_name || 'Unknown';
-      if (!productStats[name]) productStats[name] = { orders: 0, revenue: 0 };
-      productStats[name].orders++;
-      productStats[name].revenue += parseFloat(o.amount || 0);
-    });
-
-    const sorted = Object.entries(productStats)
-      .sort((a, b) => b[1].revenue - a[1].revenue)
-      .slice(0, 5);
-
-    const tbody = document.getElementById('topProductsBody');
-    if (!sorted.length) {
-      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text-s)">No data</td></tr>';
-    } else {
-      tbody.innerHTML = sorted.map(([name, stats]) => `
-        <tr>
-          <td style="font-weight:700">${name}</td>
-          <td>${stats.orders}</td>
-          <td style="font-weight:700">${formatMoney(stats.revenue)}</td>
-        </tr>
-      `).join('');
+    const {data,error} = await sb.from('orders')
+      .select('id,product_name,amount,status,created_at')
+      .gte('created_at', from+'T00:00:00')
+      .lte('created_at', to+'T23:59:59')
+      .order('created_at',{ascending:false});
+    if (error) throw error;
+    const rows = data||[];
+    const okRows = rows.filter(o=>['approved','completed'].includes((o.status||'').toLowerCase()));
+    const rev = okRows.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
+    const avg = okRows.length ? rev/okRows.length : 0;
+    document.getElementById('sTotalOrd').textContent = okRows.length;
+    document.getElementById('sTotalRev').textContent = rm(rev);
+    document.getElementById('sAvgOrd').textContent = rm(avg);
+    const byProd = {};
+    for (const o of okRows) {
+      const k = o.product_name||'--';
+      if (!byProd[k]) byProd[k]={count:0,rev:0};
+      byProd[k].count++;
+      byProd[k].rev += parseFloat(o.amount)||0;
     }
-  } catch (e) {
-    console.error(e);
-    toast('Failed to load sales data', 'error');
-  }
-}
-
-function renderSalesChart(orders) {
-  const canvas = document.getElementById('salesChart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  // Group by date
-  const grouped = {};
-  orders.forEach(o => {
-    const date = new Date(o.created_at).toISOString().split('T')[0];
-    if (!grouped[date]) grouped[date] = 0;
-    grouped[date] += parseFloat(o.amount || 0);
-  });
-  
-  const labels = Object.keys(grouped).sort();
-  const data = labels.map(d => grouped[d]);
-
-  if (_charts.salesChart) _charts.salesChart.destroy();
-  _charts.salesChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels.map(d => new Date(d).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })),
-      datasets: [{
-        label: 'Revenue',
-        data: data,
-        backgroundColor: 'rgba(79,142,247,0.8)',
-        borderColor: '#4f8ef7',
-        borderWidth: 2,
-        borderRadius: 6
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#13171f',
-          titleColor: '#e8eaed',
-          bodyColor: '#9ca3af',
-          borderColor: '#1f2937',
-          borderWidth: 1,
-          padding: 12,
-          displayColors: false,
-          callbacks: {
-            label: (ctx) => formatMoney(ctx.parsed.y)
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: '#1f2937', drawBorder: false },
-          ticks: { color: '#6b7280', font: { size: 11 } }
-        },
-        y: {
-          grid: { color: '#1f2937', drawBorder: false },
-          ticks: {
-            color: '#6b7280',
-            font: { size: 11 },
-            callback: (v) => 'RM ' + v
-          }
-        }
-      }
-    }
-  });
+    const bRows = Object.entries(byProd).sort((a,b)=>b[1].count-a[1].count);
+    tb.innerHTML = bRows.length
+      ? bRows.map(([name,d],i)=>'<tr>'+
+          '<td style="color:var(--text-xs);font-weight:700">'+(i+1)+'</td>'+
+          '<td><strong>'+name+'</strong></td>'+
+          '<td>'+d.count+'</td>'+
+          '<td><strong>'+rm(d.rev)+'</strong></td>'+
+        '</tr>').join('')
+      : '<tr class="empty-r"><td colspan="4">No sales in this period.</td></tr>';
+    markUpdated();
+  } catch(e) { toast('Sales error: '+e.message); }
 }
 
 // ====================================================
-// BROADCAST PAGE
+// STOCKS
 // ====================================================
-document.getElementById('broadcastMsg')?.addEventListener('input', function() {
-  document.getElementById('bcCharCount').textContent = this.value.length;
-});
-
-async function sendBroadcast() {
+async function loadStocks() {
   if (!sb) return;
-  const msg = document.getElementById('broadcastMsg').value.trim();
-  if (!msg) {
-    toast('Please enter a message', 'error');
-    return;
-  }
-  if (!confirm('Send this message to all users?')) return;
-
+  const grid = document.getElementById('stockGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
   try {
-    // Get all unique users
-    const { data: orders } = await sb.from('orders').select('user_id,username').neq('user_id', 0);
-    const users = [...new Map(orders.map(o => [o.user_id, o])).values()];
-
-    // Save broadcast record
-    await sb.from('broadcast_history').insert({
-      message: msg,
-      recipients: users.length,
-      success_count: 0,
-      created_at: new Date().toISOString()
-    });
-
-    toast(`Broadcast queued for ${users.length} users! The bot will send it.`);
-    document.getElementById('broadcastMsg').value = '';
-    document.getElementById('bcCharCount').textContent = '0';
-    loadBroadcastHistory();
-  } catch (e) {
-    console.error(e);
-    toast('Failed to send broadcast', 'error');
-  }
-}
-
-async function loadBroadcastHistory() {
-  if (!sb) return;
-  try {
-    const { data: history } = await sb.from('broadcast_history').select('*').order('created_at', { ascending: false }).limit(10);
-    const tbody = document.getElementById('broadcastHistory');
-    
-    if (!history || !history.length) {
-      tbody.innerHTML = '<tr class="empty-r"><td colspan="4">No broadcasts yet</td></tr>';
+    const [{data:prods,error},{data:variants,error:vErr}] = await Promise.all([
+      sb.from('products').select('id,name,auto_delivery,price').order('name'),
+      sb.from('product_variants').select('id,product_id,variant_name,stock,price')
+    ]);
+    if (error) throw error;
+    if (!prods||!prods.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products.</div>';
       return;
     }
+    const variantMap = {};
+    (variants||[]).forEach(v => {
+      if (!variantMap[v.product_id]) variantMap[v.product_id] = [];
+      variantMap[v.product_id].push(v);
+    });
 
-    tbody.innerHTML = history.map(h => `
-      <tr>
-        <td style="color:var(--text-s);font-size:.78rem">${formatDate(h.created_at)}</td>
-        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.message}</td>
-        <td>${h.recipients || 0}</td>
-        <td style="color:var(--success);font-weight:700">${h.success_count || 0}</td>
-      </tr>
-    `).join('');
-  } catch (e) {
-    console.error(e);
+    const cards = await Promise.all(prods.map(async p=>{
+      if (!bool(p.auto_delivery)) return null;
+      let total=0,used=0,avail=0;
+      try {
+        const [rU,rA] = await Promise.all([
+          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
+          sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
+        ]);
+        used = rU.count??0; avail = rA.count??0; total = used+avail;
+      } catch(_){}
+      const usedPct = total ? Math.round((used/total)*100) : 0;
+      const barCls = usedPct>=90?'danger':usedPct>=60?'warn':'';
+      const low = avail < 3;
+      const pVars = variantMap[p.id] || [];
+      const hasVariants = pVars.length > 0;
+
+      return '<div class="stock-card">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.35rem">'+
+          '<div>'+
+            '<div class="card-name">'+p.name+'</div>'+
+            (p.price != null ? '<div class="card-chips"><span class="chip price">RM '+parseFloat(p.price).toFixed(2)+'</span></div>' : '')+
+          '</div>'+
+          '<span class="badge '+(low?'b-red':'b-green')+'">'+(low?'Low Stock':'OK')+'</span>'+
+        '</div>'+
+        '<div class="stat-boxes">'+
+          '<div class="stat-box"><div class="sb-lbl">Total</div><div class="sb-val">'+total+'</div></div>'+
+          '<div class="stat-box"><div class="sb-lbl">Available</div><div class="sb-val '+(avail>=3?'ok':'bad')+'">'+avail+'</div></div>'+
+          '<div class="stat-box"><div class="sb-lbl">Delivered</div><div class="sb-val">'+used+'</div></div>'+
+        '</div>'+
+        '<div class="prog-bar-wrap">'+
+          '<div class="prog-bg"><div class="prog-fill '+barCls+'" style="width:'+usedPct+'%"></div></div>'+
+          '<div class="prog-lbl">'+usedPct+'% delivered</div>'+
+        '</div>'+
+        '<button class="btn-primary btn-sm btn-pill" style="margin-top:.5rem" onclick="openRestock(\''+p.id+'\',\''+p.name.replace(/'/g,"\\'")+'\','+hasVariants+')">Restock</button>'+
+      '</div>';
+    }));
+    const valid = cards.filter(Boolean);
+    grid.innerHTML = valid.length
+      ? valid.join('')
+      : '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No auto-delivery products.</div>';
+    markUpdated();
+  } catch(e) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--danger)">Error: '+e.message+'</div>';
   }
 }
 
 // ====================================================
-// BOT SETTINGS PAGE
+// CREDENTIALS
 // ====================================================
-async function loadBotSettings() {
+async function loadCredentials() {
   if (!sb) return;
+  const grid = document.getElementById('credGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)"><span class="spin"></span>Loading...</div>';
   try {
-    const { data: settings } = await sb.from('bot_settings').select('*').limit(1).single();
-    
-    if (settings) {
-      document.getElementById('setWelcome').value = settings.welcome_message || '';
-      document.getElementById('setDelivery').value = settings.delivery_message || '';
-      document.getElementById('setTestimonial').value = settings.testimonial_template || '';
-      document.getElementById('setPayment').value = settings.payment_instructions || '';
-      document.getElementById('setRequiredChannel').value = settings.required_channel || '';
-      document.getElementById('setTestChannel1').value = settings.testimonial_channel_1 || '';
-      document.getElementById('setTestChannel2').value = settings.testimonial_channel_2 || '';
-      document.getElementById('setPointsPerPurchase').value = settings.points_per_purchase || 10;
-      document.getElementById('setPointsReset').value = settings.points_reset_threshold || 50;
-      document.getElementById('setBannerFileId').value = settings.banner_file_id || '';
-      
-      updateCharCounts();
+    const [{data:prods,error},{data:variants}] = await Promise.all([
+      sb.from('products').select('id,name,auto_delivery').order('name'),
+      sb.from('product_variants').select('id,product_id,variant_name')
+    ]);
+    if (error) throw error;
+    if (!prods||!prods.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--text-s)">No products.</div>';
+      return;
     }
-  } catch (e) {
-    console.error(e);
-    toast('Failed to load bot settings', 'error');
+    const variantMap = {};
+    (variants||[]).forEach(v => {
+      if (!variantMap[v.product_id]) variantMap[v.product_id] = [];
+      variantMap[v.product_id].push(v);
+    });
+
+    const cards = await Promise.all(prods.map(async p=>{
+      const isAuto = bool(p.auto_delivery);
+      let total=0,used=0,avail=0;
+      if (isAuto) {
+        try {
+          const [rU,rA] = await Promise.all([
+            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',true),
+            sb.from('credentials').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('is_used',false),
+          ]);
+          used = rU.count??0; avail = rA.count??0; total = used+avail;
+        } catch(_){}
+      }
+      const usedPct = total ? Math.round((used/total)*100) : 0;
+      const barCls = usedPct>=90?'danger':usedPct>=60?'warn':'';
+      const lowStock = avail < 3;
+      const pVars = variantMap[p.id] || [];
+      const hasVariants = pVars.length > 0;
+
+      const toggleRow = '<div style="display:flex;align-items:center;justify-content:space-between;margin:.5rem 0 .25rem">'+
+        '<span style="font-size:.8rem;color:var(--text-s)">Auto Delivery</span>'+
+        '<label class="toggle"><input type="checkbox" '+(isAuto?'checked':'')+' onchange="toggleAutoDelivery(\''+p.id+'\',this.checked)"/><span class="slider"></span></label>'+
+      '</div>';
+      const badgeSpan = '<span class="badge '+(isAuto?'b-blue':'b-grey')+'">'+(isAuto?'Auto':'Manual')+'</span>';
+
+      if (!isAuto) return '<div class="cred-card">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">'+
+          '<div class="card-name">'+p.name+'</div>'+
+          badgeSpan+
+        '</div>'+
+        toggleRow+
+        '<div style="font-size:.8rem;color:var(--text-s)">Admin delivers credentials manually.</div>'+
+        '<button class="btn-primary btn-sm btn-pill" style="margin-top:.5rem" onclick="openRestock(\''+p.id+'\',\''+p.name.replace(/'/g,"\\'")+'\','+hasVariants+')">Add Credentials</button>'+
+      '</div>';
+
+      return '<div class="cred-card">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">'+
+          '<div class="card-name">'+p.name+'</div>'+
+          badgeSpan+
+        '</div>'+
+        toggleRow+
+        '<div style="display:flex;flex-direction:column;gap:.25rem;font-size:.84rem;margin:.5rem 0">'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Total</span><strong>'+total+'</strong></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Used</span><strong>'+used+'</strong></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:var(--text-s)">Available</span><strong style="color:'+(avail>0?'var(--success)':'var(--danger)')+'">'+avail+'</strong></div>'+
+        '</div>'+
+        '<div class="prog-bar-wrap">'+
+          '<div class="prog-bg"><div class="prog-fill '+barCls+'" style="width:'+usedPct+'%"></div></div>'+
+          '<div class="prog-lbl">'+usedPct+'% used</div>'+
+        '</div>'+
+        (lowStock ? '<span class="badge b-red" style="margin-top:.4rem">Low Stock ('+avail+' left)</span> ' : '')+
+        '<button class="btn-primary btn-sm btn-pill" style="margin-top:.5rem" onclick="openRestock(\''+p.id+'\',\''+p.name.replace(/'/g,"\\'")+'\','+hasVariants+')">Add Credentials</button>'+
+      '</div>';
+    }));
+    grid.innerHTML = cards.join('');
+    markUpdated();
+  } catch(e) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--danger)">Error: '+e.message+'</div>';
   }
 }
 
-function updateCharCounts() {
-  document.getElementById('wcCharCount').textContent = document.getElementById('setWelcome').value.length;
-  document.getElementById('dcCharCount').textContent = document.getElementById('setDelivery').value.length;
-  document.getElementById('tcCharCount').textContent = document.getElementById('setTestimonial').value.length;
-  document.getElementById('pcCharCount').textContent = document.getElementById('setPayment').value.length;
+// ====================================================
+// RESTOCK MODAL
+// ====================================================
+async function openRestock(productId, productName, hasVariants) {
+  document.getElementById('restockTitle').textContent = 'Add Credentials - ' + productName;
+  document.getElementById('restockProductId').value = productId;
+  document.getElementById('restockCreds').value = '';
+  const varWrap = document.getElementById('restockVariantWrap');
+  if (hasVariants) {
+    varWrap.style.display = 'block';
+    const sel = document.getElementById('restockVariant');
+    sel.innerHTML = '<option value="">Loading...</option>';
+    try {
+      const {data} = await sb.from('product_variants').select('id,variant_name').eq('product_id', productId);
+      sel.innerHTML = '<option value="">-- No variant (main product) --</option>' +
+        (data||[]).map(v => '<option value="'+v.id+'">'+v.variant_name+'</option>').join('');
+    } catch(_) {
+      sel.innerHTML = '<option value="">-- No variant --</option>';
+    }
+  } else {
+    varWrap.style.display = 'none';
+    document.getElementById('restockVariant').value = '';
+  }
+  document.getElementById('restockOverlay').classList.add('open');
 }
 
-// Add event listeners for char count updates
-['setWelcome', 'setDelivery', 'setTestimonial', 'setPayment'].forEach(id => {
-  document.getElementById(id)?.addEventListener('input', updateCharCounts);
-});
-
-async function saveBotSettings() {
+async function submitRestock() {
   if (!sb) return;
-  
-  const settings = {
-    welcome_message: document.getElementById('setWelcome').value.trim(),
-    delivery_message: document.getElementById('setDelivery').value.trim(),
-    testimonial_template: document.getElementById('setTestimonial').value.trim(),
-    payment_instructions: document.getElementById('setPayment').value.trim(),
-    required_channel: document.getElementById('setRequiredChannel').value.trim(),
-    testimonial_channel_1: document.getElementById('setTestChannel1').value.trim(),
-    testimonial_channel_2: document.getElementById('setTestChannel2').value.trim(),
-    points_per_purchase: parseInt(document.getElementById('setPointsPerPurchase').value) || 10,
-    points_reset_threshold: parseInt(document.getElementById('setPointsReset').value) || 50,
-    banner_file_id: document.getElementById('setBannerFileId').value.trim()
-  };
+  const productId = document.getElementById('restockProductId').value;
+  const varWrap = document.getElementById('restockVariantWrap');
+  const variantId = varWrap.style.display !== 'none' ? (document.getElementById('restockVariant').value || null) : null;
+  const raw = document.getElementById('restockCreds').value.trim();
+  if (!raw) { toast('Please enter credentials'); return; }
+
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  const creds = [];
+  for (const line of lines) {
+    const sep = line.indexOf(':');
+    if (sep < 1) { toast('Invalid format: ' + line.slice(0,30)); return; }
+    creds.push({
+      product_id: productId,
+      variant_id: variantId,
+      email: line.slice(0, sep).trim(),
+      password: line.slice(sep+1).trim(),
+      is_used: false
+    });
+  }
 
   try {
-    // Check if settings exist
-    const { data: existing } = await sb.from('bot_settings').select('id').limit(1).single();
-    
-    if (existing) {
-      await sb.from('bot_settings').update(settings).eq('id', existing.id);
+    const { error } = await sb.from('credentials').insert(creds);
+    if (error) throw error;
+    toast(creds.length + ' credentials added successfully');
+    closeOverlay('restockOverlay');
+    if (_page === 'stocks') loadStocks();
+    if (_page === 'credentials') loadCredentials();
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
+// ====================================================
+// BROADCAST
+// ====================================================
+async function loadBcastCount() {
+  if (!sb) return;
+  try {
+    const {count} = await sb.from('users').select('id',{count:'exact',head:true});
+    document.getElementById('bcastCount').textContent = count??'--';
+  } catch(_){}
+}
+
+function bcastInput() {
+  const msg = document.getElementById('bcastMsg').value;
+  document.getElementById('bcastChars').textContent = msg.length;
+  document.getElementById('bcastPreview').textContent = msg || 'Your message will appear here...';
+}
+
+function confirmBroadcast() {
+  const msg = document.getElementById('bcastMsg').value.trim();
+  if (!msg) { toast('Enter a message first'); return; }
+  const count = document.getElementById('bcastCount').textContent;
+  showConfirm(
+    'Confirm Broadcast',
+    'Send this message to all ' + count + ' users? This cannot be undone.',
+    () => sendBroadcast()
+  );
+}
+
+async function sendBroadcast() {
+  if (!sb) { toast('Not connected'); return; }
+  const btn = document.getElementById('bcastBtn');
+  const res = document.getElementById('bcastRes');
+  const msg = document.getElementById('bcastMsg').value.trim();
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  res.textContent = '';
+  try {
+    // Store broadcast in bot_settings or a broadcast table
+    const { error } = await sb.from('bot_settings').upsert({
+      key: 'pending_broadcast',
+      value: msg,
+      description: 'Pending broadcast message queued from admin dashboard'
+    }, { onConflict: 'key' });
+    if (error) throw error;
+    const {data:users} = await sb.from('users').select('id');
+    const userCount = users ? users.length : 0;
+    res.innerHTML = '<span style="color:var(--success)">Broadcast queued for ' + userCount + ' users. Bot will deliver via Telegram.</span>';
+    toast('Broadcast queued - ' + userCount + ' users');
+    document.getElementById('bcastMsg').value = '';
+    bcastInput();
+  } catch(e) {
+    res.innerHTML = '<span style="color:var(--danger)">Error: ' + e.message + '</span>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send to All Users';
+  }
+}
+
+// ====================================================
+// REFERRAL
+// ====================================================
+async function loadReferral() {
+  if (!sb) return;
+  const tb = document.getElementById('refBody');
+  tb.innerHTML = '<tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr>';
+  try {
+    // Try referral_summary table first
+    let data, error;
+    try {
+      const res = await sb.from('referral_summary').select('*').order('referral_count', { ascending: false }).limit(100);
+      data = res.data;
+      error = res.error;
+    } catch(_) {}
+
+    if (error || !data) {
+      // Fallback to points table
+      const res2 = await sb.from('points').select('user_id,username,points,total_orders').order('points', { ascending: false }).limit(100);
+      if (res2.error) throw res2.error;
+      data = res2.data || [];
+      if (!data.length) {
+        tb.innerHTML = '<tr class="empty-r"><td colspan="4">No referral data available.</td></tr>';
+        return;
+      }
+      tb.innerHTML = data.map(r =>
+        '<tr>'+
+          '<td>'+( r.user_id||'--')+'</td>'+
+          '<td>'+(r.username ? '@'+r.username : '--')+'</td>'+
+          '<td>'+(r.total_orders||0)+'</td>'+
+          '<td><strong>'+(r.points||0)+' pts</strong></td>'+
+        '</tr>'
+      ).join('');
     } else {
-      await sb.from('bot_settings').insert(settings);
+      if (!data.length) {
+        tb.innerHTML = '<tr class="empty-r"><td colspan="4">No referral data available.</td></tr>';
+        return;
+      }
+      tb.innerHTML = data.map(r =>
+        '<tr>'+
+          '<td>'+(r.user_id||r.referrer_id||'--')+'</td>'+
+          '<td>'+(r.username ? '@'+r.username : '--')+'</td>'+
+          '<td>'+(r.referral_count||0)+'</td>'+
+          '<td><strong>'+(r.points_earned||r.points||0)+' pts</strong></td>'+
+        '</tr>'
+      ).join('');
     }
-    
-    toast('Bot settings saved successfully! 🎉');
-  } catch (e) {
-    console.error(e);
-    toast('Failed to save settings: ' + e.message, 'error');
+    markUpdated();
+  } catch(e) {
+    tb.innerHTML = '<tr class="empty-r"><td colspan="4">Referral table not found. This feature is optional.</td></tr>';
   }
 }
 
 // ====================================================
-// PUSH NOTIFICATIONS
+// PUSH NOTIFICATIONS (PWA)
 // ====================================================
+let _swRegistration = null;
+let _pushSubscription = null;
+let _realtimeChannel = null;
+
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    _swRegistration = await navigator.serviceWorker.register('./sw.js');
-    await checkPushSubscription();
-    refreshNotifUI();
-  } catch (e) {
-    console.error('SW registration failed:', e);
-  }
-}
-
-async function checkPushSubscription() {
-  if (!_swRegistration) return;
-  try {
+    _swRegistration = await navigator.serviceWorker.register('./service-worker.js');
+    await navigator.serviceWorker.ready;
     _pushSubscription = await _swRegistration.pushManager.getSubscription();
     updateBellIcon();
-  } catch (e) {
-    console.error('Failed to check push subscription:', e);
-  }
+    refreshNotifUI();
+  } catch(_) {}
 }
 
 function updateBellIcon() {
-  const btn = document.getElementById('bellBtn');
-  if (_pushSubscription) {
-    btn.textContent = '🔔';
+  const bell = document.getElementById('notifBell');
+  if (!bell) return;
+  if (_pushSubscription && Notification.permission === 'granted') {
+    bell.classList.add('active');
+    bell.classList.remove('needs-setup');
   } else {
-    btn.textContent = '🔕';
+    bell.classList.remove('active');
+    bell.classList.add('needs-setup');
   }
 }
 
-function openNotifSettings() {
-  refreshNotifUI();
-  document.getElementById('notifModal').classList.add('open');
-}
-
-function closeNotifModal() {
-  document.getElementById('notifModal').classList.remove('open');
-}
-
-async function refreshNotifUI() {
+function refreshNotifUI() {
   const status = document.getElementById('notifStatus');
-  const actions = document.getElementById('notifActions');
-  
-  if (!('Notification' in window)) {
-    status.innerHTML = '<div style="padding:1rem;background:rgba(239,68,68,.1);border-radius:var(--r-s);border:1px solid rgba(239,68,68,.2);color:var(--danger)">Your browser does not support notifications.</div>';
-    actions.innerHTML = '';
+  const icon = document.getElementById('notifStatusIcon');
+  const text = document.getElementById('notifStatusText');
+  const enableBtn = document.getElementById('notifEnableBtn');
+  const enabledSec = document.getElementById('notifEnabledSection');
+  if (!status) return;
+
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    status.className = 'notif-status denied';
+    icon.textContent = '\u274c';
+    text.textContent = 'Push notifications are not supported in this browser.';
+    enableBtn.style.display = 'none';
+    enabledSec.style.display = 'none';
     return;
   }
 
   const perm = Notification.permission;
-  
   if (perm === 'granted' && _pushSubscription) {
-    status.innerHTML = `
-      <div style="padding:1rem;background:rgba(34,197,94,.1);border-radius:var(--r-s);border:1px solid rgba(34,197,94,.2);color:var(--success)">
-        ✅ Notifications are enabled! You will receive alerts for new orders and updates.
-      </div>
-    `;
-    actions.innerHTML = `
-      <button class="btn btn-secondary" onclick="sendTestNotification()">🔔 Send Test</button>
-      <button class="btn btn-danger" onclick="unsubscribePush()">Turn Off Notifications</button>
-    `;
+    status.className = 'notif-status granted';
+    icon.textContent = '\u2705';
+    text.textContent = 'Notifications enabled and active';
+    enableBtn.style.display = 'none';
+    enabledSec.style.display = 'block';
   } else if (perm === 'denied') {
-    status.innerHTML = `
-      <div style="padding:1rem;background:rgba(239,68,68,.1);border-radius:var(--r-s);border:1px solid rgba(239,68,68,.2);color:var(--danger)">
-        ❌ Notifications are blocked. Please enable them in your browser settings.
-      </div>
-    `;
-    actions.innerHTML = '<button class="btn btn-secondary" onclick="closeNotifModal()">Close</button>';
+    status.className = 'notif-status denied';
+    icon.textContent = '\u274c';
+    text.textContent = 'Notifications blocked. Please allow in browser settings.';
+    enableBtn.style.display = 'none';
+    enabledSec.style.display = 'none';
   } else {
-    status.innerHTML = `
-      <div style="padding:1rem;background:rgba(245,158,11,.1);border-radius:var(--r-s);border:1px solid rgba(245,158,11,.2);color:var(--warning)">
-        🔔 Enable notifications to get instant alerts for new orders, payments, and low stock warnings.
-      </div>
-    `;
-    actions.innerHTML = '<button class="btn btn-success" onclick="subscribeToPush()">Enable Notifications</button>';
+    status.className = 'notif-status default';
+    icon.textContent = '\u26a0';
+    text.textContent = 'Notifications not yet enabled';
+    enableBtn.style.display = '';
+    enabledSec.style.display = 'none';
   }
 }
 
-async function subscribeToPush() {
-  if (!_swRegistration) {
-    toast('Service worker not ready', 'error');
+async function enableNotifications() {
+  if (!('Notification' in window)) { toast('Notifications not supported in this browser'); return; }
+  if (!_swRegistration) { toast('Service worker not ready. Try refreshing.'); return; }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    toast('Notification permission denied');
+    refreshNotifUI();
+    updateBellIcon();
     return;
   }
-  
+
   try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') {
-      toast('Notification permission denied', 'error');
-      refreshNotifUI();
-      return;
+    let vapidKey = localStorage.getItem('bs_vapid_public');
+    if (!vapidKey && sb) {
+      const { data } = await sb.from('bot_settings').select('value').eq('key','vapid_public_key').maybeSingle();
+      if (data) { vapidKey = data.value; localStorage.setItem('bs_vapid_public', vapidKey); }
     }
 
-    // Subscribe to push (using dummy VAPID for now - replace with your real key)
-    const sub = await _swRegistration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array('BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U')
-    });
+    if (vapidKey) {
+      const converted = urlBase64ToUint8Array(vapidKey);
+      _pushSubscription = await _swRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: converted
+      });
+    } else {
+      _pushSubscription = await _swRegistration.pushManager.subscribe({ userVisibleOnly: true });
+    }
 
-    _pushSubscription = sub;
-    await savePushSubscription(sub);
-    
-    // Start realtime listeners
-    await setupRealtimeListeners();
-    
-    toast('Notifications enabled! 🔔');
-    updateBellIcon();
-    refreshNotifUI();
-  } catch (e) {
-    console.error('Push subscription failed:', e);
-    toast('Failed to enable notifications', 'error');
+    await savePushSubscription(_pushSubscription);
+    toast('Notifications enabled successfully!');
+    setupRealtimeListeners();
+  } catch(e) {
+    toast('Failed to enable push: ' + e.message);
   }
+  refreshNotifUI();
+  updateBellIcon();
 }
 
-function urlBase64ToUint8Array(base64) {
-  const padding = '='.repeat((4 - base64.length % 4) % 4);
-  const b64 = (base64 + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const raw = atob(b64);
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
   const arr = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; ++i) arr[i] = raw.charCodeAt(i);
   return arr;
@@ -2291,18 +1993,19 @@ async function unsubscribePush() {
 function sendTestNotification() {
   if (Notification.permission !== 'granted') { toast('Permission not granted'); return; }
   if (_swRegistration) {
-    _swRegistration.showNotification('Berry Store Test 🍓', {
-      body: 'Notifications are working perfectly! You will receive alerts for new orders, payments, and more.',
+    _swRegistration.showNotification('Berry Store Test', {
+      body: 'Notifications are working! You will receive alerts for new orders, payments, and more.',
       icon: './icons/icon-192.png',
       badge: './icons/icon-192.png',
       tag: 'test-' + Date.now(),
       vibrate: [200, 100, 200]
     });
-    toast('Test notification sent! 🔔');
+    toast('Test notification sent!');
   }
 }
 
 // Track last-seen order statuses to detect transitions
+// (payload.old only has PK unless REPLICA IDENTITY FULL is set)
 const _orderStatusCache = {};
 
 async function seedOrderStatusCache() {
@@ -2323,12 +2026,7 @@ async function setupRealtimeListeners() {
   _realtimeChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
     const o = payload.new;
     _orderStatusCache[o.id] = o.status;
-    showLocalNotification('🎉 New Order!', 'New order from @' + (o.username || 'customer') + ' for ' + (o.product_name || 'product'), 'new-order');
-    // Auto refresh
-    if (_currentPage === 'overview' || _currentPage === 'orders') {
-      loadOverview();
-      loadOrders();
-    }
+    showLocalNotification('New Order', 'New order from @' + (o.username || 'customer') + ' for ' + (o.product_name || 'product'), 'new-order');
   });
 
   // Status change detection using local cache
@@ -2338,22 +2036,16 @@ async function setupRealtimeListeners() {
     _orderStatusCache[o.id] = o.status;
     if (prevStatus === o.status) return;
     if (o.status === 'waiting_approval' && prevStatus !== 'waiting_approval') {
-      showLocalNotification('💰 Payment Received', '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order'), 'payment');
+      showLocalNotification('Payment Received', '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order'), 'payment');
     }
     if ((o.status === 'completed' || o.status === 'approved') && prevStatus !== o.status) {
-      showLocalNotification('✅ Order Completed', 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status, 'completed');
-    }
-    // Auto refresh
-    if (_currentPage === 'overview' || _currentPage === 'orders') {
-      loadOverview();
-      loadOrders();
+      showLocalNotification('Order Completed', 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status, 'completed');
     }
   });
 
   // Credential changes (auto delivery failed / low stock)
   _realtimeChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'credentials' }, async () => {
     await checkLowStock();
-    if (_currentPage === 'credentials') loadCredentials();
   });
 
   _realtimeChannel.subscribe();
@@ -2367,7 +2059,7 @@ async function checkLowStock() {
     for (const p of prods) {
       const { count } = await sb.from('credentials').select('id', { count: 'exact', head: true }).eq('product_id', p.id).eq('is_used', false);
       if (count !== null && count < 3) {
-        showLocalNotification('⚠️ Low Stock Alert', p.name + ' has only ' + count + ' credentials remaining!', 'low-stock-' + p.id);
+        showLocalNotification('Low Stock Alert', p.name + ' has only ' + count + ' credentials remaining!', 'low-stock-' + p.id);
       }
     }
   } catch(_) {}
