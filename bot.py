@@ -608,13 +608,6 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _send_join_message(update)
         return
 
-    # ── Instant loading feedback ───────────────────────────────────────────────
-    if update.callback_query:
-        try:
-            await update.callback_query.edit_message_text("⏳ Memuatkan produk...")
-        except Exception:
-            pass
-
     _t_shop = time.monotonic()
     try:
         products, all_variants = await _get_cached_products_and_variants()
