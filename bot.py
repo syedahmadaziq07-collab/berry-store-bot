@@ -168,8 +168,10 @@ log.info(f"[SUPABASE] _supabase_ready={_supabase_ready}")
 
 import httpx as _httpx
 
-_products_cache = {"data": [], "updated_at": 0.0}
-_supabase_ok    = False
+_products_cache      = {"data": [], "updated_at": 0.0}
+_products_cache_data = {"products": [], "variants": [], "timestamp": 0}
+CACHE_TTL            = 60  # seconds
+_supabase_ok         = False
 
 
 def _sb_headers() -> dict:
@@ -317,6 +319,28 @@ async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int =
             if attempt < attempts:
                 await asyncio.sleep(min(0.4 * (2 ** (attempt - 1)) + random.uniform(0, 0.3), 3))
     raise last_exc
+
+async def _get_cached_products_and_variants():
+    """Return (products, variants) from in-memory cache, refreshing if stale."""
+    now = time.time()
+    if _products_cache_data["products"] and (now - _products_cache_data["timestamp"]) < CACHE_TTL:
+        return _products_cache_data["products"], _products_cache_data["variants"]
+
+    products = await _run_supabase(
+        "products.list",
+        lambda: sb_get("products", "select=id,name,stock,price,duration,description,auto_delivery&order=id"),
+    ) or []
+
+    all_variants = await _run_supabase(
+        "product_variants.all",
+        lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description"),
+    ) or []
+
+    _products_cache_data["products"]  = products
+    _products_cache_data["variants"]  = all_variants
+    _products_cache_data["timestamp"] = now
+    return products, all_variants
+
 
 def _cache_products(products):
     _products_cache["data"] = products or []
@@ -580,14 +604,12 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     try:
-        products = await _run_supabase(
-            "products.list",
-            lambda: sb_get("products", "select=id,name,stock,price,duration&order=id"),
-        ) or []
+        products, all_variants = await _get_cached_products_and_variants()
         _cache_products(products)
-        log.info(f"Products loaded: {len(products)} items source=supabase")
+        log.info(f"Products loaded: {len(products)} items source=cache_or_supabase")
     except Exception as exc:
         products, age = _cached_products(max_age=None)
+        all_variants = []
         if products:
             log.error(f"Shop error using cached products age_s={age}: {_safe_error(exc)}", exc_info=True)
         else:
@@ -609,15 +631,6 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Save product list so handle_message can resolve number → product
     context.user_data["shop_products"] = products
-
-    # Fetch variants (with id) and all credentials for accurate real-time stock display
-    try:
-        all_variants = await _run_supabase(
-            "product_variants.all",
-            lambda: sb_get("product_variants", "select=id,product_id,stock"),
-        ) or []
-    except Exception:
-        all_variants = []
 
     try:
         all_creds = await _run_supabase(
@@ -821,25 +834,28 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     """Show product detail with live quantity and total price."""
     qty = max(1, min(qty, 10))   # clamp between 1–10
 
-    try:
-        rows = await _run_supabase(
-            f"products.detail id={product_id}",
-            lambda: sb_get("products", f"select=*&id=eq.{product_id}&limit=1"),
-        )
-        p = rows[0] if rows else None
-    except Exception as exc:
-        cached, age = _cached_products(max_age=None)
-        p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
-        if p:
-            log.warning(f"Supabase product detail fallback id={product_id} cache_age_s={age}: {_safe_error(exc)}")
-        else:
-            log.warning(f"Supabase product detail failed id={product_id}: {_safe_error(exc)}", exc_info=True)
-            err_msg = "⚠️ Gagal muatkan produk. Cuba lagi."
-            if update.callback_query:
-                await update.callback_query.edit_message_text(err_msg, reply_markup=back_shop())
+    cached_products, _ = await _get_cached_products_and_variants()
+    p = next((x for x in cached_products if x["id"] == product_id), None)
+    if not p:
+        try:
+            rows = await _run_supabase(
+                f"products.detail id={product_id}",
+                lambda: sb_get("products", f"select=*&id=eq.{product_id}&limit=1"),
+            )
+            p = rows[0] if rows else None
+        except Exception as exc:
+            cached, age = _cached_products(max_age=None)
+            p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
+            if p:
+                log.warning(f"Supabase product detail fallback id={product_id} cache_age_s={age}: {_safe_error(exc)}")
             else:
-                await update.message.reply_text(err_msg, reply_markup=back_shop())
-            return
+                log.warning(f"Supabase product detail failed id={product_id}: {_safe_error(exc)}", exc_info=True)
+                err_msg = "⚠️ Gagal muatkan produk. Cuba lagi."
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(err_msg, reply_markup=back_shop())
+                else:
+                    await update.message.reply_text(err_msg, reply_markup=back_shop())
+                return
 
     # ── Variant check: query product_variants table; if rows exist, show picker ──
     db_variants = await _fetch_db_variants(product_id)
@@ -1259,6 +1275,7 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
                         # Normal product: reduce products.stock
                         new_stock = max(0, product_data.get("stock", 0) - qty)
                         sb_patch("products", f"id=eq.{order_data['product_id']}", {"stock": new_stock})
+                    _products_cache_data["timestamp"] = 0  # force cache refresh after stock change
                     # Resolve delivery mode: prefer explicit delivery_mode field, fallback to auto_delivery bool
                     delivery_mode = product_data.get("delivery_mode") or ("auto" if product_data.get("auto_delivery") else "manual")
                     log.info(f"[AUTO DELIVERY] order_id={order_id}")
@@ -2123,6 +2140,7 @@ async def cmd_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         refreshed = [{**p, "stock": new_stock} if p["id"] == product_id else p for p in products]
         _cache_products(refreshed)
+        _products_cache_data["timestamp"] = 0  # force cache refresh after stock change
     except Exception as exc:
         log.warning(f"stock update error: {_safe_error(exc)}", exc_info=True)
         await update.message.reply_text("⚠️ Gagal update stok. Cuba lagi.")
