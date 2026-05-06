@@ -1402,7 +1402,7 @@ async function loadProducts() {
         '<div class="pc-btns">'+
           '<button class="btn-primary btn-sm btn-pill" onclick=\'openEdit('+JSON.stringify(p).replace(/'/g,"\\'")+')\'> Edit</button>'+
           '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+p.id+'\','+active+')">'+
-            (active?'Deactivate':'Activate')+
+            (active?'Deactivate':'Activate / Edit Stock')+
           '</button>'+
           '<button class="btn-ghost btn-sm btn-pill" style="border-color:rgba(168,85,247,.3);color:#a855f7" onclick=\'openVariants('+JSON.stringify(p.id)+','+JSON.stringify(p.name||'').replace(/'/g,"\\'")+')\'>Manage Variants</button>'+
         '</div>'+
@@ -1550,8 +1550,9 @@ async function loadVariantsList() {
           '<td><div class="var-actions">'+
             '<button class="btn-primary btn-sm" onclick="editVariantRow(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\','+
               (v.price??0)+','+(v.stock??0)+')">Edit</button>'+
-            '<button class="btn-warning btn-sm" onclick="deactivateVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Zero</button>'+
-            '<button class="btn-danger btn-sm" onclick="deleteVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Delete</button>'+
+            (isActive===false
+              ? '<button class="btn-success btn-sm" onclick="activateVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Activate / Edit Stock</button>'
+              : '<button class="btn-warning btn-sm" onclick="deactivateVariant(\''+v.id+'\',\''+escH(v.variant_name||'').replace(/'/g,"\\'")+'\')">Deactivate</button>')+
           '</div></td></tr>';
       }).join('')+
       '</tbody></table>';
@@ -1729,7 +1730,9 @@ async function loadStocks() {
               '<input class="stock-edit-input" id="stockVar-'+escH(v.id)+'" type="number" min="0" value="'+(v.stock??0)+'" />'+
               '<div class="var-actions">'+
                 '<button class="btn-success btn-sm" onclick="saveVariantStock(\''+vId+'\')">Save</button>'+
-                '<button class="btn-warning btn-sm" onclick="deactivateVariant(\''+vId+'\',\''+escH(v.variant_name||'Variant').replace(/'/g,"\\'")+'\')">Zero</button>'+
+                (vActive===false
+                  ? '<button class="btn-success btn-sm" onclick="activateVariant(\''+vId+'\',\''+escH(v.variant_name||'Variant').replace(/'/g,"\\'")+'\')">Activate / Edit Stock</button>'
+                  : '<button class="btn-warning btn-sm" onclick="deactivateVariant(\''+vId+'\',\''+escH(v.variant_name||'Variant').replace(/'/g,"\\'")+'\')">Deactivate</button>')+
               '</div>'+ 
             '</div>';
           }).join('')+
@@ -1741,7 +1744,7 @@ async function loadStocks() {
             '<input class="stock-edit-input" id="stockProd-'+escH(p.id)+'" type="number" min="0" value="'+productStock+'" />'+
             '<div class="var-actions">'+
               '<button class="btn-success btn-sm" onclick="saveProductStock(\''+String(p.id).replace(/'/g,"\\'")+'\')">Save</button>'+ 
-              '<button class="btn-warning btn-sm" onclick="toggleActive(\''+String(p.id).replace(/'/g,"\\'")+'\',true)">Zero</button>'+ 
+              '<button class="btn-warning btn-sm" onclick="toggleActive(\''+String(p.id).replace(/'/g,"\\'")+'\',true)">Deactivate</button>'+ 
             '</div>'+ 
           '</div>'+ 
         '</div>';
@@ -1767,7 +1770,7 @@ async function loadStocks() {
         variantsHtml+
         '<div class="pc-btns" style="margin-top:.75rem">'+
           '<button class="btn-primary btn-sm btn-pill" onclick="openRestock(\''+String(p.id).replace(/'/g,"\\'")+'\',\''+escH(p.name||'Product').replace(/'/g,"\\'")+'\','+hasVariants+')">Add Credentials</button>'+ 
-          '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+String(p.id).replace(/'/g,"\\'")+'\','+active+')">'+(active?'Deactivate':'Activate')+'</button>'+ 
+          '<button class="'+(active?'btn-ghost':'btn-success')+' btn-sm btn-pill" onclick="toggleActive(\''+String(p.id).replace(/'/g,"\\'")+'\','+active+')">'+(active?'Deactivate':'Activate / Edit Stock')+'</button>'+ 
         '</div>'+ 
       '</div>';
     }));
@@ -1815,6 +1818,20 @@ function deactivateVariant(id, name) {
       await sb.from('product_variants').update({ is_active: false }).eq('id', id);
       await sb.from('product_variants').update({ status: 'inactive' }).eq('id', id);
       toast('Variant deactivated and stock set to 0');
+      loadVariantsList();
+      loadStocks();
+      loadProducts();
+    } catch(e) { toast('Error: '+e.message); }
+  });
+}
+
+function activateVariant(id, name) {
+  showConfirm('Activate Variant', 'Mark variant "'+name+'" as active. You can set stock value in the field and press Save.', async () => {
+    if (!sb) return;
+    try {
+      await sb.from('product_variants').update({ is_active: true }).eq('id', id);
+      await sb.from('product_variants').update({ status: 'active' }).eq('id', id);
+      toast('Variant activated. Set stock and click Save.');
       loadVariantsList();
       loadStocks();
       loadProducts();
