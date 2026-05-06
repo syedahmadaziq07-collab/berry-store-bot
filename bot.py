@@ -1082,6 +1082,13 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         if not order:
             await query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
             return
+        order_user_id = order.get("user_id")
+        requester_id = update.effective_user.id
+        is_admin = requester_id == ADMIN_ID
+        if not is_admin and str(order_user_id) != str(requester_id):
+            log.warning(f"[SECURITY] Blocked payment view non-owner user_id={requester_id} order_id={order_id}")
+            await query.edit_message_text("⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            return
     except Exception as exc:
         log.warning(f"[PAYMENT] Supabase fetch failed: {_safe_error(exc)}", exc_info=True)
         await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
@@ -1165,6 +1172,31 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 # ─── Paid / Receipt ───────────────────────────────────────────────────────────
 
 async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    user_id = update.effective_user.id
+    try:
+        rows = await _run_supabase(
+            f"orders.paid_validate id={order_id}",
+            lambda: sb_get("orders", f"select=id,user_id,status&id=eq.{order_id}&limit=1"),
+        )
+        order = rows[0] if rows else None
+        if not order:
+            await update.callback_query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            return
+        if str(order.get("user_id")) != str(user_id):
+            log.warning(f"[SECURITY] Blocked paid action non-owner user_id={user_id} order_id={order_id}")
+            await update.callback_query.edit_message_text("⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            return
+        status = str(order.get("status") or "")
+        if status != "pending":
+            await update.callback_query.edit_message_text(
+                f"⚠️ Order ini tidak boleh ditandakan sebagai dibayar kerana status semasa ialah: {status or '-'}",
+                reply_markup=back_shop(),
+            )
+            return
+    except Exception as exc:
+        log.warning(f"[PAID] Validation failed order_id={order_id}: {_safe_error(exc)}", exc_info=True)
+        await update.callback_query.edit_message_text("⚠️ Gagal semak order. Sila cuba lagi.", reply_markup=back_shop())
+        return
     context.user_data["pending_receipt"] = order_id
     await update.callback_query.edit_message_text(
         f"📸 Upload screenshot resit pembayaran untuk:\nOrder ID: {order_id}\n\nHantar gambar sekarang:"
@@ -1179,10 +1211,37 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user    = update.effective_user
     file_id = update.message.photo[-1].file_id
     try:
+        rows = await _run_supabase(
+            f"orders.receipt_validate id={order_id}",
+            lambda: sb_get("orders", f"select=*&id=eq.{order_id}&limit=1"),
+        )
+        order = rows[0] if rows else None
+        if not order:
+            context.user_data.pop("pending_receipt", None)
+            await update.message.reply_text("⚠️ Order tidak dijumpai.")
+            return
+        if str(order.get("user_id")) != str(user.id):
+            context.user_data.pop("pending_receipt", None)
+            log.warning(f"[SECURITY] Blocked receipt upload non-owner user_id={user.id} order_id={order_id}")
+            await update.message.reply_text("⛔ Order ini bukan milik anda.")
+            return
+        status = str(order.get("status") or "")
+        if status != "pending":
+            context.user_data.pop("pending_receipt", None)
+            await update.message.reply_text(
+                f"⚠️ Order ini tidak boleh dihantar resit kerana status semasa ialah: {status or '-'}"
+            )
+            return
+
         def save_receipt():
-            sb_patch("orders", f"id=eq.{order_id}", {"receipt_file_id": file_id, "status": "waiting_approval"})
-            rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
-            return rows[0] if rows else {}
+            sb_patch(
+                "orders",
+                f"id=eq.{order_id}&user_id=eq.{user.id}&status=eq.pending",
+                {"receipt_file_id": file_id, "status": "waiting_approval"},
+            )
+            updated = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
+            return updated[0] if updated else {}
+
         order = await _run_supabase(f"orders.receipt id={order_id}", save_receipt)
     except Exception as exc:
         log.warning(f"Supabase receipt: {_safe_error(exc)}", exc_info=True)
@@ -1214,10 +1273,31 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Cancel Order ─────────────────────────────────────────────────────────────
 
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    user_id = update.effective_user.id
     try:
+        rows = await _run_supabase(
+            f"orders.cancel_fetch id={order_id}",
+            lambda: sb_get("orders", f"select=id,user_id,status&id=eq.{order_id}&limit=1"),
+        )
+        order = rows[0] if rows else None
+        if not order:
+            await update.callback_query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            return
+        if str(order.get("user_id")) != str(user_id):
+            log.warning(f"[SECURITY] Blocked cancel non-owner user_id={user_id} order_id={order_id}")
+            await update.callback_query.edit_message_text("⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            return
+        status = str(order.get("status") or "")
+        if status != "pending":
+            await update.callback_query.edit_message_text(
+                f"⚠️ Order ini tidak boleh dibatalkan kerana status semasa ialah: {status or '-'}",
+                reply_markup=back_shop(),
+            )
+            return
+
         await _run_supabase(
             f"orders.cancel id={order_id}",
-            lambda: sb_patch("orders", f"id=eq.{order_id}", {"status": "cancelled"}),
+            lambda: sb_patch("orders", f"id=eq.{order_id}&user_id=eq.{user_id}&status=eq.pending", {"status": "cancelled"}),
         )
     except Exception as exc:
         log.warning(f"Supabase cancel: {_safe_error(exc)}")
