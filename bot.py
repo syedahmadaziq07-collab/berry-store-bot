@@ -13,7 +13,7 @@ import asyncio
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -2601,6 +2601,65 @@ async def cmd_unsent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+async def _auto_cancel_expired_orders(context: ContextTypes.DEFAULT_TYPE):
+    """Background job: cancel PENDING orders older than 24 hours.
+    Stock is only reduced on admin approval, so no stock adjustment needed here.
+    Statuses 'waiting', 'completed', 'rejected', 'cancelled' are never touched.
+    """
+    log.info("[AUTO-CANCEL] Auto-cancel check started")
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        expired = await _run_supabase(
+            "orders.expired_pending",
+            lambda: sb_get("orders", f"select=id,product_name&status=eq.pending&created_at=lt.{cutoff}"),
+        ) or []
+        log.info(f"[AUTO-CANCEL] Found {len(expired)} expired pending orders")
+        if not expired:
+            log.info("[AUTO-CANCEL] Auto-cancel check completed")
+            return
+        cancelled_lines = []
+        for order in expired:
+            oid = order.get("id", "?")
+            pname = order.get("product_name", "-")
+            try:
+                await _run_supabase(
+                    f"orders.auto_cancel id={oid}",
+                    lambda _oid=oid: sb_patch(
+                        "orders",
+                        f"id=eq.{_oid}&status=eq.pending",
+                        {"status": "cancelled"},
+                    ),
+                    attempts=2,
+                )
+                log.info(f"[AUTO-CANCEL] Cancelled order {oid} product={pname}")
+                cancelled_lines.append(f"• {oid} — {pname}")
+            except Exception as exc:
+                log.warning(f"[AUTO-CANCEL] Failed to cancel order {oid}: {_safe_error(exc)}")
+
+        # Admin notification (optional — only sent if at least one order was cancelled)
+        if cancelled_lines and ADMIN_ID:
+            try:
+                summary = "\n".join(cancelled_lines)
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"🗑️ Auto-Cancel Report\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"{len(cancelled_lines)} pending order(s) expired (>24h) and were auto-cancelled:\n\n"
+                        f"{summary}\n\n"
+                        f"ℹ️ Only unpaid pending orders are affected.\n"
+                        f"Waiting/completed orders were NOT touched."
+                    ),
+                )
+                log.info(f"[AUTO-CANCEL] Admin notified — {len(cancelled_lines)} order(s) cancelled")
+            except Exception as exc:
+                log.warning(f"[AUTO-CANCEL] Admin notify failed: {_safe_error(exc)}")
+
+    except Exception as exc:
+        log.warning(f"[AUTO-CANCEL] Check failed: {_safe_error(exc)}", exc_info=True)
+    log.info("[AUTO-CANCEL] Auto-cancel check completed")
+
+
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
@@ -2622,6 +2681,13 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(on_error)
+    # ── Background job: auto-cancel expired pending orders every 15 minutes ──
+    app.job_queue.run_repeating(
+        _auto_cancel_expired_orders,
+        interval=15 * 60,   # every 15 minutes
+        first=60,           # first run 60 seconds after bot starts
+        name="auto_cancel_expired_orders",
+    )
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
