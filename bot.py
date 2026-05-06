@@ -922,9 +922,6 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     if update.callback_query:
         await update.callback_query.edit_message_text(product_text, reply_markup=product_kb)
     else:
-        # ReplyKeyboardRemove and InlineKeyboardMarkup cannot share one message.
-        # First message dismisses the reply keyboard; second shows the product detail.
-        await update.message.reply_text("🔍 Memuatkan produk...", reply_markup=ReplyKeyboardRemove())
         await update.message.reply_text(product_text, reply_markup=product_kb)
 
 # ─── Quantity ─────────────────────────────────────────────────────────────────
@@ -939,12 +936,6 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None):
     user = update.effective_user
     log.info(f"[CREATE_ORDER] product_id={product_id} qty={qty} variant={variant_label!r} user={user.id}")
-
-    # ── Instant loading feedback ───────────────────────────────────────────────
-    try:
-        await update.callback_query.edit_message_text("⏳ Memproses order...")
-    except Exception:
-        pass
 
     try:
         rows = await _run_supabase(
@@ -1069,10 +1060,6 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     global _qr_file_id, _qr_bytes
     _t_pay = time.monotonic()
     query = update.callback_query
-    try:
-        await query.edit_message_text("⏳ Memuatkan butiran pembayaran...")
-    except Exception as exc:
-        log.warning(f"[PAYMENT] edit_loading failed: {_safe_error(exc)}")
     try:
         rows = await _run_supabase(
             f"orders.payment id={order_id}",
@@ -1312,13 +1299,6 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 
 async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-
-    # ── Instant loading feedback ───────────────────────────────────────────────
-    if update.callback_query:
-        try:
-            await update.callback_query.edit_message_text("⏳ Memuatkan orders...")
-        except Exception:
-            pass
 
     try:
         orders = await _run_supabase(
@@ -1659,13 +1639,6 @@ async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     total_users = total_sold = 0
-
-    # ── Instant loading feedback ───────────────────────────────────────────────
-    if update.callback_query:
-        try:
-            await update.callback_query.edit_message_text("⏳ Memuatkan...")
-        except Exception:
-            pass
 
     try:
         def home_stats():
