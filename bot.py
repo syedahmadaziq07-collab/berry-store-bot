@@ -1003,10 +1003,17 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                     ),
                 )
                 live_v = var_rows[0] if var_rows else None
-                if not live_v or int(live_v.get("stock") or 0) <= 0:
+                if not live_v:
                     await _safe_edit_or_send(
                         update.callback_query,
                         "⚠️ Varian ini telah habis stok.", reply_markup=back_shop()
+                    )
+                    return
+                live_stock = int(live_v.get("stock") or 0)
+                if live_stock < qty:
+                    await _safe_edit_or_send(
+                        update.callback_query,
+                        "⚠️ Stok varian tidak mencukupi!", reply_markup=back_shop()
                     )
                     return
                 if str(live_v.get("product_id")) != str(product_id):
