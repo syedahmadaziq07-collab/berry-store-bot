@@ -862,15 +862,14 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     """Show product detail with live quantity and total price."""
     _t_prod = time.monotonic()
     qty = max(1, min(qty, 10))   # clamp between 1–10
-
-    cached_products, _ = await _get_cached_products_and_variants()
+    cached_products, cached_variants = await _get_cached_products_and_variants()
     log.info(f"[TIMING] show_product cache_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id}")
     p = next((x for x in cached_products if x["id"] == product_id), None)
     if not p:
         try:
             rows = await _run_supabase(
                 f"products.detail id={product_id}",
-                lambda: sb_get("products", f"select=*&id=eq.{product_id}&limit=1"),
+                lambda: sb_get("products", f"select=id,name,stock,price,duration,description,auto_delivery,delivery_mode&id=eq.{product_id}&limit=1"),
             )
             p = rows[0] if rows else None
         except Exception as exc:
@@ -887,11 +886,14 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                     await update.message.reply_text(err_msg, reply_markup=back_shop())
                 return
 
-    # ── Variant check: query product_variants table; if rows exist, show picker ──
-    db_variants = await _fetch_db_variants(product_id)
+    # ── Variant check: use cached variants first, fallback to DB only if needed ──
+    db_variants = [v for v in (cached_variants or []) if str(v.get("product_id")) == str(product_id)]
+    if not db_variants:
+        db_variants = await _fetch_db_variants(product_id)
     log.info(f"[VARIANT DEBUG] product_id={product_id} db_variants count={len(db_variants)} data={db_variants}")
     if db_variants:
         await show_variants(update, context, p, db_variants)
+        log.info(f"[TIMING] show_product total_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id} mode=variants")
         return
 
     total = round(p["price"] * qty, 2)
@@ -923,6 +925,7 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         await update.callback_query.edit_message_text(product_text, reply_markup=product_kb)
     else:
         await update.message.reply_text(product_text, reply_markup=product_kb)
+    log.info(f"[TIMING] show_product total_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id} mode=detail")
 
 # ─── Quantity ─────────────────────────────────────────────────────────────────
 
@@ -934,20 +937,29 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 # ─── Create Order ─────────────────────────────────────────────────────────────
 
 async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None):
+    _t_create = time.monotonic()
     user = update.effective_user
     log.info(f"[CREATE_ORDER] product_id={product_id} qty={qty} variant={variant_label!r} user={user.id}")
+    p = next((item for item in (context.user_data.get("shop_products") or []) if str(item.get("id")) == str(product_id)), None)
+    if not p:
+        cached, _age = _cached_products(max_age=None)
+        p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
 
+    # Live revalidation to avoid stale stock/price risks before insert
     try:
         rows = await _run_supabase(
             f"products.order_fetch id={product_id}",
-            lambda: sb_get("products", f"select=*&id=eq.{product_id}&limit=1"),
+            lambda: sb_get(
+                "products",
+                f"select=id,name,stock,price,auto_delivery,delivery_mode&id=eq.{product_id}&limit=1",
+            ),
         )
-        p = rows[0] if rows else None
+        live_p = rows[0] if rows else None
+        if live_p:
+            p = {**(p or {}), **live_p}
     except Exception as exc:
-        cached, age = _cached_products(max_age=None)
-        p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
         if p:
-            log.warning(f"Supabase create_order product fallback id={product_id} cache_age_s={age}: {_safe_error(exc)}")
+            log.warning(f"Supabase create_order product live-check fallback id={product_id}: {_safe_error(exc)}")
         else:
             log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
             await update.callback_query.edit_message_text(
@@ -955,12 +967,46 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 reply_markup=back_shop())
             return
 
+    if not p:
+        await update.callback_query.edit_message_text(
+            "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
+            reply_markup=back_shop())
+        return
+
     # For variant orders the stock was already validated in on_button; only
     # check product-level stock for non-variant orders.
     if variant_price is None and p["stock"] < qty:
         await update.callback_query.edit_message_text(
             "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
         return
+
+    if variant_price is not None:
+        _variant_id = context.user_data.get("selected_variant_id") or None
+        if _variant_id:
+            try:
+                var_rows = await _run_supabase(
+                    f"product_variants.revalidate id={_variant_id}",
+                    lambda: sb_get(
+                        "product_variants",
+                        f"select=id,variant_name,stock,price,description,product_id&id=eq.{_variant_id}&limit=1",
+                    ),
+                )
+                live_v = var_rows[0] if var_rows else None
+                if not live_v or int(live_v.get("stock") or 0) <= 0:
+                    await update.callback_query.edit_message_text(
+                        "⚠️ Varian ini telah habis stok.", reply_markup=back_shop()
+                    )
+                    return
+                if str(live_v.get("product_id")) != str(product_id):
+                    await update.callback_query.edit_message_text("⚠️ Variant tidak ditemui.", reply_markup=back_shop())
+                    return
+                variant_price = float(live_v.get("price"))
+                variant_label = str(live_v.get("variant_name") or variant_label or "")
+                context.user_data["selected_variant_desc"] = live_v.get("description") or context.user_data.get("selected_variant_desc") or ""
+            except Exception as exc:
+                log.warning(f"[VARIANT] live revalidate failed id={_variant_id}: {_safe_error(exc)}")
+                await update.callback_query.edit_message_text("⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
+                return
 
     # ── Duplicate order protection ─────────────────────────────────────────────
     try:
@@ -1038,6 +1084,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_{order_id}")],
         ]),
     )
+    log.info(f"[TIMING] create_order total_ms={int((time.monotonic()-_t_create)*1000)} product_id={product_id} order_id={order_id}")
 
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
@@ -1063,7 +1110,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     try:
         rows = await _run_supabase(
             f"orders.payment id={order_id}",
-            lambda: sb_get("orders", f"select=*&id=eq.{order_id}&limit=1"),
+            lambda: sb_get("orders", f"select=id,user_id,amount,status,username,product_name&id=eq.{order_id}&limit=1"),
         )
         order = rows[0] if rows else None
         if not order:
@@ -1091,12 +1138,14 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     )
     if _qr_file_id:
         try:
+            _t_qr_send = time.monotonic()
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=_qr_file_id,
                 caption=caption,
             )
             qr_sent = True
+            log.info(f"[TIMING] show_payment qr_send_ms={int((time.monotonic()-_t_qr_send)*1000)} source=file_id order_id={order_id}")
             log.info(f"[PAYMENT] QR sent using cached file_id")
         except Exception as exc:
             log.warning(f"[PAYMENT] cached file_id failed, resetting and re-uploading: {_safe_error(exc)}")
@@ -1109,6 +1158,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     with open(qr, "rb") as qr_file:
                         _qr_bytes = qr_file.read()
                     log.info(f"[QR DEBUG] QR bytes loaded into memory size={len(_qr_bytes)}")
+                _t_qr_send = time.monotonic()
                 sent_msg = await context.bot.send_photo(
                     chat_id=query.message.chat_id,
                     photo=_qr_bytes,
@@ -1121,6 +1171,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     _qr_file_id = sent_msg.photo[-1].file_id
                     log.info(f"[PAYMENT] QR file_id cached: {_qr_file_id[:20]}...")
                 qr_sent = True
+                log.info(f"[TIMING] show_payment qr_send_ms={int((time.monotonic()-_t_qr_send)*1000)} source=bytes order_id={order_id}")
             except Exception as exc:
                 log.warning(f"[PAYMENT] send_photo failed (exact error): {_safe_error(exc)}", exc_info=True)
                 _qr_bytes = None  # reset so next attempt re-reads from disk
@@ -1864,20 +1915,24 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_product(update, context, int(data.split("_")[1]))
 
         elif data.startswith("variant_"):
+            _t_variant = time.monotonic()
             try:
                 # callback_data format: "variant_{variant_db_id}"
                 vid = int(data.split("_", 1)[1])
 
-                # Fetch the variant row live from product_variants table
-                _vid = vid
-                v_rows = await _run_supabase(
-                    f"product_variants.fetch id={vid}",
-                    lambda: sb_get(
-                        "product_variants",
-                        f"select=id,product_id,variant_name,stock,price,description&id=eq.{_vid}&limit=1",
-                    ),
-                )
-                v = v_rows[0] if v_rows else None
+                # Cache-first read for responsiveness; create_order will live-revalidate before insert.
+                _, cached_variants = await _get_cached_products_and_variants()
+                v = next((item for item in (cached_variants or []) if str(item.get("id")) == str(vid)), None)
+                if not v:
+                    _vid = vid
+                    v_rows = await _run_supabase(
+                        f"product_variants.fetch id={vid}",
+                        lambda: sb_get(
+                            "product_variants",
+                            f"select=id,product_id,variant_name,stock,price,description&id=eq.{_vid}&limit=1",
+                        ),
+                    )
+                    v = v_rows[0] if v_rows else None
                 if not v:
                     await q.edit_message_text("⚠️ Variant tidak ditemui.", reply_markup=back_shop())
                     return
@@ -1904,6 +1959,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
+                log.info(f"[TIMING] variant_callback total_ms={int((time.monotonic()-_t_variant)*1000)} variant_id={vid} product_id={pid}")
 
             except (ValueError, IndexError) as exc:
                 log.warning(f"variant callback parse error data={data!r}: {_safe_error(exc)}")
@@ -2021,6 +2077,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Reply keyboard: number selects a product ───────────────────────────────
     if text.isdigit():
+        _t_num = time.monotonic()
         products = context.user_data.get("shop_products") or []
         if products:
             idx = int(text) - 1
@@ -2038,6 +2095,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     return
                 await show_product(update, context, product_id)
+                log.info(f"[TIMING] handle_message number_select_ms={int((time.monotonic()-_t_num)*1000)} user_id={user_id} product_id={product_id}")
                 return
             else:
                 await update.message.reply_text(
