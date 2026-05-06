@@ -483,6 +483,14 @@ def back_home():
 def back_shop():
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]])
 
+async def _safe_edit_or_send(query, text: str, reply_markup=None):
+    """Edit callback message; fallback to sending a new message if edit fails."""
+    try:
+        return await query.edit_message_text(text, reply_markup=reply_markup)
+    except Exception as exc:
+        log.warning(f"[TELEGRAM] edit_message_text fallback: {_safe_error(exc)}")
+        return await query.message.reply_text(text, reply_markup=reply_markup)
+
 def build_product_keyboard(products: list) -> ReplyKeyboardMarkup:
     """Number buttons in the keyboard tray, 3 per row, plus a Home button."""
     buttons = []
@@ -962,13 +970,15 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             log.warning(f"Supabase create_order product live-check fallback id={product_id}: {_safe_error(exc)}")
         else:
             log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
-            await update.callback_query.edit_message_text(
+            await _safe_edit_or_send(
+                update.callback_query,
                 "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
                 reply_markup=back_shop())
             return
 
     if not p:
-        await update.callback_query.edit_message_text(
+        await _safe_edit_or_send(
+            update.callback_query,
             "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
             reply_markup=back_shop())
         return
@@ -976,7 +986,8 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     # For variant orders the stock was already validated in on_button; only
     # check product-level stock for non-variant orders.
     if variant_price is None and p["stock"] < qty:
-        await update.callback_query.edit_message_text(
+        await _safe_edit_or_send(
+            update.callback_query,
             "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
         return
 
@@ -993,19 +1004,20 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 )
                 live_v = var_rows[0] if var_rows else None
                 if not live_v or int(live_v.get("stock") or 0) <= 0:
-                    await update.callback_query.edit_message_text(
+                    await _safe_edit_or_send(
+                        update.callback_query,
                         "⚠️ Varian ini telah habis stok.", reply_markup=back_shop()
                     )
                     return
                 if str(live_v.get("product_id")) != str(product_id):
-                    await update.callback_query.edit_message_text("⚠️ Variant tidak ditemui.", reply_markup=back_shop())
+                    await _safe_edit_or_send(update.callback_query, "⚠️ Variant tidak ditemui.", reply_markup=back_shop())
                     return
                 variant_price = float(live_v.get("price"))
                 variant_label = str(live_v.get("variant_name") or variant_label or "")
                 context.user_data["selected_variant_desc"] = live_v.get("description") or context.user_data.get("selected_variant_desc") or ""
             except Exception as exc:
                 log.warning(f"[VARIANT] live revalidate failed id={_variant_id}: {_safe_error(exc)}")
-                await update.callback_query.edit_message_text("⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
+                await _safe_edit_or_send(update.callback_query, "⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
                 return
 
     # ── Duplicate order protection ─────────────────────────────────────────────
@@ -1021,7 +1033,8 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         if existing:
             o = existing[0]
             oid = o.get("id", "")
-            await update.callback_query.edit_message_text(
+            await _safe_edit_or_send(
+                update.callback_query,
                 f"⚠️ Anda sudah mempunyai order aktif:\n"
                 f"• Order  : {oid}\n"
                 f"• Produk : {o.get('product_name','')}\n"
@@ -1057,7 +1070,8 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         )
     except Exception as exc:
         log.warning(f"Supabase create_order insert: {_safe_error(exc)}")
-        await update.callback_query.edit_message_text(
+        await _safe_edit_or_send(
+            update.callback_query,
             "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
             reply_markup=back_shop())
         return
@@ -1077,7 +1091,8 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     if _variant_desc:
         summary_text += f"\n{_variant_desc}\n"
     summary_text += f"\n{_order_proceed}"
-    await update.callback_query.edit_message_text(
+    await _safe_edit_or_send(
+        update.callback_query,
         summary_text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"payment_{order_id}")],
@@ -1114,18 +1129,18 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
         order = rows[0] if rows else None
         if not order:
-            await query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            await _safe_edit_or_send(query, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
             return
         order_user_id = order.get("user_id")
         requester_id = update.effective_user.id
         is_admin = requester_id == ADMIN_ID
         if not is_admin and str(order_user_id) != str(requester_id):
             log.warning(f"[SECURITY] Blocked payment view non-owner user_id={requester_id} order_id={order_id}")
-            await query.edit_message_text("⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            await _safe_edit_or_send(query, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
             return
     except Exception as exc:
         log.warning(f"[PAYMENT] Supabase fetch failed: {_safe_error(exc)}", exc_info=True)
-        await query.edit_message_text("⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
+        await _safe_edit_or_send(query, "⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
         return
     qr_sent = False
     _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
@@ -1218,25 +1233,27 @@ async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_
         )
         order = rows[0] if rows else None
         if not order:
-            await update.callback_query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            await _safe_edit_or_send(update.callback_query, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
             return
         if str(order.get("user_id")) != str(user_id):
             log.warning(f"[SECURITY] Blocked paid action non-owner user_id={user_id} order_id={order_id}")
-            await update.callback_query.edit_message_text("⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            await _safe_edit_or_send(update.callback_query, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
             return
         status = str(order.get("status") or "")
         if status != "pending":
-            await update.callback_query.edit_message_text(
+            await _safe_edit_or_send(
+                update.callback_query,
                 f"⚠️ Order ini tidak boleh ditandakan sebagai dibayar kerana status semasa ialah: {status or '-'}",
                 reply_markup=back_shop(),
             )
             return
     except Exception as exc:
         log.warning(f"[PAID] Validation failed order_id={order_id}: {_safe_error(exc)}", exc_info=True)
-        await update.callback_query.edit_message_text("⚠️ Gagal semak order. Sila cuba lagi.", reply_markup=back_shop())
+        await _safe_edit_or_send(update.callback_query, "⚠️ Gagal semak order. Sila cuba lagi.", reply_markup=back_shop())
         return
     context.user_data["pending_receipt"] = order_id
-    await update.callback_query.edit_message_text(
+    await _safe_edit_or_send(
+        update.callback_query,
         f"📸 Upload screenshot resit pembayaran untuk:\nOrder ID: {order_id}\n\nHantar gambar sekarang:"
     )
 
@@ -1319,15 +1336,16 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
         order = rows[0] if rows else None
         if not order:
-            await update.callback_query.edit_message_text("⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            await _safe_edit_or_send(update.callback_query, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
             return
         if str(order.get("user_id")) != str(user_id):
             log.warning(f"[SECURITY] Blocked cancel non-owner user_id={user_id} order_id={order_id}")
-            await update.callback_query.edit_message_text("⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            await _safe_edit_or_send(update.callback_query, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
             return
         status = str(order.get("status") or "")
         if status != "pending":
-            await update.callback_query.edit_message_text(
+            await _safe_edit_or_send(
+                update.callback_query,
                 f"⚠️ Order ini tidak boleh dibatalkan kerana status semasa ialah: {status or '-'}",
                 reply_markup=back_shop(),
             )
@@ -1339,7 +1357,8 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
     except Exception as exc:
         log.warning(f"Supabase cancel: {_safe_error(exc)}")
-    await update.callback_query.edit_message_text(
+    await _safe_edit_or_send(
+        update.callback_query,
         f"❌ Order {order_id} telah dibatalkan. Terima kasih!",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🛍 Back to Shop", callback_data="shop")],
@@ -1935,13 +1954,6 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     v = v_rows[0] if v_rows else None
                 if not v:
                     await q.edit_message_text("⚠️ Variant tidak ditemui.", reply_markup=back_shop())
-                    return
-
-                v_stock = int(v.get("stock", 0))
-                if v_stock <= 0:
-                    await q.edit_message_text(
-                        "⚠️ Varian ini telah habis stok.", reply_markup=back_shop()
-                    )
                     return
 
                 v_label = v.get("variant_name")
