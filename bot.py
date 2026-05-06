@@ -2682,12 +2682,16 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(on_error)
     # ── Background job: auto-cancel expired pending orders every 15 minutes ──
-    app.job_queue.run_repeating(
-        _auto_cancel_expired_orders,
-        interval=15 * 60,   # every 15 minutes
-        first=60,           # first run 60 seconds after bot starts
-        name="auto_cancel_expired_orders",
-    )
+    if app.job_queue is not None:
+        app.job_queue.run_repeating(
+            _auto_cancel_expired_orders,
+            interval=15 * 60,   # every 15 minutes
+            first=60,           # first run 60 seconds after bot starts
+            name="auto_cancel_expired_orders",
+        )
+        log.info("[AUTO-CANCEL] Background job registered successfully")
+    else:
+        log.warning("[AUTO-CANCEL] JobQueue unavailable. Install python-telegram-bot[job-queue] to enable auto-cancel.")
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
