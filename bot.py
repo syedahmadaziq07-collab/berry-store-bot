@@ -83,7 +83,9 @@ ADMIN_ID     = 0
 REQUIRED_CHANNEL     = "@berrystorrel"
 REQUIRED_CHANNEL_URL = "https://t.me/berrystorrel"
 PORT         = int(_get_env("PORT", "5000"))
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR            = os.path.dirname(os.path.abspath(__file__))
+QR_PATH             = os.path.join(BASE_DIR, "payment_qr.png")
+BANNER_PATH         = os.path.join(BASE_DIR, "banner.png")
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 
 def _redact(text: object) -> str:
@@ -103,8 +105,11 @@ except ValueError:
 
 TESTIMONIALS_CHANNEL_ID   = -1003850553745
 TESTIMONIALS_CHANNEL_ID_2 = -1003831715755
-_qr_file_id: str | None = None
-_bot_settings: dict = {}
+_qr_file_id:     str   | None = None
+_qr_bytes:       bytes | None = None   # QR image cached in memory after first disk read
+_banner_file_id: str   | None = None
+_banner_bytes:   bytes | None = None   # Banner cached in memory after first disk read
+_bot_settings:   dict         = {}
 
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
@@ -388,15 +393,22 @@ async def _load_bot_settings():
         log.warning(f"[SETTINGS] Failed to load settings: {exc}")
 
 async def _setting(key: str, fallback: str = "") -> str:
+    """Return a bot setting. Checks in-memory cache first — no Supabase call if already loaded."""
+    # Fast path: already loaded by _load_bot_settings() at startup
+    if key in _bot_settings:
+        return _bot_settings.get(key) or fallback
+    # Key not yet cached — fetch from Supabase and store for next time
     try:
         rows = await asyncio.to_thread(
             lambda: sb_get("bot_settings", f"select=value&key=eq.{key}&limit=1")
         )
         if rows and rows[0].get("value"):
-            return rows[0]["value"]
+            val = rows[0]["value"]
+            _bot_settings[key] = val  # cache so subsequent calls are instant
+            return val
     except Exception:
         pass
-    return _bot_settings.get(key) or fallback
+    return fallback
 
 # ─── Flask Keep-Alive Server ──────────────────────────────────────────────────
 
@@ -603,10 +615,11 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    _t_shop = time.monotonic()
     try:
         products, all_variants = await _get_cached_products_and_variants()
         _cache_products(products)
-        log.info(f"Products loaded: {len(products)} items source=cache_or_supabase")
+        log.info(f"[TIMING] show_shop products_loaded_ms={int((time.monotonic()-_t_shop)*1000)} count={len(products)} source=cache_or_supabase")
     except Exception as exc:
         products, age = _cached_products(max_age=None)
         all_variants = []
@@ -701,35 +714,57 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"┊ {i}. {p['name']} ( {stock} )\n"
     text += f"╰─────────────────────╯\n\n{_shop_footer}"
 
-    banner_paths = [
-        "banner.png",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "banner.png"),
-    ]
-    banner_path = None
-    for bp in banner_paths:
-        if os.path.exists(bp):
-            banner_path = bp
-            break
-
     chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
 
-    if banner_path:
-        try:
-            with open(banner_path, "rb") as banner_file:
+    # ── Banner send with file_id caching ──────────────────────────────────────
+    global _banner_file_id, _banner_bytes
+    banner_sent = False
+    _t_banner = time.monotonic()
+
+    if os.path.exists(BANNER_PATH):
+        # 1. Try cached Telegram file_id (fastest — no upload)
+        if _banner_file_id:
+            try:
                 await context.bot.send_photo(
                     chat_id=chat_id,
-                    photo=banner_file,
+                    photo=_banner_file_id,
+                    caption=text,
+                    reply_markup=build_product_keyboard(products),
+                )
+                banner_sent = True
+                log.info(f"[BANNER] Sent via file_id ms={int((time.monotonic()-_t_banner)*1000)}")
+            except Exception as exc:
+                log.warning(f"[BANNER] file_id failed, re-uploading: {_safe_error(exc)}")
+                _banner_file_id = None
+
+        # 2. Upload from memory bytes (loads disk once, then reuses bytes)
+        if not banner_sent:
+            try:
+                if _banner_bytes is None:
+                    with open(BANNER_PATH, "rb") as f:
+                        _banner_bytes = f.read()
+                    log.info(f"[BANNER] Loaded into memory size={len(_banner_bytes)//1024}KB")
+                sent_msg = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=_banner_bytes,
                     caption=text,
                     read_timeout=30,
                     write_timeout=30,
                     reply_markup=build_product_keyboard(products),
                 )
-            log.info("[BANNER] Sent banner with caption")
-            return
-        except Exception as exc:
-            log.warning(f"[BANNER] Failed: {_safe_error(exc)}")
+                if sent_msg.photo:
+                    _banner_file_id = sent_msg.photo[-1].file_id
+                    log.info(f"[BANNER] Uploaded and file_id cached ms={int((time.monotonic()-_t_banner)*1000)}")
+                banner_sent = True
+            except Exception as exc:
+                log.warning(f"[BANNER] Upload failed: {_safe_error(exc)}")
+                _banner_bytes = None
 
-    # Fallback: no banner, send text only
+    if banner_sent:
+        return
+
+    # Fallback: no banner or send failed — text only
+    log.info(f"[BANNER] Sending text-only (banner_path_exists={os.path.exists(BANNER_PATH)})")
     if update.callback_query:
         await context.bot.send_message(
             chat_id=chat_id,
@@ -832,9 +867,11 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
 
 async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int = 1):
     """Show product detail with live quantity and total price."""
+    _t_prod = time.monotonic()
     qty = max(1, min(qty, 10))   # clamp between 1–10
 
     cached_products, _ = await _get_cached_products_and_variants()
+    log.info(f"[TIMING] show_product cache_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id}")
     p = next((x for x in cached_products if x["id"] == product_id), None)
     if not p:
         try:
@@ -1021,23 +1058,23 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
 def get_qr_path():
-    cwd = os.getcwd()
-    try:
-        dir_files = os.listdir(cwd)
-    except Exception:
-        dir_files = []
-    log.info(f"[QR DEBUG] current working directory={cwd}")
-    log.info(f"[QR DEBUG] files in directory={dir_files}")
-    qr = os.path.join(os.getcwd(), "payment_qr.png")
-    if os.path.exists(qr):
-        log.info(f"[QR DEBUG] qr path found={qr}")
-        return qr
-    log.warning(f"[QR DEBUG] qr path found=None — checked: {qr}")
+    """Return absolute path to payment_qr.png using BASE_DIR. Falls back to cwd."""
+    log.info(f"[QR DEBUG] BASE_DIR={BASE_DIR} QR_PATH={QR_PATH} exists={os.path.exists(QR_PATH)}")
+    if os.path.exists(QR_PATH):
+        log.info(f"[QR DEBUG] qr path found={QR_PATH}")
+        return QR_PATH
+    # Fallback: try current working directory in case cwd differs from BASE_DIR
+    cwd_qr = os.path.join(os.getcwd(), "payment_qr.png")
+    if os.path.exists(cwd_qr):
+        log.info(f"[QR DEBUG] qr path found (cwd fallback)={cwd_qr}")
+        return cwd_qr
+    log.warning(f"[QR DEBUG] qr path found=None — checked BASE_DIR path={QR_PATH}, cwd path={cwd_qr}")
     return None
 
 
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
-    global _qr_file_id
+    global _qr_file_id, _qr_bytes
+    _t_pay = time.monotonic()
     query = update.callback_query
     try:
         await query.edit_message_text("⏳ Memuatkan butiran pembayaran...")
@@ -1081,24 +1118,28 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         qr = get_qr_path()
         if qr:
             try:
-                with open(qr, "rb") as qr_file:
-                    sent_msg = await context.bot.send_photo(
-                        chat_id=query.message.chat_id,
-                        photo=qr_file,
-                        caption=caption,
-                        read_timeout=30,
-                        write_timeout=30,
-                        connect_timeout=30,
-                    )
+                if _qr_bytes is None:
+                    with open(qr, "rb") as qr_file:
+                        _qr_bytes = qr_file.read()
+                    log.info(f"[QR DEBUG] QR bytes loaded into memory size={len(_qr_bytes)}")
+                sent_msg = await context.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=_qr_bytes,
+                    caption=caption,
+                    read_timeout=30,
+                    write_timeout=30,
+                    connect_timeout=30,
+                )
                 if sent_msg.photo:
                     _qr_file_id = sent_msg.photo[-1].file_id
                     log.info(f"[PAYMENT] QR file_id cached: {_qr_file_id[:20]}...")
                 qr_sent = True
             except Exception as exc:
                 log.warning(f"[PAYMENT] send_photo failed (exact error): {_safe_error(exc)}", exc_info=True)
+                _qr_bytes = None  # reset so next attempt re-reads from disk
         else:
-            log.warning(f"[PAYMENT] QR file not found on disk — skipping send_photo")
-    log.info(f"[PAYMENT] qr_sent={qr_sent}")
+            log.warning(f"[PAYMENT] QR file not found — QR_PATH={QR_PATH} exists={os.path.exists(QR_PATH)} cwd={os.getcwd()}")
+    log.info(f"[PAYMENT] qr_sent={qr_sent} total_ms={int((time.monotonic()-_t_pay)*1000)}")
     if not qr_sent:
         try:
             await context.bot.send_message(
