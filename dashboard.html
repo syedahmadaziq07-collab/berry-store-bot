@@ -115,6 +115,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 /* ====== CHART CARD ====== */
 .chart-card{background:linear-gradient(180deg,rgba(26,29,39,.96),rgba(23,29,45,.93));border-radius:16px;padding:1.25rem;border:1px solid var(--border);margin-bottom:1.5rem;box-shadow:var(--shadow)}
 .chart-wrap{position:relative;height:220px}
+.qa-card{background:linear-gradient(180deg,rgba(26,29,39,.96),rgba(23,29,45,.93));border-radius:16px;padding:1.1rem;border:1px solid var(--border);margin-bottom:1rem;box-shadow:var(--shadow)}
+.qa-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.65rem}
+.qa-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:.7rem}
+.qa-item{border:1px solid var(--border);border-radius:12px;padding:.75rem;background:rgba(255,255,255,.02)}
+.qa-meta{font-size:.76rem;color:var(--text-s);line-height:1.45}
+.qa-item .qa-row{display:flex;justify-content:space-between;gap:.5rem;margin-bottom:.28rem}
+.qa-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.55rem}
 
 /* ====== TABLE ====== */
 .clean-table{width:100%;border-collapse:collapse;font-size:.84rem}
@@ -302,6 +309,7 @@ button:active{transform:scale(.97)}
   .filter-row{gap:.42rem}
   .filter-pills{gap:.24rem}
   .fpill{padding:.3rem .6rem}
+  .qa-list{grid-template-columns:1fr}
 }
 
 /* ====== TOGGLE SWITCH ====== */
@@ -475,6 +483,21 @@ button:active{transform:scale(.97)}
 
     <!-- ====== DASHBOARD ====== -->
     <div class="page active" id="page-dashboard">
+      <div class="qa-card">
+        <div class="qa-head">
+          <div>
+            <div class="sec-label">Quick Actions</div>
+            <div class="sec-title">Pending Approvals</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:.45rem">
+            <span class="badge b-blue" id="pendingApprovalCount">0 waiting</span>
+            <button class="btn-ghost btn-sm btn-pill" id="qaRefreshBtn" onclick="loadPendingApprovals()">Refresh</button>
+          </div>
+        </div>
+        <div id="pendingApprovalList" class="qa-list">
+          <div class="qa-item" style="grid-column:1/-1;color:var(--text-s)">No pending approvals.</div>
+        </div>
+      </div>
       <div class="stat-row">
         <div class="stat-card">
           <div class="sc-top">
@@ -769,6 +792,11 @@ button:active{transform:scale(.97)}
       <input id="cfgKey" type="password" placeholder="eyJhbGci... (service_role key only)"/>
       <div style="font-size:.72rem;color:var(--text-xs);margin-top:.35rem">Use the <strong style="color:var(--text-s)">service_role</strong> key from Supabase &rarr; Settings &rarr; API. The anon key is blocked by RLS.</div>
     </div>
+    <div class="cf">
+      <label>Dashboard Admin Secret <span style="color:var(--danger);font-weight:700">*</span></label>
+      <input id="cfgDashSecret" type="password" placeholder="DASHBOARD_ADMIN_SECRET value from Render env"/>
+      <div style="font-size:.72rem;color:var(--text-xs);margin-top:.35rem">Used only for secure approve/reject/receipt API routes.</div>
+    </div>
     <div id="cfgErr" style="font-size:.82rem;color:var(--danger);margin-top:.3rem"></div>
     <button class="btn-primary btn-pill" onclick="doConnect()" style="margin-top:.5rem">Connect</button>
   </div>
@@ -859,6 +887,19 @@ button:active{transform:scale(.97)}
   </div>
 </div>
 
+<!-- ====== RECEIPT PREVIEW MODAL ====== -->
+<div class="overlay" id="receiptOverlay">
+  <div class="modal" style="max-width:540px">
+    <h3>Receipt Preview</h3>
+    <div id="receiptWrap" style="min-height:120px;display:flex;align-items:center;justify-content:center;color:var(--text-s)">
+      Select an order receipt to preview.
+    </div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeOverlay('receiptOverlay')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -868,6 +909,7 @@ button:active{transform:scale(.97)}
 let sb = null;
 let _sbUrl = '';
 let _sbKey = '';
+let _dashSecret = '';
 let _page = 'dashboard';
 let _period = 'today';
 let _ordStatusFilter = '';
@@ -884,6 +926,7 @@ let _liveAlerts = [];
 let _newAlertCount = 0;
 let _orderPollTimer = null;
 let _latestOrderCreatedAt = null;
+let _pendingApprovals = [];
 
 const PAGE_NAMES = {
   dashboard:'Dashboard', products:'Products', orders:'Orders',
@@ -948,6 +991,15 @@ const statusBadge = s => {
 const rm = v => 'RM ' + parseFloat(v||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
 
 const closeOverlay = id => document.getElementById(id).classList.remove('open');
+const dashboardApiBase = () => window.location.origin;
+const hasDashSecret = () => !!(_dashSecret||'').trim();
+const withBtnLoading = async (btn, fn) => {
+  if (!btn) return fn();
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Working...';
+  try { return await fn(); } finally { btn.disabled = false; btn.innerHTML = old; }
+};
 
 function setTrend(id, a, b) {
   const el = document.getElementById(id);
@@ -1015,6 +1067,7 @@ function periodRange() {
 function openConnect() {
   document.getElementById('cfgUrl').value = localStorage.getItem('bs_url') || '';
   document.getElementById('cfgKey').value = localStorage.getItem('bs_key') || '';
+  document.getElementById('cfgDashSecret').value = localStorage.getItem('bs_dash_secret') || '';
   document.getElementById('cfgErr').textContent = '';
   document.getElementById('connectOverlay').classList.add('open');
 }
@@ -1022,8 +1075,9 @@ function openConnect() {
 async function doConnect() {
   const url = document.getElementById('cfgUrl').value.trim();
   const key = document.getElementById('cfgKey').value.trim();
+  const dashSecret = document.getElementById('cfgDashSecret').value.trim();
   const err = document.getElementById('cfgErr');
-  if (!url||!key) { err.textContent='Both fields are required.'; return; }
+  if (!url||!key||!dashSecret) { err.textContent='URL, key, and dashboard secret are required.'; return; }
   const role = jwtRole(key);
   if (role === 'anon') {
     err.textContent = 'This is an anon key. RLS will block admin reads. Use the service_role key from Supabase Settings > API.';
@@ -1033,11 +1087,13 @@ async function doConnect() {
     sb = supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
     _sbUrl = url;
     _sbKey = key;
+    _dashSecret = dashSecret;
     // Test connection
     const { error } = await sb.from('products').select('id', { count: 'exact', head: true });
     if (error) throw error;
     localStorage.setItem('bs_url', url);
     localStorage.setItem('bs_key', key);
+    localStorage.setItem('bs_dash_secret', dashSecret);
     setConn(true);
     closeOverlay('connectOverlay');
     toast('Connected successfully' + (role === 'service_role' ? ' (service_role)' : ''));
@@ -1109,6 +1165,7 @@ function drawSpark(id, data, color) {
 async function loadDashboard() {
   if (!sb) return;
   try {
+    loadPendingApprovals();
     const t = today();
     const w0 = dateOffset(-6);
     const pw0 = dateOffset(-13);
@@ -1225,6 +1282,113 @@ function drawWeekChart(labels, data) {
 // ====================================================
 // ORDERS
 // ====================================================
+async function loadPendingApprovals() {
+  if (!sb) return;
+  const wrap = document.getElementById('pendingApprovalList');
+  const countEl = document.getElementById('pendingApprovalCount');
+  if (!wrap || !countEl) return;
+  wrap.innerHTML = '<div class="qa-item" style="grid-column:1/-1;color:var(--text-s)"><span class="spin"></span>Loading pending approvals...</div>';
+  try {
+    const { data, error } = await sb.from('orders')
+      .select('id,user_id,username,product_name,amount,status,created_at,receipt_file_id')
+      .in('status', ['waiting_approval', 'waiting'])
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    _pendingApprovals = data || [];
+    countEl.textContent = _pendingApprovals.length + ' waiting';
+    if (!_pendingApprovals.length) {
+      wrap.innerHTML = '<div class="qa-item" style="grid-column:1/-1;color:var(--text-s)">No orders waiting for approval.</div>';
+      return;
+    }
+    wrap.innerHTML = _pendingApprovals.map(o => {
+      const cust = o.username ? '@'+o.username : (o.user_id ? String(o.user_id) : '--');
+      const rid = String(o.id||'');
+      const hasReceipt = !!(o.receipt_file_id||'');
+      return '<div class="qa-item">' +
+        '<div class="qa-row"><strong style="font-family:monospace;font-size:.78rem">'+escH(rid)+'</strong>'+statusBadge(o.status)+'</div>'+
+        '<div class="qa-meta">'+
+          '<div><strong>Customer:</strong> '+escH(cust)+'</div>'+
+          '<div><strong>Product:</strong> '+escH(o.product_name||'--')+'</div>'+
+          '<div><strong>Amount:</strong> '+rm(o.amount)+'</div>'+
+          '<div><strong>Receipt:</strong> '+(hasReceipt ? '<span class="badge b-green">Uploaded</span>' : '<span class="badge b-red">Missing</span>')+'</div>'+
+          '<div><strong>Created:</strong> '+fmtDT(o.created_at)+'</div>'+
+        '</div>'+
+        '<div class="qa-actions">'+
+          '<button class="btn-ghost btn-sm" onclick="viewPendingReceipt(\''+rid.replace(/'/g,"\\'")+'\', this)" '+(hasReceipt?'':'disabled title="Receipt file is not uploaded yet"')+'>'+(hasReceipt?'View Receipt':'View Receipt (Unavailable)')+'</button>'+
+          '<button class="btn-success btn-sm" onclick="dashboardOrderAction(\''+rid.replace(/'/g,"\\'")+'\',\'approve\', this)">Approve</button>'+
+          '<button class="btn-danger btn-sm" onclick="dashboardOrderAction(\''+rid.replace(/'/g,"\\'")+'\',\'reject\', this)">Reject</button>'+
+          '<button class="btn-ghost btn-sm" onclick="copyOrderId(\''+rid.replace(/'/g,"\\'")+'\')">Copy Order ID</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  } catch (e) {
+    wrap.innerHTML = '<div class="qa-item" style="grid-column:1/-1;color:var(--danger)">Failed to load pending approvals: '+escH(e.message||String(e))+'</div>';
+  }
+}
+
+async function dashboardApiPost(path, payload) {
+  if (!hasDashSecret()) throw new Error('Dashboard secret not configured. Open Connection Settings.');
+  const res = await fetch(dashboardApiBase() + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Dashboard-Secret': _dashSecret },
+    body: JSON.stringify(payload || {})
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+  return json;
+}
+
+async function viewPendingReceipt(orderId, btn) {
+  if (!hasDashSecret()) { toast('Set Dashboard Admin Secret in Connection Settings first.'); return; }
+  await withBtnLoading(btn, async () => {
+    const wrap = document.getElementById('receiptWrap');
+    wrap.innerHTML = '<span class="spin"></span>Loading receipt...';
+    document.getElementById('receiptOverlay').classList.add('open');
+    const url = dashboardApiBase() + '/api/dashboard/order-receipt/' + encodeURIComponent(orderId);
+    const res = await fetch(url, { headers: { 'X-Dashboard-Secret': _dashSecret } });
+    if (!res.ok) {
+      const msg = await res.json().catch(() => ({}));
+      wrap.innerHTML = '<div style="color:var(--danger)">' + escH(msg.error || 'Receipt unavailable') + '</div>';
+      return;
+    }
+    const blob = await res.blob();
+    const imgUrl = URL.createObjectURL(blob);
+    wrap.innerHTML = '<img src="'+imgUrl+'" alt="Receipt" style="max-width:100%;max-height:62vh;border-radius:10px;border:1px solid var(--border)"/>';
+  });
+}
+
+async function dashboardOrderAction(orderId, action, btn) {
+  const pretty = action === 'approve' ? 'Approve' : 'Reject';
+  showConfirm(
+    'Confirm ' + pretty,
+    'Proceed to ' + action + ' order #' + String(orderId).slice(0,8) + '?',
+    async () => {
+      try {
+        await withBtnLoading(btn, async () => {
+          await dashboardApiPost('/api/dashboard/' + action + '-order', { order_id: orderId });
+        });
+        toast('Order ' + pretty.toLowerCase() + 'd successfully');
+        closeOverlay('orderDetailOverlay');
+        loadPendingApprovals();
+        loadOrders();
+        loadDashboard();
+      } catch (e) {
+        toast('Action failed: ' + e.message);
+      }
+    }
+  );
+}
+
+async function copyOrderId(orderId) {
+  try {
+    await navigator.clipboard.writeText(String(orderId||''));
+    toast('Order ID copied');
+  } catch(_) {
+    toast('Copy failed');
+  }
+}
+
 function setStatusFilter(el, st) {
   _ordStatusFilter = st;
   document.querySelectorAll('#statusPills .fpill').forEach(p=>p.classList.remove('active'));
@@ -1353,19 +1517,7 @@ function showOrderDetail(o) {
 
 async function orderAction(orderId, newStatus) {
   const action = newStatus === 'approved' ? 'approve' : 'reject';
-  showConfirm(
-    'Confirm ' + action.charAt(0).toUpperCase() + action.slice(1),
-    'Are you sure you want to ' + action + ' order #' + String(orderId).slice(0,8) + '...?',
-    async () => {
-      try {
-        const { error } = await sb.from('orders').update({ status: newStatus }).eq('id', orderId);
-        if (error) throw error;
-        toast('Order ' + action + 'd successfully');
-        closeOverlay('orderDetailOverlay');
-        loadOrders();
-      } catch(e) { toast('Error: ' + e.message); }
-    }
-  );
+  await dashboardOrderAction(orderId, action);
 }
 
 function showConfirm(title, msg, onConfirm) {
@@ -2540,6 +2692,7 @@ document.querySelectorAll('.overlay').forEach(o=>{
   // Restore from localStorage
   const savedUrl = localStorage.getItem('bs_url');
   const savedKey = localStorage.getItem('bs_key');
+  _dashSecret = localStorage.getItem('bs_dash_secret') || '';
   if (savedUrl && savedKey) {
     try {
       sb = supabase.createClient(savedUrl, savedKey, { auth: { persistSession: false, autoRefreshToken: false } });

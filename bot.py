@@ -13,6 +13,7 @@ import asyncio
 import json
 import urllib.error
 import urllib.request
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -83,6 +84,7 @@ ADMIN_ID     = 0
 REQUIRED_CHANNEL     = "@berrystorrel"
 REQUIRED_CHANNEL_URL = "https://t.me/berrystorrel"
 PORT         = int(_get_env("PORT", "5000"))
+DASHBOARD_ADMIN_SECRET = _get_env("DASHBOARD_ADMIN_SECRET")
 BASE_DIR            = os.path.dirname(os.path.abspath(__file__))
 QR_PATH             = os.path.join(BASE_DIR, "payment_qr.png")
 BANNER_PATH         = os.path.join(BASE_DIR, "banner.png")
@@ -90,7 +92,7 @@ PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 
 def _redact(text: object) -> str:
     value = str(text)
-    for secret in (BOT_TOKEN, SUPABASE_KEY, SUPABASE_SERVICE_KEY):
+    for secret in (BOT_TOKEN, SUPABASE_KEY, SUPABASE_SERVICE_KEY, DASHBOARD_ADMIN_SECRET):
         if secret:
             value = value.replace(secret, "[REDACTED]")
     return value[:500]
@@ -412,9 +414,28 @@ async def _setting(key: str, fallback: str = "") -> str:
 
 # ─── Flask Keep-Alive Server ──────────────────────────────────────────────────
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, Response
 
 _app = Flask(__name__)
+_telegram_app: object | None = None
+_telegram_loop: asyncio.AbstractEventLoop | None = None
+
+def _check_dashboard_secret() -> tuple[bool, str]:
+    provided = (
+        (request.headers.get("X-Dashboard-Secret") or "").strip()
+        or str((request.get_json(silent=True) or {}).get("secret") or "").strip()
+    )
+    if not DASHBOARD_ADMIN_SECRET:
+        return False, "DASHBOARD_ADMIN_SECRET is not configured on server"
+    if not provided or provided != DASHBOARD_ADMIN_SECRET:
+        return False, "Invalid dashboard admin secret"
+    return True, ""
+
+def _run_bot_coro(coro, timeout: int = 45):
+    if _telegram_loop is None or _telegram_app is None:
+        raise RuntimeError("Telegram app is not running")
+    fut = asyncio.run_coroutine_threadsafe(coro, _telegram_loop)
+    return fut.result(timeout=timeout)
 
 @_app.route("/")
 def _index():
@@ -443,6 +464,65 @@ def dashboard():
             with open(path, "r", encoding="utf-8") as f:
                 return f.read(), 200, {"Content-Type": "text/html"}
     return "Dashboard not found", 404
+
+@_app.route("/api/dashboard/approve-order", methods=["POST"])
+def dashboard_approve_order():
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    payload = request.get_json(silent=True) or {}
+    order_id = str(payload.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify(error="order_id is required"), 400
+    try:
+        ctx = SimpleNamespace(bot=_telegram_app.bot)
+        _run_bot_coro(_approve_order_core(ctx, order_id), timeout=60)
+        return jsonify(ok=True, order_id=order_id, action="approved"), 200
+    except Exception as exc:
+        return jsonify(error=_safe_error(exc)), 500
+
+@_app.route("/api/dashboard/reject-order", methods=["POST"])
+def dashboard_reject_order():
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    payload = request.get_json(silent=True) or {}
+    order_id = str(payload.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify(error="order_id is required"), 400
+    try:
+        ctx = SimpleNamespace(bot=_telegram_app.bot)
+        _run_bot_coro(_reject_order_core(ctx, order_id), timeout=30)
+        return jsonify(ok=True, order_id=order_id, action="rejected"), 200
+    except Exception as exc:
+        return jsonify(error=_safe_error(exc)), 500
+
+@_app.route("/api/dashboard/order-receipt/<order_id>", methods=["GET"])
+def dashboard_order_receipt(order_id: str):
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    order_id = str(order_id or "").strip()
+    if not order_id:
+        return jsonify(error="order_id is required"), 400
+    try:
+        rows = sb_get("orders", f"select=id,receipt_file_id,status&id=eq.{order_id}&limit=1")
+        order = rows[0] if rows else None
+        if not order:
+            return jsonify(error="Order not found"), 404
+        file_id = (order.get("receipt_file_id") or "").strip()
+        if not file_id:
+            return jsonify(error="No receipt uploaded for this order"), 404
+
+        async def _download_receipt():
+            f = await _telegram_app.bot.get_file(file_id)
+            b = await f.download_as_bytearray()
+            return bytes(b)
+
+        data = _run_bot_coro(_download_receipt(), timeout=45)
+        return Response(data, mimetype="image/jpeg")
+    except Exception as exc:
+        return jsonify(error=_safe_error(exc)), 500
 
 def _start_flask():
     log.info(f"Flask keep-alive berjalan di port {PORT}")
@@ -1406,19 +1486,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Admin: Approve / Reject ──────────────────────────────────────────────────
 
-async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
-    if update.effective_user.id != ADMIN_ID:
-        await update.callback_query.edit_message_caption(
-            caption="⛔ Bukan admin.", reply_markup=None)
-        return
-
-    # ── Instant loading feedback ───────────────────────────────────────────────
-    try:
-        await update.callback_query.edit_message_caption(
-            caption="⏳ Memproses...", reply_markup=None)
-    except Exception:
-        pass
-
+async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
     try:
         def approve_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
@@ -1478,14 +1546,10 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
         order, product, cred = result if isinstance(result, tuple) else (result, {}, None)
     except Exception as exc:
         log.warning(f"Supabase approve: {_safe_error(exc)}", exc_info=True)
-        await update.callback_query.edit_message_caption(
-            caption="⚠️ Ralat approve. Sila cuba lagi.", reply_markup=None)
-        return
+        raise
 
     _delivery_mode = product.get("delivery_mode") or ("auto" if product.get("auto_delivery") else "manual")
     log.info(f"Order {order_id} approved by admin (delivery_mode={_delivery_mode})")
-    await update.callback_query.edit_message_caption(
-        caption=(update.callback_query.message.caption or "") + "\n\n✅ APPROVED", reply_markup=None)
 
     # ── Testimonial channel post ───────────────────────────────────────────────
     await _post_testimonial(context, order)
@@ -1649,6 +1713,52 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
     except Exception as exc:
         log.warning(f"Notify admin template: {_safe_error(exc)}")
 
+    return {"order": order, "delivery_mode": _delivery_mode}
+
+
+async def _reject_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    try:
+        def reject_tx():
+            rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
+            order_data = rows[0] if rows else {}
+            sb_patch("orders", f"id=eq.{order_id}", {"status": "rejected"})
+            return order_data
+        order = await _run_supabase(f"orders.reject id={order_id}", reject_tx, attempts=1)
+    except Exception as exc:
+        log.warning(f"Supabase reject: {_safe_error(exc)}", exc_info=True)
+        raise
+
+    log.info(f"Order {order_id} rejected by admin")
+    try:
+        await context.bot.send_message(chat_id=order["user_id"],
+            text=await _setting("reject_msg", "⚠️ Bayaran ditolak.\nHubungi support untuk bantuan."))
+    except Exception as exc:
+        log.warning(f"Notify user reject: {_safe_error(exc)}")
+    return {"order": order}
+
+
+async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    if update.effective_user.id != ADMIN_ID:
+        await update.callback_query.edit_message_caption(
+            caption="⛔ Bukan admin.", reply_markup=None)
+        return
+
+    # ── Instant loading feedback ───────────────────────────────────────────────
+    try:
+        await update.callback_query.edit_message_caption(
+            caption="⏳ Memproses...", reply_markup=None)
+    except Exception:
+        pass
+
+    try:
+        await _approve_order_core(context, order_id)
+    except Exception:
+        await update.callback_query.edit_message_caption(
+            caption="⚠️ Ralat approve. Sila cuba lagi.", reply_markup=None)
+        return
+    await update.callback_query.edit_message_caption(
+        caption=(update.callback_query.message.caption or "") + "\n\n✅ APPROVED", reply_markup=None)
+
 
 async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     if update.effective_user.id != ADMIN_ID:
@@ -1664,26 +1774,14 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         pass
 
     try:
-        def reject_tx():
-            rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
-            order_data = rows[0] if rows else {}
-            sb_patch("orders", f"id=eq.{order_id}", {"status": "rejected"})
-            return order_data
-        order = await _run_supabase(f"orders.reject id={order_id}", reject_tx, attempts=1)
-    except Exception as exc:
-        log.warning(f"Supabase reject: {_safe_error(exc)}", exc_info=True)
+        await _reject_order_core(context, order_id)
+    except Exception:
         await update.callback_query.edit_message_caption(
             caption="⚠️ Ralat reject. Sila cuba lagi.", reply_markup=None)
         return
 
-    log.info(f"Order {order_id} rejected by admin")
     await update.callback_query.edit_message_caption(
         caption=(update.callback_query.message.caption or "") + "\n\n❌ REJECTED", reply_markup=None)
-    try:
-        await context.bot.send_message(chat_id=order["user_id"],
-            text=await _setting("reject_msg", "⚠️ Bayaran ditolak.\nHubungi support untuk bantuan."))
-    except Exception as exc:
-        log.warning(f"Notify user reject: {_safe_error(exc)}")
 
 # ─── Referral / Support / Home ────────────────────────────────────────────────
 
@@ -2828,6 +2926,7 @@ def build_app() -> Application:
 # ─── Auto-Restart Polling Loop ────────────────────────────────────────────────
 
 def main():
+    global _telegram_app, _telegram_loop
     if not BOT_TOKEN:
         log.warning("BOT_TOKEN tidak ditetapkan — bot Telegram tidak akan dijalankan.")
         log.warning("Set BOT_TOKEN dalam Replit Secrets, kemudian restart workflow.")
@@ -2857,6 +2956,8 @@ def main():
         log.info(f"Bot starting (attempt #{attempt})...")
         try:
             app = build_app()
+            _telegram_app = app
+            _telegram_loop = asyncio.get_event_loop()
             app.run_polling(
                 drop_pending_updates=True,
                 allowed_updates=Update.ALL_TYPES,
