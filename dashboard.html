@@ -41,6 +41,7 @@
   --input-bg:#12141c;
 }
 body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:radial-gradient(1200px 600px at 15% -10%,rgba(91,141,255,.16),transparent 55%),radial-gradient(900px 500px at 100% 0,rgba(168,85,247,.14),transparent 52%),var(--bg);color:var(--text);min-height:100vh;display:flex;overflow-x:hidden}
+html,body{max-width:100%;overflow-x:hidden}
 
 /* ====== SCROLLBAR ====== */
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -122,6 +123,9 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .qa-meta{font-size:.76rem;color:var(--text-s);line-height:1.45}
 .qa-item .qa-row{display:flex;justify-content:space-between;gap:.5rem;margin-bottom:.28rem}
 .qa-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.55rem}
+.qa-item,.admin-item,.stat-card,.chart-card,.table-card,.prod-card,.cred-card,.stock-card,.settings-card,.bcast-card{max-width:100%}
+.msg-inline{display:flex;align-items:flex-start;gap:.45rem;border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.08);border-radius:10px;padding:.6rem .7rem;font-size:.8rem;line-height:1.35;color:#fecaca;word-break:break-word}
+.msg-inline .ico{flex-shrink:0}
 .admin-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.7rem}
 .admin-item{border:1px solid var(--border);border-radius:12px;padding:.8rem;background:rgba(255,255,255,.02)}
 .admin-item h4{font-size:.84rem;margin-bottom:.32rem}
@@ -297,26 +301,51 @@ button:active{transform:scale(.97)}
   .sb-overlay.open{display:block}
   .main{margin-left:0}
   .hamburger{display:block}
+  .nb{min-height:44px;padding:.7rem .9rem;font-size:.9rem}
   .stat-row{grid-template-columns:1fr 1fr}
   .content{padding:.9rem .85rem}
   .period-tabs{display:none}
   .table-card,.chart-card,.stat-card,.prod-card,.cred-card,.stock-card,.sales-card,.settings-card,.bcast-card{border-radius:14px}
   .box-table,.clean-table,.var-table{min-width:640px}
   .tc-hdr{padding:.75rem .85rem}
+  .filter-row{align-items:stretch}
+  .filter-pills{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+  .filter-pills::-webkit-scrollbar{display:none}
+  .fpill{flex:0 0 auto}
+  #ordCustomRange{width:100%;display:flex;flex-wrap:wrap}
+  #ordCustomRange input{flex:1 1 140px}
+  #ordBody.mobile-cards{display:block}
+  #ordBody.mobile-cards tr{display:block;border-bottom:1px solid var(--border)}
+  #ordBody.mobile-cards td{display:block;padding:.7rem .78rem}
+  .ord-card{border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.02);padding:.65rem}
+  .ord-card-head{display:flex;justify-content:space-between;gap:.45rem;align-items:flex-start;margin-bottom:.4rem}
+  .ord-card-id{font-family:monospace;font-size:.78rem;color:var(--text-s);word-break:break-all}
+  .ord-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .55rem;font-size:.78rem}
+  .ord-card-grid .k{color:var(--text-xs);font-weight:700;text-transform:uppercase;font-size:.62rem;letter-spacing:.3px}
+  .ord-card-grid .v{color:var(--text);word-break:break-word}
+  .ord-card-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.55rem}
+  .ord-card-actions button{flex:1 1 120px}
 }
 @media(max-width:480px){
   .stat-row{grid-template-columns:1fr}
   .prod-grid,.cred-grid,.stock-grid{grid-template-columns:1fr}
   .detail-grid{grid-template-columns:1fr}
-  .topbar{padding:.7rem .75rem}
+  .topbar{padding:.58rem .68rem}
+  .breadcrumb{font-size:.75rem}
   .tc-hdr{padding:.75rem .8rem}
   .box-table thead th,.box-table tbody td{padding:.58rem .72rem}
   button{min-height:36px}
-  .content{padding:.75rem}
+  .content{padding:.62rem}
   .filter-row{gap:.42rem}
   .filter-pills{gap:.24rem}
   .fpill{padding:.3rem .6rem}
   .qa-list{grid-template-columns:1fr}
+  .qa-card,.chart-card,.table-card,.stat-card{padding:.85rem}
+  .sec-title{font-size:.95rem}
+  .sc-val{font-size:1.45rem}
+  .msg-inline{font-size:.74rem;padding:.5rem .58rem}
+  .ord-card-grid{grid-template-columns:1fr}
+  .ord-card-actions button{width:100%}
 }
 
 /* ====== TOGGLE SWITCH ====== */
@@ -383,7 +412,7 @@ button:active{transform:scale(.97)}
 .stock-edit-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12)}
 .card-note{font-size:.72rem;color:var(--text-xs);line-height:1.4;margin-top:.35rem}
 @media(max-width:640px){
-  .topbar{padding:.7rem 1rem;align-items:flex-start;gap:.65rem;flex-wrap:wrap}
+  .topbar{padding:.62rem .82rem;align-items:flex-start;gap:.55rem;flex-wrap:wrap}
   .topbar-left{width:100%;justify-content:space-between}
   .topbar-right{width:100%;justify-content:space-between;gap:.45rem;flex-wrap:wrap}
   .conn-badge{font-size:.7rem;padding:.22rem .5rem}
@@ -404,6 +433,14 @@ button:active{transform:scale(.97)}
   .ref-tools{flex-direction:column;align-items:stretch}
   .ref-tools .search{min-width:0}
   #refTable .hide-mobile{display:none}
+  .admin-list{grid-template-columns:1fr}
+  .qa-actions button{flex:1 1 100%}
+}
+
+@media(max-width:1024px){
+  .content{max-width:100%;padding:1rem}
+  .chart-wrap{height:200px}
+  .stat-row{gap:.85rem}
 }
 
 </style>
@@ -1302,7 +1339,7 @@ async function loadAdminList() {
       '</div>';
     }).join('');
   } catch (e) {
-    wrap.innerHTML = '<div class="admin-item" style="color:var(--danger)">Failed to load admins: ' + escH(e.message || String(e)) + '</div>';
+    wrap.innerHTML = '<div class="msg-inline"><span class="ico">&#9888;</span><span>Failed to load admins: ' + escH(e.message || String(e)) + '</span></div>';
     badge.textContent = '0 admins';
   }
 }
@@ -1548,8 +1585,41 @@ function filterOrders() {
 
 function renderOrders(rows) {
   const tb = document.getElementById('ordBody');
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  tb.classList.toggle('mobile-cards', isMobile);
   if (!rows.length) {
     tb.innerHTML = '<tr class="empty-r"><td colspan="7">No orders found.</td></tr>';
+    return;
+  }
+  if (isMobile) {
+    tb.innerHTML = rows.map(o => {
+      const cust = o.username ? '@'+o.username : (o.user_id ? String(o.user_id) : '--');
+      const oid = String(o.id||'');
+      const st = (o.status||'').toLowerCase();
+      const showActions = st === 'waiting_approval' || st === 'waiting' || st === 'pending';
+      return '<tr><td colspan="7">' +
+        '<div class="ord-card">' +
+          '<div class="ord-card-head">' +
+            '<div class="ord-card-id">#' + escH(oid) + '</div>' +
+            statusBadge(o.status) +
+          '</div>' +
+          '<div class="ord-card-grid">' +
+            '<div><div class="k">Customer</div><div class="v">' + escH(cust) + '</div></div>' +
+            '<div><div class="k">Amount</div><div class="v"><strong>' + rm(o.amount) + '</strong></div></div>' +
+            '<div><div class="k">Product</div><div class="v">' + escH(o.product_name||'--') + '</div></div>' +
+            '<div><div class="k">Date</div><div class="v">' + escH(fmtDT(o.created_at)) + '</div></div>' +
+          '</div>' +
+          '<div class="ord-card-actions">' +
+            '<button class="btn-ghost btn-sm" onclick="showOrderDetail(' + JSON.stringify(o).replace(/'/g,"\\'") + ')">Details</button>' +
+            (showActions
+              ? '<button class="btn-success btn-sm" onclick="dashboardOrderAction(\''+String(o.id).replace(/'/g,"\\'")+'\',\'approve\', this)">Approve</button>' +
+                '<button class="btn-danger btn-sm" onclick="dashboardOrderAction(\''+String(o.id).replace(/'/g,"\\'")+'\',\'reject\', this)">Reject</button>'
+              : ''
+            ) +
+          '</div>' +
+        '</div>' +
+      '</td></tr>';
+    }).join('');
     return;
   }
   tb.innerHTML = rows.map(o => {
