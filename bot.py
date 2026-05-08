@@ -14,7 +14,7 @@ import json
 import urllib.error
 import urllib.request
 from types import SimpleNamespace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time as dt_time
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -2881,6 +2881,117 @@ async def _auto_cancel_expired_orders(context: ContextTypes.DEFAULT_TYPE):
     log.info("[AUTO-CANCEL] Auto-cancel check completed")
 
 
+def _to_float_amount(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def _fetch_completed_orders_for_period(start_utc: datetime, end_utc: datetime) -> list:
+    select_cols = "id,product_name,amount,completed_at,created_at,order_date"
+    start_iso = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_iso = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    candidates = ("completed_at", "created_at", "order_date")
+
+    for date_col in candidates:
+        try:
+            return await _run_supabase(
+                f"orders.daily_report.{date_col}",
+                lambda _col=date_col: sb_get(
+                    "orders",
+                    (
+                        f"select={select_cols}"
+                        f"&status=eq.completed"
+                        f"&{_col}=gte.{start_iso}"
+                        f"&{_col}=lte.{end_iso}"
+                        "&limit=10000"
+                    ),
+                ),
+            ) or []
+        except Exception as exc:
+            # Some tables may not have completed_at/order_date, so fallback safely.
+            log.warning(f"[SALES REPORT] Query fallback for {date_col}: {_safe_error(exc)}")
+    return []
+
+
+def _build_sales_report_text(report_date: datetime, orders: list) -> str:
+    total_sales = 0.0
+    by_product: dict[str, dict[str, float | int]] = {}
+
+    for order in orders:
+        product_name = (order or {}).get("product_name") or "Unknown"
+        amount = _to_float_amount((order or {}).get("amount"))
+        total_sales += amount
+
+        row = by_product.setdefault(product_name, {"amount": 0.0, "orders": 0})
+        row["amount"] = float(row["amount"]) + amount
+        row["orders"] = int(row["orders"]) + 1
+
+    top_products = sorted(
+        by_product.items(),
+        key=lambda item: (-float(item[1]["amount"]), -int(item[1]["orders"]), item[0].lower()),
+    )[:3]
+
+    lines = [
+        "📊 Daily Sales Report",
+        f"Date: {report_date.strftime('%d/%m/%Y')}",
+        "━━━━━━━━━━━━━━━━━━",
+        f"Total Orders Completed: {len(orders)}",
+        f"Total Sales: RM {total_sales:.2f}",
+        "",
+        "Top Products:",
+    ]
+
+    if top_products:
+        for idx, (name, stats) in enumerate(top_products, 1):
+            lines.append(
+                f"{idx}. {name} — RM {float(stats['amount']):.2f} / {int(stats['orders'])} orders"
+            )
+    else:
+        lines.append("No completed orders.")
+
+    lines.extend(
+        [
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "This report is sent to admin only.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+async def _send_daily_sales_report(context: ContextTypes.DEFAULT_TYPE, *, use_today: bool = False):
+    if not ADMIN_ID:
+        log.warning("[SALES REPORT] ADMIN_ID missing. Skipping report.")
+        return
+
+    tz = ZoneInfo("Asia/Kuala_Lumpur")
+    now_local = datetime.now(tz)
+    target_day = now_local.date() if use_today else (now_local - timedelta(days=1)).date()
+    start_local = datetime.combine(target_day, dt_time(0, 0, 0), tzinfo=tz)
+    end_local = datetime.combine(target_day, dt_time(23, 59, 59), tzinfo=tz)
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+
+    orders = await _fetch_completed_orders_for_period(start_utc, end_utc)
+    text = _build_sales_report_text(start_local, orders)
+
+    try:
+        await context.bot.send_message(chat_id=ADMIN_ID, text=text)
+        log.info("[SALES REPORT] Report sent to admin")
+    except Exception as exc:
+        log.warning(f"[SALES REPORT] Failed to send report: {_safe_error(exc)}")
+
+
+async def cmd_salesreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+
+    await _send_daily_sales_report(context)
+
+
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
@@ -2898,6 +3009,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("credstock", cmd_credstock))
     app.add_handler(CommandHandler("credcheck", cmd_credcheck))
     app.add_handler(CommandHandler("points",    cmd_points))
+    app.add_handler(CommandHandler("salesreport", cmd_salesreport))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -2911,8 +3023,15 @@ def build_app() -> Application:
             name="auto_cancel_expired_orders",
         )
         log.info("[AUTO-CANCEL] Background job registered successfully")
+        app.job_queue.run_daily(
+            _send_daily_sales_report,
+            time=dt_time(hour=0, minute=0, second=0, tzinfo=ZoneInfo("Asia/Kuala_Lumpur")),
+            name="daily_sales_report",
+        )
+        log.info("[SALES REPORT] Daily sales report job registered")
     else:
         log.warning("[AUTO-CANCEL] JobQueue unavailable. Install python-telegram-bot[job-queue] to enable auto-cancel.")
+        log.warning("[SALES REPORT] JobQueue unavailable. Daily sales report disabled.")
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
