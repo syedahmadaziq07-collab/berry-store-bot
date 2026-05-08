@@ -437,6 +437,25 @@ def _run_bot_coro(coro, timeout: int = 45):
     fut = asyncio.run_coroutine_threadsafe(coro, _telegram_loop)
     return fut.result(timeout=timeout)
 
+
+def _dashboard_admin_ids() -> list[int]:
+    ids: list[int] = []
+    if ADMIN_ID:
+        ids.append(int(ADMIN_ID))
+    raw = _get_env("ADMIN_IDS")
+    if raw:
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                aid = int(part)
+            except ValueError:
+                continue
+            if aid and aid not in ids:
+                ids.append(aid)
+    return ids
+
 @_app.route("/")
 def _index():
     return "Bot hidup ✅", 200
@@ -521,6 +540,150 @@ def dashboard_order_receipt(order_id: str):
 
         data = _run_bot_coro(_download_receipt(), timeout=45)
         return Response(data, mimetype="image/jpeg")
+    except Exception as exc:
+        return jsonify(error=_safe_error(exc)), 500
+
+
+@_app.route("/api/dashboard/admins", methods=["GET"])
+def dashboard_admins():
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    try:
+        admin_ids = _dashboard_admin_ids()
+        if not admin_ids:
+            return jsonify(ok=True, admins=[]), 200
+
+        in_ids = ",".join(str(i) for i in admin_ids)
+        users = []
+        try:
+            users = sb_admin_get(
+                "users",
+                f"select=id,username,first_name,last_name&id=in.({in_ids})",
+            ) or []
+        except Exception as exc:
+            log.warning(f"[DASHBOARD] admins users lookup failed: {_safe_error(exc)}")
+
+        user_map = {str(u.get("id")): u for u in users if u.get("id") is not None}
+        admins = []
+        for idx, aid in enumerate(admin_ids):
+            info = user_map.get(str(aid), {})
+            first_name = (info.get("first_name") or "").strip()
+            last_name = (info.get("last_name") or "").strip()
+            full_name = " ".join(x for x in (first_name, last_name) if x).strip()
+            admins.append(
+                {
+                    "telegram_id": aid,
+                    "role": "Main Admin" if idx == 0 else "Admin",
+                    "status": "Active",
+                    "username": info.get("username") or "",
+                    "name": full_name,
+                }
+            )
+        return jsonify(ok=True, admins=admins), 200
+    except Exception as exc:
+        return jsonify(error=_safe_error(exc)), 500
+
+
+@_app.route("/api/dashboard/referrals", methods=["GET"])
+def dashboard_referrals():
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    try:
+        points_rows = []
+        try:
+            points_rows = sb_admin_get(
+                "points",
+                "select=user_id,username,points,total_orders,updated_at&order=points.desc&limit=1000",
+            ) or []
+        except Exception as exc:
+            log.warning(f"[DASHBOARD] points lookup failed: {_safe_error(exc)}")
+            points_rows = []
+
+        if not points_rows:
+            return jsonify(ok=True, rows=[]), 200
+
+        user_ids = []
+        for row in points_rows:
+            uid = row.get("user_id")
+            if uid is None:
+                continue
+            sid = str(uid)
+            if sid not in user_ids:
+                user_ids.append(sid)
+
+        in_ids = ",".join(user_ids)
+        users = []
+        orders = []
+        referral_summary_rows = []
+        if in_ids:
+            try:
+                users = sb_admin_get(
+                    "users",
+                    f"select=id,username,first_name,last_name&id=in.({in_ids})",
+                ) or []
+            except Exception as exc:
+                log.warning(f"[DASHBOARD] users lookup failed: {_safe_error(exc)}")
+            try:
+                orders = sb_admin_get(
+                    "orders",
+                    f"select=id,user_id,created_at,status&user_id=in.({in_ids})&order=created_at.desc&limit=5000",
+                ) or []
+            except Exception as exc:
+                log.warning(f"[DASHBOARD] last-order lookup failed: {_safe_error(exc)}")
+            try:
+                referral_summary_rows = sb_admin_get(
+                    "referral_summary",
+                    f"select=user_id,referrer_id,referral_count&or=(user_id.in.({in_ids}),referrer_id.in.({in_ids}))&limit=5000",
+                ) or []
+            except Exception:
+                referral_summary_rows = []
+
+        user_map = {str(u.get("id")): u for u in users if u.get("id") is not None}
+        last_order_map = {}
+        for row in orders:
+            sid = str(row.get("user_id") or "")
+            if sid and sid not in last_order_map:
+                last_order_map[sid] = row
+
+        referral_count_map = {}
+        for row in referral_summary_rows:
+            sid = row.get("user_id") if row.get("user_id") is not None else row.get("referrer_id")
+            if sid is None:
+                continue
+            referral_count_map[str(sid)] = int(row.get("referral_count") or 0)
+
+        merged_rows = []
+        for p in points_rows:
+            sid = str(p.get("user_id") or "")
+            if not sid:
+                continue
+            u = user_map.get(sid, {})
+            first_name = (u.get("first_name") or "").strip()
+            last_name = (u.get("last_name") or "").strip()
+            full_name = " ".join(x for x in (first_name, last_name) if x).strip()
+            points = int(p.get("points") or 0)
+            latest = last_order_map.get(sid, {})
+            merged_rows.append(
+                {
+                    "telegram_id": sid,
+                    "username": p.get("username") or u.get("username") or "",
+                    "name": full_name,
+                    "points": points,
+                    "eligible": points >= 50,
+                    "total_referrals": referral_count_map.get(sid, int(p.get("total_orders") or 0)),
+                    "last_activity": latest.get("created_at") or p.get("updated_at"),
+                    "last_order_id": latest.get("id"),
+                    "last_order_status": latest.get("status"),
+                }
+            )
+
+        merged_rows.sort(
+            key=lambda r: (int(r.get("points") or 0), str(r.get("last_activity") or "")),
+            reverse=True,
+        )
+        return jsonify(ok=True, rows=merged_rows), 200
     except Exception as exc:
         return jsonify(error=_safe_error(exc)), 500
 

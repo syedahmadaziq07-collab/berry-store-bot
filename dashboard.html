@@ -122,6 +122,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .qa-meta{font-size:.76rem;color:var(--text-s);line-height:1.45}
 .qa-item .qa-row{display:flex;justify-content:space-between;gap:.5rem;margin-bottom:.28rem}
 .qa-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.55rem}
+.admin-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.7rem}
+.admin-item{border:1px solid var(--border);border-radius:12px;padding:.8rem;background:rgba(255,255,255,.02)}
+.admin-item h4{font-size:.84rem;margin-bottom:.32rem}
+.admin-item .meta{font-size:.75rem;color:var(--text-s);line-height:1.45}
+.ref-tools{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem}
+.ref-tools .search{flex:1;min-width:220px}
+.ref-actions{display:flex;gap:.35rem;flex-wrap:wrap}
 
 /* ====== TABLE ====== */
 .clean-table{width:100%;border-collapse:collapse;font-size:.84rem}
@@ -394,6 +401,9 @@ button:active{transform:scale(.97)}
   .settings-add{grid-template-columns:1fr}
   .variant-stock-row{grid-template-columns:1fr 72px;gap:.4rem}
   .variant-stock-row .var-actions{grid-column:1/-1;justify-content:flex-start;flex-wrap:wrap}
+  .ref-tools{flex-direction:column;align-items:stretch}
+  .ref-tools .search{min-width:0}
+  #refTable .hide-mobile{display:none}
 }
 
 </style>
@@ -483,6 +493,18 @@ button:active{transform:scale(.97)}
 
     <!-- ====== DASHBOARD ====== -->
     <div class="page active" id="page-dashboard">
+      <div class="qa-card">
+        <div class="qa-head">
+          <div>
+            <div class="sec-label">Management</div>
+            <div class="sec-title">&#128081; Bot Admins</div>
+          </div>
+          <span class="badge b-blue" id="adminCountBadge">0 admins</span>
+        </div>
+        <div id="adminListWrap" class="admin-list">
+          <div class="admin-item" style="color:var(--text-s)">No admin data loaded yet.</div>
+        </div>
+      </div>
       <div class="qa-card">
         <div class="qa-head">
           <div>
@@ -683,15 +705,29 @@ button:active{transform:scale(.97)}
     <!-- ====== REFERRAL ====== -->
     <div class="page" id="page-referral">
       <div class="sec-row" style="margin-bottom:1rem">
-        <div class="sec-title">Referral Summary</div>
-        <span class="badge b-purple" style="font-size:.72rem">Optional</span>
+        <div>
+          <div class="sec-title">Referral Summary</div>
+          <div style="font-size:.78rem;color:var(--text-s);margin-top:.15rem">Search Telegram ID / username / name and quickly find eligible users.</div>
+        </div>
+        <button class="btn-ghost btn-sm btn-pill" onclick="loadReferral()">Refresh Referral Data</button>
+      </div>
+      <div class="ref-tools">
+        <input class="search" type="text" id="refSearch" placeholder="Search Telegram ID, @username or name..." oninput="renderReferralTable()"/>
+        <div class="filter-pills" id="refFilterPills">
+          <span class="fpill active" onclick="setReferralFilter(this,'all')">All</span>
+          <span class="fpill" onclick="setReferralFilter(this,'eligible')">50+ points</span>
+          <span class="fpill" onclick="setReferralFilter(this,'below')">Below 50 points</span>
+        </div>
       </div>
       <div class="table-card">
-        <div class="tc-hdr"><h3>Referral Data</h3></div>
+        <div class="tc-hdr">
+          <h3>Referral Data</h3>
+          <span class="badge b-purple" id="refCountBadge">-- users</span>
+        </div>
         <div class="overflow-x">
-          <table class="box-table">
-            <thead><tr><th>User</th><th>Username</th><th>Referrals</th><th>Points Earned</th></tr></thead>
-            <tbody id="refBody"><tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr></tbody>
+          <table class="box-table" id="refTable">
+            <thead><tr><th>Telegram ID</th><th>Username</th><th class="hide-mobile">Name</th><th>Points</th><th class="hide-mobile">Total Referrals</th><th class="hide-mobile">Last Activity</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="refBody"><tr class="empty-r"><td colspan="8"><span class="spin"></span>Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -927,6 +963,8 @@ let _newAlertCount = 0;
 let _orderPollTimer = null;
 let _latestOrderCreatedAt = null;
 let _pendingApprovals = [];
+let _referralRows = [];
+let _referralFilter = 'all';
 
 const PAGE_NAMES = {
   dashboard:'Dashboard', products:'Products', orders:'Orders',
@@ -1165,6 +1203,7 @@ function drawSpark(id, data, color) {
 async function loadDashboard() {
   if (!sb) return;
   try {
+    loadAdminList();
     loadPendingApprovals();
     const t = today();
     const w0 = dateOffset(-6);
@@ -1234,6 +1273,38 @@ async function loadDashboard() {
 
     markUpdated();
   } catch(e) { toast('Dashboard error: '+e.message); }
+}
+
+async function loadAdminList() {
+  const wrap = document.getElementById('adminListWrap');
+  const badge = document.getElementById('adminCountBadge');
+  if (!wrap || !badge) return;
+  wrap.innerHTML = '<div class="admin-item"><span class="spin"></span>Loading admin list...</div>';
+  try {
+    const json = await dashboardApiGet('/api/dashboard/admins');
+    const admins = (json && json.admins) || [];
+    badge.textContent = admins.length + ' admin' + (admins.length === 1 ? '' : 's');
+    if (!admins.length) {
+      wrap.innerHTML = '<div class="admin-item" style="color:var(--text-s)">No admin configured.</div>';
+      return;
+    }
+    wrap.innerHTML = admins.map((a, i) => {
+      const username = a.username ? '@' + a.username : '--';
+      const name = a.name || '--';
+      return '<div class="admin-item">' +
+        '<h4>' + (i === 0 ? '&#11088; ' : '') + 'Telegram ID: ' + escH(a.telegram_id) + '</h4>' +
+        '<div class="meta">' +
+          '<div><strong>Role:</strong> ' + escH(a.role || 'Admin') + '</div>' +
+          '<div><strong>Status:</strong> <span class="badge b-green">Active</span></div>' +
+          '<div><strong>Username:</strong> ' + escH(username) + '</div>' +
+          '<div><strong>Name:</strong> ' + escH(name) + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    wrap.innerHTML = '<div class="admin-item" style="color:var(--danger)">Failed to load admins: ' + escH(e.message || String(e)) + '</div>';
+    badge.textContent = '0 admins';
+  }
 }
 
 function drawWeekChart(labels, data) {
@@ -1333,6 +1404,16 @@ async function dashboardApiPost(path, payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Dashboard-Secret': _dashSecret },
     body: JSON.stringify(payload || {})
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+  return json;
+}
+
+async function dashboardApiGet(path) {
+  if (!hasDashSecret()) throw new Error('Dashboard secret not configured. Open Connection Settings.');
+  const res = await fetch(dashboardApiBase() + path, {
+    headers: { 'X-Dashboard-Secret': _dashSecret }
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
@@ -2305,51 +2386,78 @@ async function addBotSetting() {
 async function loadReferral() {
   if (!sb) return;
   const tb = document.getElementById('refBody');
-  tb.innerHTML = '<tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr>';
+  const countBadge = document.getElementById('refCountBadge');
+  tb.innerHTML = '<tr class="empty-r"><td colspan="8"><span class="spin"></span>Loading...</td></tr>';
   try {
-    // Try referral_summary table first
-    let data, error;
-    try {
-      const res = await sb.from('referral_summary').select('*').order('referral_count', { ascending: false }).limit(100);
-      data = res.data;
-      error = res.error;
-    } catch(_) {}
-
-    if (error || !data) {
-      // Fallback to points table
-      const res2 = await sb.from('points').select('user_id,username,points,total_orders').order('points', { ascending: false }).limit(100);
-      if (res2.error) throw res2.error;
-      data = res2.data || [];
-      if (!data.length) {
-        tb.innerHTML = '<tr class="empty-r"><td colspan="4">No referral data available.</td></tr>';
-        return;
-      }
-      tb.innerHTML = data.map(r =>
-        '<tr>'+
-          '<td>'+( r.user_id||'--')+'</td>'+
-          '<td>'+(r.username ? '@'+r.username : '--')+'</td>'+
-          '<td>'+(r.total_orders||0)+'</td>'+
-          '<td><strong>'+(r.points||0)+' pts</strong></td>'+
-        '</tr>'
-      ).join('');
-    } else {
-      if (!data.length) {
-        tb.innerHTML = '<tr class="empty-r"><td colspan="4">No referral data available.</td></tr>';
-        return;
-      }
-      tb.innerHTML = data.map(r =>
-        '<tr>'+
-          '<td>'+(r.user_id||r.referrer_id||'--')+'</td>'+
-          '<td>'+(r.username ? '@'+r.username : '--')+'</td>'+
-          '<td>'+(r.referral_count||0)+'</td>'+
-          '<td><strong>'+(r.points_earned||r.points||0)+' pts</strong></td>'+
-        '</tr>'
-      ).join('');
-    }
+    const json = await dashboardApiGet('/api/dashboard/referrals');
+    _referralRows = (json && json.rows) || [];
+    renderReferralTable();
+    if (countBadge) countBadge.textContent = _referralRows.length + ' users';
     markUpdated();
   } catch(e) {
-    tb.innerHTML = '<tr class="empty-r"><td colspan="4">Referral table not found. This feature is optional.</td></tr>';
+    _referralRows = [];
+    if (countBadge) countBadge.textContent = '0 users';
+    tb.innerHTML = '<tr class="empty-r"><td colspan="8">Referral data unavailable: '+escH(e.message||String(e))+'</td></tr>';
   }
+}
+
+function setReferralFilter(el, mode) {
+  _referralFilter = mode;
+  document.querySelectorAll('#refFilterPills .fpill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderReferralTable();
+}
+
+async function copyText(value, label) {
+  try {
+    await navigator.clipboard.writeText(String(value || ''));
+    toast(label + ' copied');
+  } catch (_) {
+    toast('Copy failed');
+  }
+}
+
+function renderReferralTable() {
+  const tb = document.getElementById('refBody');
+  if (!tb) return;
+  const countBadge = document.getElementById('refCountBadge');
+  const q = (document.getElementById('refSearch')?.value || '').trim().toLowerCase();
+  let rows = (_referralRows || []).slice();
+  if (_referralFilter === 'eligible') rows = rows.filter(r => Number(r.points || 0) >= 50);
+  if (_referralFilter === 'below') rows = rows.filter(r => Number(r.points || 0) < 50);
+  if (q) {
+    rows = rows.filter(r =>
+      String(r.telegram_id || '').toLowerCase().includes(q) ||
+      String(r.username || '').toLowerCase().includes(q) ||
+      String(r.name || '').toLowerCase().includes(q)
+    );
+  }
+  if (countBadge) countBadge.textContent = rows.length + ' users';
+
+  if (!rows.length) {
+    tb.innerHTML = '<tr class="empty-r"><td colspan="8">No matching users.</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = rows.map(r => {
+    const points = Number(r.points || 0);
+    const eligible = points >= 50;
+    const status = eligible ? '<span class="badge b-green">Eligible</span>' : '<span class="badge b-amber">Not yet</span>';
+    const username = r.username ? '@' + r.username : '--';
+    return '<tr>' +
+      '<td style="font-family:monospace;font-size:.78rem">' + escH(r.telegram_id || '--') + '</td>' +
+      '<td>' + escH(username) + '</td>' +
+      '<td class="hide-mobile">' + escH(r.name || '--') + '</td>' +
+      '<td><strong>' + points + ' pts</strong></td>' +
+      '<td class="hide-mobile">' + escH(r.total_referrals || 0) + '</td>' +
+      '<td class="hide-mobile" style="white-space:nowrap">' + escH(fmtDT(r.last_activity)) + '</td>' +
+      '<td>' + status + '</td>' +
+      '<td><div class="ref-actions">' +
+        '<button class="btn-ghost btn-sm" onclick="copyText(\'' + String(r.telegram_id || '').replace(/'/g,"\\'") + '\',\'Telegram ID\')">Copy ID</button>' +
+        '<button class="btn-ghost btn-sm" ' + (r.username ? '' : 'disabled') + ' onclick="copyText(\'' + String(username).replace(/'/g,"\\'") + '\',\'Username\')">Copy @</button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
 }
 
 // ====================================================
