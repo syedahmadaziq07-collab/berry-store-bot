@@ -2331,13 +2331,53 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await create_order(update, context, int(parts[1]), int(parts[2]))
 
         elif data.startswith("payment_"):
-            await show_payment(update, context, data[len("payment_"):])
+            order_id = data[len("payment_"):]
+            user_id = update.effective_user.id
+            opened = context.user_data.setdefault('payment_opened', set())
+            if order_id in opened:
+                await query.answer("Payment page already opened.")
+                return
+            await query.answer("Opening payment...")
+            deleted = False
+            try:
+                await query.message.delete()
+                deleted = True
+            except Exception:
+                pass
+            if not deleted:
+                try:
+                    await query.edit_message_text(
+                        "✅ Payment page opened.\n\nPlease continue with the QR below.",
+                        reply_markup=None
+                    )
+                except Exception:
+                    try:
+                        await query.edit_message_reply_markup(reply_markup=None)
+                    except Exception:
+                        pass
+            opened.add(order_id)
+            log.info(f"[PAYMENT] order_id={order_id} user_id={user_id} action=proceed_payment message_deleted={'yes' if deleted else 'no'}")
+            await show_payment(update, context, order_id)
 
         elif data.startswith("paid_"):
             await handle_paid(update, context, data[len("paid_"):])
 
         elif data.startswith("cancel_"):
-            await cancel_order(update, context, data[len("cancel_"):])
+            order_id = data[len("cancel_"):]
+            user_id = update.effective_user.id
+            deleted = False
+            try:
+                await query.message.delete()
+                deleted = True
+            except Exception:
+                pass
+            if not deleted:
+                try:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+            log.info(f"[CANCEL] order_id={order_id} user_id={user_id} action=cancel_order message_deleted={'yes' if deleted else 'no'}")
+            await cancel_order(update, context, order_id)
 
         elif data.startswith("approve_"):
             await approve_order(update, context, data[len("approve_"):])
