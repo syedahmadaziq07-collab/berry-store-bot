@@ -985,14 +985,15 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         products, all_variants = await _get_cached_products_and_variants()
         _cache_products(products)
-        log.info(f"[TIMING] show_shop products_loaded_ms={int((time.monotonic()-_t_shop)*1000)} count={len(products)} source=cache_or_supabase")
+        log.info(f"[SHOP] tenant={TENANT_ID} user={user_id} products={len(products)} variants={len(all_variants)} "
+                 f"load_ms={int((time.monotonic()-_t_shop)*1000)} source=cache_or_supabase")
     except Exception as exc:
         products, age = _cached_products(max_age=None)
         all_variants = []
         if products:
-            log.error(f"Shop error using cached products age_s={age}: {_safe_error(exc)}", exc_info=True)
+            log.error(f"[SHOP] cache fallback age_s={age}: {_safe_error(exc)}", exc_info=True)
         else:
-            log.error(f"Shop error no cache available: {_safe_error(exc)}", exc_info=True)
+            log.error(f"[SHOP] no cache: {_safe_error(exc)}", exc_info=True)
             msg = "⚠️ Gagal muatkan produk. Sila cuba lagi atau hubungi @berryrc"
             if update.callback_query:
                 await update.callback_query.edit_message_text(msg, reply_markup=back_home())
@@ -1001,7 +1002,8 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     if not products:
-        text = "⚠️ Tiada produk tersedia."
+        log.info(f"[SHOP] tenant={TENANT_ID} user={user_id} no products — showing empty message")
+        text = "🛍️ Shop is not ready yet. Please contact the store owner."
         if update.callback_query:
             await update.callback_query.edit_message_text(text, reply_markup=back_home())
         else:
@@ -1106,12 +1108,12 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             track_flow_message(context, banner_msg, "shop_list")
             log.info(f"[BANNER] Sent via tenant banner ms={int((time.monotonic()-_t_banner)*1000)}")
         except Exception as exc:
-            log.warning(f"[BANNER] tenant banner failed: {_safe_error(exc)}")
+            log.warning(f"[BANNER] tenant banner failed, falling back to text: {_safe_error(exc)}")
 
     if banner_sent:
         return
 
-    log.info(f"[BANNER] Sending text-only (banner configured={'yes' if _photo else 'no'})")
+    log.info(f"[BANNER] Sending text-only (banner_file_id={'yes' if _banner_file_id else 'no'} banner_url={'yes' if _banner_url else 'no'})")
     if update.callback_query:
         shop_msg = await context.bot.send_message(
             chat_id=chat_id,
@@ -1431,8 +1433,8 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 f"• Status : {o.get('status','')}\n\n"
                 f"Sila teruskan pembayaran atau batalkan order semasa.",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💳 Continue Payment", callback_data=f"payment_{oid}")],
-                    [InlineKeyboardButton("❌ Cancel Order",      callback_data=f"cancel_{oid}")],
+                    [InlineKeyboardButton("💳 Continue Payment", callback_data=f"pay:{oid}")],
+                    [InlineKeyboardButton("❌ Cancel Order",      callback_data=f"cancel_order:{oid}")],
                 ]),
             )
             track_flow_message(context, active_msg, "active_order")
@@ -1448,7 +1450,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     print(f"[CREATE_ORDER] Inserting order {order_id} total=RM{total} product_name={product_name!r}")
     _variant_id = context.user_data.get("selected_variant_id") or None
     try:
-        await _run_supabase(
+        inserted_rows = await _run_supabase(
             f"orders.insert id={order_id}",
             lambda: sb_post("orders", {
                 "id": order_id, "user_id": user.id, "username": user.username or "",
@@ -1458,6 +1460,9 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             }),
             attempts=1,
         )
+        # Use the real database row id returned from Supabase
+        if inserted_rows and inserted_rows[0].get("id"):
+            order_id = inserted_rows[0]["id"]
     except Exception as exc:
         context.user_data.pop(lock_user, None)
         log.warning(f"Supabase create_order insert: {_safe_error(exc)}")
@@ -1489,8 +1494,8 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         chat_id,
         summary_text,
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"payment_{order_id}")],
-            [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_{order_id}")],
+            [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"pay:{order_id}")],
+            [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_order:{order_id}")],
         ]),
     )
     track_flow_message(context, summary_msg, "order_summary")
@@ -1561,7 +1566,7 @@ async def send_payment_page(context, chat_id: int, user_id: int, order: dict, or
                     f"⚠️ Payment QR is not configured yet. Please contact the store owner."
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
+                    [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_order:{order_id}")],
                 ]),
             )
             track_flow_message(context, qr_msg, "payment_qr")
@@ -1574,8 +1579,8 @@ async def send_payment_page(context, chat_id: int, user_id: int, order: dict, or
                 chat_id=chat_id,
                 text=await _setting("payment_button_instruction", "After payment, click the button below:"),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
-                    [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
+                    [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid:{order_id}")],
+                    [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_order:{order_id}")],
                 ]),
             )
         except Exception as exc:
@@ -2449,25 +2454,34 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Backward compatibility for old callback data patterns ────────────────
+    # Normalize old formats to new colon-separated format
     if data == "continue_payment" or data.startswith("continue_payment:"):
         suffix = data.split(":", 1)[1] if ":" in data else ""
-        data = f"payment_{suffix}"
-        log.info(f"[COMPAT] normalized continue_payment → payment_ order_id={suffix!r}")
+        data = f"pay:{suffix}"
+        log.info(f"[COMPAT] normalized continue_payment → pay: order_id={suffix!r}")
     elif data.startswith("pay:"):
-        suffix = data.split(":", 1)[1]
-        data = f"payment_{suffix}"
-        log.info(f"[COMPAT] normalized pay: → payment_ order_id={suffix!r}")
-    elif data.startswith("cancel:"):
-        suffix = data.split(":", 1)[1]
-        data = f"cancel_{suffix}"
-        log.info(f"[COMPAT] normalized cancel: → cancel_ order_id={suffix!r}")
-    elif data == "cancel_order":
-        data = "cancel_"
-        log.info("[COMPAT] normalized cancel_order → cancel_")
+        pass  # already new format
+    elif data.startswith("payment_"):
+        suffix = data[len("payment_"):]
+        data = f"pay:{suffix}"
+        log.info(f"[COMPAT] normalized payment_ → pay: order_id={suffix!r}")
     elif data.startswith("cancel_order:"):
-        suffix = data.split(":", 1)[1]
-        data = f"cancel_{suffix}"
-        log.info(f"[COMPAT] normalized cancel_order: → cancel_ order_id={suffix!r}")
+        pass  # already new format
+    elif data == "cancel_order":
+        data = "cancel_order:"
+        log.info("[COMPAT] normalized cancel_order → cancel_order:")
+    elif data.startswith("cancel:"):
+        suffix = data.split(":", 1)[1] if ":" in data else ""
+        data = f"cancel_order:{suffix}"
+        log.info(f"[COMPAT] normalized cancel: → cancel_order: order_id={suffix!r}")
+    elif data.startswith("cancel_"):
+        suffix = data[len("cancel_"):]
+        data = f"cancel_order:{suffix}"
+        log.info(f"[COMPAT] normalized cancel_ → cancel_order: order_id={suffix!r}")
+    elif data.startswith("paid_"):
+        suffix = data[len("paid_"):]
+        data = f"paid:{suffix}"
+        log.info(f"[COMPAT] normalized paid_ → paid: order_id={suffix!r}")
 
     try:
         if   data == "home":               await show_home(update, context)
@@ -2542,14 +2556,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parts = data.split("_")
             await create_order(update, context, int(parts[1]), int(parts[2]))
 
-        elif data.startswith("payment_") or data.startswith("continue_payment_") or data.startswith("pay_"):
-            # Handle both payment_ and backward-compat patterns
-            if data.startswith("payment_"):
-                order_id = data[len("payment_"):]
-            elif data.startswith("continue_payment_"):
-                order_id = data[len("continue_payment_"):]
-            else:
-                order_id = data[len("pay_"):]
+        elif data.startswith("pay:"):
+            order_id = data.split(":", 1)[1] if ":" in data else ""
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
             log.info(f"[PAYMENT] callback data={data!r} user_id={user_id} tenant_id={TENANT_ID}")
@@ -2595,8 +2603,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as exc:
                 log.warning(f"[PAYMENT] cleanup after show_payment: {_safe_error(exc)}")
 
-        elif data.startswith("paid_"):
-            order_id = data[len("paid_"):]
+        elif data.startswith("paid:"):
+            order_id = data.split(":", 1)[1] if ":" in data else ""
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
             log.info(f"[PAID] callback data={data!r} user_id={user_id} tenant_id={TENANT_ID}")
@@ -2609,8 +2617,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as exc:
                 log.warning(f"[PAID] cleanup after handle_paid: {_safe_error(exc)}")
 
-        elif data.startswith("cancel_"):
-            order_id = data[len("cancel_"):]
+        elif data.startswith("cancel_order:"):
+            order_id = data.split(":", 1)[1] if ":" in data else ""
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
             log.info(f"[CANCEL] callback data={data!r} user_id={user_id} order_id={order_id!r}")
@@ -3544,6 +3552,50 @@ async def cmd_salesreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_daily_sales_report(context)
 
 
+async def cmd_clearpending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /clearpending USER_ID — cancel all pending orders for a user."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    if not TENANT_ID:
+        await update.message.reply_text("❌ TENANT_ID not configured.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /clearpending USER_ID")
+        return
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ USER_ID must be a number.")
+        return
+    try:
+        rows = await asyncio.to_thread(
+            lambda: sb_admin_get(
+                "orders",
+                f"select=id,status&user_id=eq.{target_user_id}&status=eq.pending&tenant_id=eq.{TENANT_ID}",
+            )
+        )
+        if not rows:
+            await update.message.reply_text(f"✅ No pending orders found for user {target_user_id}.")
+            return
+        pending_ids = [r["id"] for r in rows if r.get("id")]
+        count = len(pending_ids)
+        await asyncio.to_thread(
+            lambda: sb_admin_patch(
+                "orders",
+                f"user_id=eq.{target_user_id}&status=eq.pending&tenant_id=eq.{TENANT_ID}",
+                {"status": "cancelled"},
+            )
+        )
+        await update.message.reply_text(
+            f"✅ Cancelled {count} pending order(s) for user {target_user_id}.\n"
+            f"Order IDs: {', '.join(pending_ids[:5])}{'...' if count > 5 else ''}"
+        )
+    except Exception as exc:
+        log.exception(f"[CLEARPENDING] failed user_id={target_user_id}")
+        await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
+
+
 # ─── Tenant Admin Commands ───────────────────────────────────────────────────
 
 async def cmd_checkrent(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3686,8 +3738,13 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
         return
-    checks = []
-    checks.append(("TENANT_ID configured", bool(TENANT_ID)))
+    lines = [f"Tenant Setup Status — ID: {TENANT_ID or '❌ NOT SET'}"]
+    lines.append("─" * 35)
+
+    # Tenant config
+    lines.append(f"{'✅' if TENANT_ID else '❌'} TENANT_ID: {TENANT_ID or 'MISSING'}")
+
+    # Rental status
     rental_active = False
     if TENANT_ID:
         try:
@@ -3695,45 +3752,59 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lambda: sb_admin_get("tenants", f"select=id,status&id=eq.{TENANT_ID}&limit=1")
             )
             in_db = bool(rows)
-            checks.append(("Tenant in database", in_db))
             active = rows and rows[0].get("status") in ("active", "trial")
             rental_active = active
-            checks.append(("Rental active", active))
+            lines.append(f"{'✅' if in_db else '❌'} Tenant in database")
+            lines.append(f"{'✅' if active else '❌'} Rental active")
         except Exception:
-            checks.append(("Tenant in database", False))
-            checks.append(("Rental active", False))
+            lines.append("❌ Tenant in database — lookup failed")
+            lines.append("❌ Rental active — lookup failed")
+
+    # Count queries scoped by tenant
+    try:
+        products = await asyncio.to_thread(lambda: sb_get("products", "select=id"))
+        p_count = len(products)
+        lines.append(f"{'✅' if p_count > 0 else '⚠️'} Products: {p_count}")
+    except Exception:
+        p_count = 0
+        lines.append("❌ Products — query failed")
+
+    try:
+        variants = await asyncio.to_thread(lambda: sb_get("product_variants", "select=id"))
+        v_count = len(variants)
+        lines.append(f"{'✅' if v_count > 0 else 'ℹ️'} Variants: {v_count}")
+    except Exception:
+        v_count = 0
+        lines.append("❌ Variants — query failed")
+
+    try:
+        settings_rows = await asyncio.to_thread(lambda: sb_get("bot_settings", "select=key"))
+        s_count = len(settings_rows)
+        lines.append(f"{'✅' if s_count > 0 else 'ℹ️'} Bot settings: {s_count}")
+    except Exception:
+        s_count = 0
+        lines.append("❌ Bot settings — query failed")
+
+    # QR check
+    if TENANT_ID:
         qr_file_id = await _setting("payment_qr_file_id", "")
         qr_url = await _setting("payment_qr_url", "")
         qr_ok = bool(qr_file_id) or bool(qr_url)
-        checks.append(("Payment QR configured", qr_ok))
+        lines.append(f"{'✅' if qr_ok else '⚠️'} Payment QR: {qr_file_id or ''} / {qr_url or ''}")
         banner_file_id = await _setting("banner_file_id", "")
         banner_url = await _setting("banner_url", "")
         banner_ok = bool(banner_file_id) or bool(banner_url)
-        checks.append(("Banner configured", banner_ok))
-    try:
-        products = await asyncio.to_thread(lambda: sb_get("products", "select=id"))
-        product_count = len(products)
-        checks.append(("Products", product_count > 0))
-        if product_count > 0:
-            variants = await asyncio.to_thread(lambda: sb_get("product_variants", "select=id"))
-            checks.append((f"Variants ({len(variants)})", True))
-            unused_creds = await asyncio.to_thread(lambda: sb_get("credentials", "select=id&is_used=eq.false"))
-            checks.append((f"Available credentials ({len(unused_creds)})", len(unused_creds) > 0))
-    except Exception:
-        checks.append(("Products", False))
-    lines = ["Tenant Setup Status"]
-    all_ok = True
-    for label, ok in checks:
-        icon = "+" if ok else "-"
-        lines.append(f"{icon} {label}")
-        if not ok:
-            all_ok = False
-    if all_ok:
-        lines.append("")
-        lines.append("All checks passed!")
-    else:
-        lines.append("")
-        lines.append("Some checks failed. Use /setup for guidance.")
+        lines.append(f"{'✅' if banner_ok else 'ℹ️'} Banner: {banner_file_id or ''} / {banner_url or ''}")
+
+    # Overall readiness
+    shop_ready = p_count > 0
+    lines.append("─" * 35)
+    lines.append(f"{'✅ Shop ready' if shop_ready else '❌ Shop NOT ready — add products first'}")
+    lines.append("")
+    if not shop_ready:
+        lines.append("Use /setup for guidance on getting started.")
+    elif not qr_ok:
+        lines.append("⚠️ Payment QR not configured — customers will see a warning.")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -4014,6 +4085,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("credcheck", cmd_credcheck))
     app.add_handler(CommandHandler("points",    cmd_points))
     app.add_handler(CommandHandler("salesreport", cmd_salesreport))
+    app.add_handler(CommandHandler("clearpending", cmd_clearpending))
     app.add_handler(CommandHandler("checkrent",  cmd_checkrent))
     app.add_handler(CommandHandler("setup",      cmd_setup))
     app.add_handler(CommandHandler("setqr",      cmd_setqr))
