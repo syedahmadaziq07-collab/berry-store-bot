@@ -882,6 +882,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     log.info(f"/start from {user.id} (@{user.username})")
 
+    # Clean up old flow messages before sending new ones
+    chat_id = update.effective_chat.id
+    await delete_flow_messages(context, context.bot, chat_id, user.id)
+
     # Instant reply so user knows bot is alive
     await update.message.reply_text("Bot hidup ✅")
 
@@ -969,6 +973,13 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if await _block_if_expired(update, context):
         return
+
+    # Clean up old flow messages before showing shop
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    await delete_flow_messages(context, context.bot, chat_id, user_id)
+    if update.callback_query:
+        await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
 
     _t_shop = time.monotonic()
     try:
@@ -1085,13 +1096,14 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if _photo:
         try:
-            await context.bot.send_photo(
+            banner_msg = await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=_photo,
                 caption=text,
                 reply_markup=build_product_keyboard(products),
             )
             banner_sent = True
+            track_flow_message(context, banner_msg, "shop_list")
             log.info(f"[BANNER] Sent via tenant banner ms={int((time.monotonic()-_t_banner)*1000)}")
         except Exception as exc:
             log.warning(f"[BANNER] tenant banner failed: {_safe_error(exc)}")
@@ -1101,13 +1113,14 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     log.info(f"[BANNER] Sending text-only (banner configured={'yes' if _photo else 'no'})")
     if update.callback_query:
-        await context.bot.send_message(
+        shop_msg = await context.bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_markup=build_product_keyboard(products),
         )
     else:
-        await update.message.reply_text(text, reply_markup=build_product_keyboard(products))
+        shop_msg = await update.message.reply_text(text, reply_markup=build_product_keyboard(products))
+    track_flow_message(context, shop_msg, "shop_list")
 
 # ─── Variant Helpers (product_variants table) ─────────────────────────────────
 
@@ -1132,6 +1145,8 @@ async def _fetch_db_variants(product_id: int) -> list:
 
 async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, product: dict, variants: list):
     """Show inline variant buttons for a product. `variants` is a list of product_variants rows."""
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     try:
         product_id   = product.get("id")
         product_name = product.get("name", "Product")
@@ -1154,10 +1169,12 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]
             ])
+            await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                       ["shop_list", "product_detail", "variant_select", "error_message"])
             if update.callback_query:
-                await update.callback_query.edit_message_text(text, reply_markup=kb)
-            else:
-                await update.message.reply_text(text, reply_markup=kb)
+                await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
+            oos_msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
+            track_flow_message(context, oos_msg, "variant_select")
             return
 
         prod_desc = product.get("description") or ""
@@ -1182,19 +1199,23 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
 
         kb = InlineKeyboardMarkup(rows)
+        await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                   ["shop_list", "product_detail", "variant_select", "error_message"])
         if update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=kb)
-        else:
-            await update.message.reply_text(text, reply_markup=kb)
+            await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
+        var_msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
+        track_flow_message(context, var_msg, "variant_select")
 
     except Exception as exc:
         log.error(f"show_variants error: {_safe_error(exc)}", exc_info=True)
         err = "⚠️ Gagal muatkan variants. Sila cuba lagi."
+        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
         try:
             if update.callback_query:
-                await update.callback_query.edit_message_text(err, reply_markup=back_shop())
+                err_msg = await update.callback_query.edit_message_text(err, reply_markup=back_shop())
             else:
-                await update.message.reply_text(err, reply_markup=back_shop())
+                err_msg = await update.message.reply_text(err, reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
         except Exception:
             pass
 
@@ -1203,6 +1224,8 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
 async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int = 1):
     """Show product detail with live quantity and total price."""
     _t_prod = time.monotonic()
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     qty = max(1, min(qty, 10))   # clamp between 1–10
     cached_products, cached_variants = await _get_cached_products_and_variants()
     log.info(f"[TIMING] show_product cache_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id}")
@@ -1223,9 +1246,11 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 log.warning(f"Supabase product detail failed id={product_id}: {_safe_error(exc)}", exc_info=True)
                 err_msg = "⚠️ Gagal muatkan produk. Cuba lagi."
                 if update.callback_query:
-                    await update.callback_query.edit_message_text(err_msg, reply_markup=back_shop())
+                    await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+                    err_msg_obj = await update.callback_query.edit_message_text(err_msg, reply_markup=back_shop())
                 else:
-                    await update.message.reply_text(err_msg, reply_markup=back_shop())
+                    err_msg_obj = await update.message.reply_text(err_msg, reply_markup=back_shop())
+                track_flow_message(context, err_msg_obj, "error_message")
                 return
 
     # ── Variant check: use cached variants first, fallback to DB only if needed ──
@@ -1263,10 +1288,13 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")],
     ])
 
+    # Clean up old messages before showing product detail
+    await delete_flow_messages(context, context.bot, chat_id, user_id,
+                               ["shop_list", "product_detail", "variant_select", "error_message"])
     if update.callback_query:
-        await update.callback_query.edit_message_text(product_text, reply_markup=product_kb)
-    else:
-        await update.message.reply_text(product_text, reply_markup=product_kb)
+        await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
+    prod_msg = await context.bot.send_message(chat_id, product_text, reply_markup=product_kb)
+    track_flow_message(context, prod_msg, "product_detail")
     log.info(f"[TIMING] show_product total_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id} mode=detail")
 
 # ─── Quantity ─────────────────────────────────────────────────────────────────
@@ -1281,7 +1309,15 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None):
     _t_create = time.monotonic()
     user = update.effective_user
+    chat_id = update.effective_chat.id
     log.info(f"[CREATE_ORDER] product_id={product_id} qty={qty} variant={variant_label!r} user={user.id}")
+
+    # Duplicate order creation lock
+    lock_user = f"create_order:{user.id}"
+    if context.user_data.get(lock_user):
+        log.info(f"[CREATE_ORDER] blocked duplicate click user={user.id}")
+        return
+    context.user_data[lock_user] = True
     p = next((item for item in (context.user_data.get("shop_products") or []) if str(item.get("id")) == str(product_id)), None)
     if not p:
         cached, _age = _cached_products(max_age=None)
@@ -1303,26 +1339,27 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         if p:
             log.warning(f"Supabase create_order product live-check fallback id={product_id}: {_safe_error(exc)}")
         else:
+            context.user_data.pop(lock_user, None)
             log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
-            await _safe_edit_or_send(
-                update.callback_query,
-                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
-                reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
 
     if not p:
-        await _safe_edit_or_send(
-            update.callback_query,
-            "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
-            reply_markup=back_shop())
+        context.user_data.pop(lock_user, None)
+        await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
         return
 
     # For variant orders the stock was already validated in on_button; only
     # check product-level stock for non-variant orders.
     if variant_price is None and p["stock"] < qty:
-        await _safe_edit_or_send(
-            update.callback_query,
-            "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
+        context.user_data.pop(lock_user, None)
+        await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
         return
 
     if variant_price is not None:
@@ -1338,27 +1375,33 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 )
                 live_v = var_rows[0] if var_rows else None
                 if not live_v:
-                    await _safe_edit_or_send(
-                        update.callback_query,
-                        "⚠️ Varian ini telah habis stok.", reply_markup=back_shop()
-                    )
+                    context.user_data.pop(lock_user, None)
+                    await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+                    err_msg = await context.bot.send_message(chat_id, "⚠️ Varian ini telah habis stok.", reply_markup=back_shop())
+                    track_flow_message(context, err_msg, "error_message")
                     return
                 live_stock = int(live_v.get("stock") or 0)
                 if live_stock < qty:
-                    await _safe_edit_or_send(
-                        update.callback_query,
-                        "⚠️ Stok varian tidak mencukupi!", reply_markup=back_shop()
-                    )
+                    context.user_data.pop(lock_user, None)
+                    await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+                    err_msg = await context.bot.send_message(chat_id, "⚠️ Stok varian tidak mencukupi!", reply_markup=back_shop())
+                    track_flow_message(context, err_msg, "error_message")
                     return
                 if str(live_v.get("product_id")) != str(product_id):
-                    await _safe_edit_or_send(update.callback_query, "⚠️ Variant tidak ditemui.", reply_markup=back_shop())
+                    context.user_data.pop(lock_user, None)
+                    await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+                    err_msg = await context.bot.send_message(chat_id, "⚠️ Variant tidak ditemui.", reply_markup=back_shop())
+                    track_flow_message(context, err_msg, "error_message")
                     return
                 variant_price = float(live_v.get("price"))
                 variant_label = str(live_v.get("variant_name") or variant_label or "")
                 context.user_data["selected_variant_desc"] = live_v.get("description") or context.user_data.get("selected_variant_desc") or ""
             except Exception as exc:
+                context.user_data.pop(lock_user, None)
                 log.warning(f"[VARIANT] live revalidate failed id={_variant_id}: {_safe_error(exc)}")
-                await _safe_edit_or_send(update.callback_query, "⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
+                await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+                err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
+                track_flow_message(context, err_msg, "error_message")
                 return
 
     # ── Duplicate order protection ─────────────────────────────────────────────
@@ -1372,10 +1415,15 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 f"&limit=1"),
         )
         if existing:
+            context.user_data.pop(lock_user, None)
             o = existing[0]
             oid = o.get("id", "")
-            await _safe_edit_or_send(
-                update.callback_query,
+            await delete_flow_messages(context, context.bot, chat_id, user.id,
+                                       ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
+            if update.callback_query:
+                await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
+            active_msg = await context.bot.send_message(
+                chat_id,
                 f"⚠️ Anda sudah mempunyai order aktif:\n"
                 f"• Order  : {oid}\n"
                 f"• Produk : {o.get('product_name','')}\n"
@@ -1387,6 +1435,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                     [InlineKeyboardButton("❌ Cancel Order",      callback_data=f"cancel_{oid}")],
                 ]),
             )
+            track_flow_message(context, active_msg, "active_order")
             return
     except Exception as exc:
         log.warning(f"Duplicate order check failed, proceeding: {_safe_error(exc)}")
@@ -1410,11 +1459,11 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             attempts=1,
         )
     except Exception as exc:
+        context.user_data.pop(lock_user, None)
         log.warning(f"Supabase create_order insert: {_safe_error(exc)}")
-        await _safe_edit_or_send(
-            update.callback_query,
-            "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
-            reply_markup=back_shop())
+        await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
         return
 
     log.info(f"Order created: {order_id} by {user.id}")
@@ -1432,14 +1481,20 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     if _variant_desc:
         summary_text += f"\n{_variant_desc}\n"
     summary_text += f"\n{_order_proceed}"
-    await _safe_edit_or_send(
-        update.callback_query,
+    await delete_flow_messages(context, context.bot, chat_id, user.id,
+                               ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
+    if update.callback_query:
+        await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
+    summary_msg = await context.bot.send_message(
+        chat_id,
         summary_text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Proceed to Payment", callback_data=f"payment_{order_id}")],
             [InlineKeyboardButton("❌ Cancel Order",        callback_data=f"cancel_{order_id}")],
         ]),
     )
+    track_flow_message(context, summary_msg, "order_summary")
+    context.user_data.pop(lock_user, None)
     log.info(f"[TIMING] create_order total_ms={int((time.monotonic()-_t_create)*1000)} product_id={product_id} order_id={order_id}")
 
 # ─── Payment ──────────────────────────────────────────────────────────────────
@@ -1454,6 +1509,8 @@ async def _get_tenant_qr() -> tuple[str, str]:
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     _t_pay = time.monotonic()
     query = update.callback_query
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     try:
         rows = await _run_supabase(
             f"orders.payment id={order_id}",
@@ -1461,18 +1518,24 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
         order = rows[0] if rows else None
         if not order:
-            await _safe_edit_or_send(query, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
         order_user_id = order.get("user_id")
         requester_id = update.effective_user.id
         is_admin = requester_id == ADMIN_ID
         if not is_admin and str(order_user_id) != str(requester_id):
             log.warning(f"[SECURITY] Blocked payment view non-owner user_id={requester_id} order_id={order_id}")
-            await _safe_edit_or_send(query, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
     except Exception as exc:
         log.warning(f"[PAYMENT] Supabase fetch failed: {_safe_error(exc)}", exc_info=True)
-        await _safe_edit_or_send(query, "⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
+        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
         return
     qr_sent = False
     _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
@@ -1487,30 +1550,32 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 
     if _qr_file_id:
         try:
-            await context.bot.send_photo(
-                chat_id=query.message.chat_id,
+            qr_msg = await context.bot.send_photo(
+                chat_id=chat_id,
                 photo=_qr_file_id,
                 caption=caption,
             )
             qr_sent = True
+            track_flow_message(context, qr_msg, "payment_qr")
             log.info(f"[PAYMENT] QR sent via file_id order_id={order_id}")
         except Exception as exc:
             log.warning(f"[PAYMENT] file_id failed: {_safe_error(exc)}")
     if not qr_sent and _qr_url:
         try:
-            await context.bot.send_photo(
-                chat_id=query.message.chat_id,
+            qr_msg = await context.bot.send_photo(
+                chat_id=chat_id,
                 photo=_qr_url,
                 caption=caption,
             )
             qr_sent = True
+            track_flow_message(context, qr_msg, "payment_qr")
             log.info(f"[PAYMENT] QR sent via URL order_id={order_id}")
         except Exception as exc:
             log.warning(f"[PAYMENT] URL failed: {_safe_error(exc)}")
     if not qr_sent:
         try:
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
+            qr_msg = await context.bot.send_message(
+                chat_id=chat_id,
                 text=(
                     f"{_pay_title}\n\n"
                     f"Order ID: {order_id}\n"
@@ -1521,13 +1586,14 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
                 ]),
             )
+            track_flow_message(context, qr_msg, "payment_qr")
             log.warning(f"[PAYMENT] QR not configured for tenant")
         except Exception as exc:
             log.warning(f"[PAYMENT] text fallback failed: {_safe_error(exc)}", exc_info=True)
     else:
         try:
             await context.bot.send_message(
-                chat_id=query.message.chat_id,
+                chat_id=chat_id,
                 text=await _setting("payment_button_instruction", "After payment, click the button below:"),
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
@@ -1544,6 +1610,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 
 async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     try:
         rows = await _run_supabase(
             f"orders.paid_validate id={order_id}",
@@ -1551,29 +1618,39 @@ async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_
         )
         order = rows[0] if rows else None
         if not order:
-            await _safe_edit_or_send(update.callback_query, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
         if str(order.get("user_id")) != str(user_id):
             log.warning(f"[SECURITY] Blocked paid action non-owner user_id={user_id} order_id={order_id}")
-            await _safe_edit_or_send(update.callback_query, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
         status = str(order.get("status") or "")
         if status != "pending":
-            await _safe_edit_or_send(
-                update.callback_query,
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(
+                chat_id,
                 f"⚠️ Order ini tidak boleh ditandakan sebagai dibayar kerana status semasa ialah: {status or '-'}",
                 reply_markup=back_shop(),
             )
+            track_flow_message(context, err_msg, "error_message")
             return
     except Exception as exc:
         log.warning(f"[PAID] Validation failed order_id={order_id}: {_safe_error(exc)}", exc_info=True)
-        await _safe_edit_or_send(update.callback_query, "⚠️ Gagal semak order. Sila cuba lagi.", reply_markup=back_shop())
+        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal semak order. Sila cuba lagi.", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
         return
     context.user_data["pending_receipt"] = order_id
-    await _safe_edit_or_send(
-        update.callback_query,
+    await delete_flow_messages(context, context.bot, chat_id, user_id, ["receipt_instruction", "error_message"])
+    receipt_msg = await context.bot.send_message(
+        chat_id,
         f"📸 Upload screenshot resit pembayaran untuk:\nOrder ID: {order_id}\n\nHantar gambar sekarang:"
     )
+    track_flow_message(context, receipt_msg, "receipt_instruction")
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1649,6 +1726,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     try:
         rows = await _run_supabase(
             f"orders.cancel_fetch id={order_id}",
@@ -1656,19 +1734,30 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
         order = rows[0] if rows else None
         if not order:
-            await _safe_edit_or_send(update.callback_query, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
         if str(order.get("user_id")) != str(user_id):
             log.warning(f"[SECURITY] Blocked cancel non-owner user_id={user_id} order_id={order_id}")
-            await _safe_edit_or_send(update.callback_query, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
             return
         status = str(order.get("status") or "")
         if status != "pending":
-            await _safe_edit_or_send(
-                update.callback_query,
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(
+                chat_id,
                 f"⚠️ Order ini tidak boleh dibatalkan kerana status semasa ialah: {status or '-'}",
                 reply_markup=back_shop(),
             )
+            track_flow_message(context, err_msg, "error_message")
+            return
+
+        # Acquire cancel lock to prevent double-cancel
+        if not _acquire_lock(context, user_id, order_id, "cancel"):
+            await update.callback_query.answer("Order already cancelled.")
             return
 
         await _run_supabase(
@@ -1677,13 +1766,16 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         )
     except Exception as exc:
         log.warning(f"Supabase cancel: {_safe_error(exc)}")
-    await _safe_edit_or_send(
-        update.callback_query,
+    _release_lock(context, user_id, order_id, "cancel")
+    await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+    cancel_msg = await context.bot.send_message(
+        chat_id,
         f"❌ Order {order_id} telah dibatalkan. Terima kasih!",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🛍 Back to Shop", callback_data="shop")],
         ]),
     )
+    track_flow_message(context, cancel_msg, "error_message")
 
 # ─── My Orders ────────────────────────────────────────────────────────────────
 
@@ -2247,6 +2339,61 @@ def _is_rate_limited(user_id: int) -> bool:
     _rate_data[user_id] = stamps
     return False
 
+# ─── Flow Message Cleanup ──────────────────────────────────────────────────
+# Track and delete bot messages so the chat stays clean.
+# Tags: shop_list, product_detail, variant_select, order_summary,
+#        active_order, payment_qr, receipt_instruction, error_message
+
+FLOW_TAGS = ["shop_list", "product_detail", "variant_select", "order_summary",
+             "active_order", "payment_qr", "receipt_instruction", "error_message"]
+
+def _flow_key():
+    return "flow_messages"
+
+async def safe_delete_message(bot, chat_id: int, message_id: int) -> bool:
+    """Delete a message silently. Return True if deleted. Never crash."""
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        return True
+    except Exception as exc:
+        log.info(f"[CLEANUP] delete_failed chat={chat_id} msg={message_id}: {_safe_error(exc)}")
+        return False
+
+def track_flow_message(context, message, tag: str):
+    """Store message_id under tag in context.user_data for later cleanup."""
+    if tag not in FLOW_TAGS:
+        log.warning(f"[FLOW] unknown tag={tag}")
+        return
+    context.user_data.setdefault(_flow_key(), {})[tag] = message.message_id
+
+async def delete_flow_messages(context, bot, chat_id: int, user_id: int = None, tags: list = None):
+    """Delete tracked flow messages. If tags is None, delete all tracked."""
+    flow = context.user_data.get(_flow_key(), {})
+    if tags is None:
+        tags = list(flow.keys())
+    for tag in tags:
+        msg_id = flow.pop(tag, None)
+        if msg_id:
+            ok = await safe_delete_message(bot, chat_id, msg_id)
+            log.info(f"[CLEANUP] tag={tag} msg_id={msg_id} user_id={user_id or '?'} deleted={'yes' if ok else 'no'}")
+
+def _lock_key(user_id, order_id, action):
+    return f"lock:{user_id}:{order_id}:{action}"
+
+def _acquire_lock(context, user_id, order_id, action, ttl=5.0):
+    """Acquire a per-(user,order,action) lock. Returns True if acquired."""
+    key = _lock_key(user_id, order_id, action)
+    now = time.monotonic()
+    existing = context.bot_data.get(key)
+    if existing and now - existing < ttl:
+        return False
+    context.bot_data[key] = now
+    return True
+
+def _release_lock(context, user_id, order_id, action):
+    """Release a per-(user,order,action) lock."""
+    context.bot_data.pop(_lock_key(user_id, order_id, action), None)
+
 # ─── Button Router ────────────────────────────────────────────────────────────
 
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2341,50 +2488,41 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("payment_"):
             order_id = data[len("payment_"):]
             user_id = update.effective_user.id
+            chat_id = update.effective_chat.id
             opened = context.user_data.setdefault('payment_opened', set())
             if order_id in opened:
                 await query.answer("Payment page already opened.")
                 return
             await query.answer("Opening payment...")
-            deleted = False
-            try:
-                await query.message.delete()
-                deleted = True
-            except Exception:
-                pass
-            if not deleted:
-                try:
-                    await query.edit_message_text(
-                        "✅ Payment page opened.\n\nPlease continue with the QR below.",
-                        reply_markup=None
-                    )
-                except Exception:
-                    try:
-                        await query.edit_message_reply_markup(reply_markup=None)
-                    except Exception:
-                        pass
+            # Delete tracked order_summary / active_order and the callback message
+            await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                       ["order_summary", "active_order", "error_message"])
+            await safe_delete_message(context.bot, chat_id, query.message.message_id)
             opened.add(order_id)
-            log.info(f"[PAYMENT] order_id={order_id} user_id={user_id} action=proceed_payment message_deleted={'yes' if deleted else 'no'}")
+            log.info(f"[PAYMENT] order_id={order_id} user_id={user_id} action=proceed_payment")
             await show_payment(update, context, order_id)
 
         elif data.startswith("paid_"):
-            await handle_paid(update, context, data[len("paid_"):])
+            order_id = data[len("paid_"):]
+            user_id = update.effective_user.id
+            chat_id = update.effective_chat.id
+            # Clean up payment_qr and receipt_instruction before calling handle_paid
+            await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                       ["payment_qr", "receipt_instruction", "error_message"])
+            await safe_delete_message(context.bot, chat_id, query.message.message_id)
+            await query.answer("Processing payment...")
+            await handle_paid(update, context, order_id)
 
         elif data.startswith("cancel_"):
             order_id = data[len("cancel_"):]
             user_id = update.effective_user.id
-            deleted = False
-            try:
-                await query.message.delete()
-                deleted = True
-            except Exception:
-                pass
-            if not deleted:
-                try:
-                    await query.edit_message_reply_markup(reply_markup=None)
-                except Exception:
-                    pass
-            log.info(f"[CANCEL] order_id={order_id} user_id={user_id} action=cancel_order message_deleted={'yes' if deleted else 'no'}")
+            chat_id = update.effective_chat.id
+            # Clean up all tracked order/payment messages
+            await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                       ["order_summary", "active_order", "payment_qr",
+                                        "receipt_instruction", "error_message"])
+            await safe_delete_message(context.bot, chat_id, query.message.message_id)
+            log.info(f"[CANCEL] order_id={order_id} user_id={user_id} action=cancel_order")
             await cancel_order(update, context, order_id)
 
         elif data.startswith("approve_"):
@@ -2406,9 +2544,11 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as exc:
         log.error(f"Button handler error [{data}]: {_safe_error(exc)}", exc_info=True)
         try:
-            await q.message.reply_text(
+            await delete_flow_messages(context, context.bot, update.effective_chat.id, update.effective_user.id, ["error_message"])
+            err_msg = await q.message.reply_text(
                 "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc"
             )
+            track_flow_message(context, err_msg, "error_message")
         except Exception:
             pass
 
