@@ -146,6 +146,10 @@ async def _block_if_expired(update, context) -> bool:
             msg = "⚠️ Shop is currently unavailable. The store owner's bot rental has expired."
         try:
             if update.callback_query:
+                try:
+                    await update.callback_query.answer()
+                except Exception:
+                    pass
                 await update.callback_query.edit_message_text(msg)
             elif update.message:
                 await update.message.reply_text(msg)
@@ -1506,41 +1510,19 @@ async def _get_tenant_qr() -> tuple[str, str]:
     return file_id, url
 
 
-async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
-    _t_pay = time.monotonic()
-    query = update.callback_query
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-    try:
-        rows = await _run_supabase(
-            f"orders.payment id={order_id}",
-            lambda: sb_get("orders", f"select=id,user_id,amount,status,username,product_name&id=eq.{order_id}&limit=1"),
-        )
-        order = rows[0] if rows else None
-        if not order:
-            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
-            err_msg = await context.bot.send_message(chat_id, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
-            track_flow_message(context, err_msg, "error_message")
-            return
-        order_user_id = order.get("user_id")
-        requester_id = update.effective_user.id
-        is_admin = requester_id == ADMIN_ID
-        if not is_admin and str(order_user_id) != str(requester_id):
-            log.warning(f"[SECURITY] Blocked payment view non-owner user_id={requester_id} order_id={order_id}")
-            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
-            err_msg = await context.bot.send_message(chat_id, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
-            track_flow_message(context, err_msg, "error_message")
-            return
-    except Exception as exc:
-        log.warning(f"[PAYMENT] Supabase fetch failed: {_safe_error(exc)}", exc_info=True)
-        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
-        err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
-        track_flow_message(context, err_msg, "error_message")
-        return
+async def send_payment_page(context, chat_id: int, user_id: int, order: dict, order_id: str):
+    """Shared payment page: sends QR + action buttons.
+    Used by both new orders (Proceed to Payment) and active pending orders (Continue Payment).
+    Does NOT send admin notification — caller decides."""
     qr_sent = False
     _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
     _pay_instruction = await _setting('payment_instruction', 'Scan QR code below to pay 👇')
     _qr_file_id, _qr_url = await _get_tenant_qr()
+
+    log.info(f"[PAYMENT] send_payment_page order_id={order_id} user_id={user_id} "
+             f"tenant_id={TENANT_ID} qr_file_id={'yes' if _qr_file_id else 'no'} "
+             f"qr_url={'yes' if _qr_url else 'no'} order_status={order.get('status')}")
+
     caption = (
         f"{_pay_title}\n\n"
         f"Order ID: {order_id}\n"
@@ -1602,9 +1584,41 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             )
         except Exception as exc:
             log.error(f"[PAYMENT] send action buttons failed: {_safe_error(exc)}")
-    await _admin_notify(context,
-        f"🔔 ORDER BARU!\n• Order: {order_id}\n• User: @{order.get('username','')}\n"
-        f"• Produk: {order.get('product_name','')}\n• RM {order['amount']}")
+
+
+async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    """Validate order and delegate to send_payment_page. Called for new and active orders."""
+    _t_pay = time.monotonic()
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    try:
+        rows = await _run_supabase(
+            f"orders.payment id={order_id}",
+            lambda: sb_get("orders", f"select=id,user_id,amount,status,username,product_name&id=eq.{order_id}&limit=1"),
+        )
+        order = rows[0] if rows else None
+        if not order:
+            log.warning(f"[PAYMENT] order not found order_id={order_id} user_id={user_id}")
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Order tidak dijumpai.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
+            return
+        if str(order.get("user_id")) != str(user_id) and user_id != ADMIN_ID:
+            log.warning(f"[SECURITY] Blocked payment view non-owner user_id={user_id} order_id={order_id}")
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
+            track_flow_message(context, err_msg, "error_message")
+            return
+        log.info(f"[PAYMENT] order validated order_id={order_id} user_id={user_id} status={order.get('status')} amount={order.get('amount')}")
+    except Exception as exc:
+        log.exception(f"[PAYMENT] Supabase fetch failed order_id={order_id} user_id={user_id}")
+        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal muatkan maklumat pembayaran.", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
+        return
+
+    await send_payment_page(context, chat_id, user_id, order, order_id)
+    log.info(f"[TIMING] show_payment total_ms={int((time.monotonic()-_t_pay)*1000)} order_id={order_id}")
 
 # ─── Paid / Receipt ───────────────────────────────────────────────────────────
 
@@ -1639,7 +1653,7 @@ async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_
             track_flow_message(context, err_msg, "error_message")
             return
     except Exception as exc:
-        log.warning(f"[PAID] Validation failed order_id={order_id}: {_safe_error(exc)}", exc_info=True)
+        log.exception(f"[PAID] Validation failed order_id={order_id} user_id={user_id}")
         await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
         err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal semak order. Sila cuba lagi.", reply_markup=back_shop())
         track_flow_message(context, err_msg, "error_message")
@@ -2399,18 +2413,19 @@ def _release_lock(context, user_id, order_id, action):
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q    = update.callback_query
     data = q.data
-    # Answer FIRST — dismisses the Telegram loading spinner immediately.
-    # Never call q.answer() again inside any sub-handler.
-    await q.answer()
     log.info(f"Button: {data} from {update.effective_user.id}")
 
-    # ── Rate limit check ──────────────────────────────────────────────────────
+    # ── Rate limit check — answers callback with alert if rate-limited ────────
     if _is_rate_limited(update.effective_user.id):
         await q.answer("⏳ Terlalu laju! Sila tunggu sebentar.", show_alert=True)
         return
 
+    # ── Expired check — answers callback via edit ─────────────────────────────
     if await _block_if_expired(update, context):
         return
+
+    # ── Dismiss Telegram loading spinner (answer ONCE, never again below) ────
+    await q.answer()
 
     try:
         if   data == "home":               await show_home(update, context)
@@ -2489,28 +2504,51 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             order_id = data[len("payment_"):]
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
+            log.info(f"[PAYMENT] callback data={data!r} user_id={user_id} tenant_id={TENANT_ID}")
+            # If callback data has no order_id, look up user's active pending order
+            if not order_id:
+                log.info(f"[PAYMENT] no order_id in callback, looking up active pending for user={user_id}")
+                try:
+                    rows = await _run_supabase(
+                        f"orders.active user={user_id}",
+                        lambda: sb_get("orders", f"select=id&user_id=eq.{user_id}&status=eq.pending&limit=1"),
+                    )
+                    if rows and rows[0].get("id"):
+                        order_id = rows[0]["id"]
+                        log.info(f"[PAYMENT] found active order_id={order_id} for user={user_id}")
+                    else:
+                        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+                        err_msg = await context.bot.send_message(chat_id, "⚠️ Tiada order aktif dijumpai.", reply_markup=back_shop())
+                        track_flow_message(context, err_msg, "error_message")
+                        return
+                except Exception as exc:
+                    log.exception(f"[PAYMENT] active order lookup failed user_id={user_id}")
+                    await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+                    err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal cari order aktif.", reply_markup=back_shop())
+                    track_flow_message(context, err_msg, "error_message")
+                    return
+            # Duplicate click protection
             opened = context.user_data.setdefault('payment_opened', set())
             if order_id in opened:
-                await query.answer("Payment page already opened.")
+                log.info(f"[PAYMENT] duplicate click blocked order_id={order_id} user_id={user_id}")
                 return
-            await query.answer("Opening payment...")
+            opened.add(order_id)
             # Delete tracked order_summary / active_order and the callback message
             await delete_flow_messages(context, context.bot, chat_id, user_id,
                                        ["order_summary", "active_order", "error_message"])
             await safe_delete_message(context.bot, chat_id, query.message.message_id)
-            opened.add(order_id)
-            log.info(f"[PAYMENT] order_id={order_id} user_id={user_id} action=proceed_payment")
+            log.info(f"[PAYMENT] calling show_payment order_id={order_id} user_id={user_id}")
             await show_payment(update, context, order_id)
 
         elif data.startswith("paid_"):
             order_id = data[len("paid_"):]
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
+            log.info(f"[PAID] callback data={data!r} user_id={user_id} tenant_id={TENANT_ID}")
             # Clean up payment_qr and receipt_instruction before calling handle_paid
             await delete_flow_messages(context, context.bot, chat_id, user_id,
                                        ["payment_qr", "receipt_instruction", "error_message"])
             await safe_delete_message(context.bot, chat_id, query.message.message_id)
-            await query.answer("Processing payment...")
             await handle_paid(update, context, order_id)
 
         elif data.startswith("cancel_"):
