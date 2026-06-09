@@ -1532,21 +1532,25 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     f"Amount: RM {order['amount']}\n\n"
                     f"⚠️ Payment QR is not configured yet. Please contact the store owner."
                 ),
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
+                ]),
             )
             log.warning(f"[PAYMENT] QR not configured for tenant {TENANT_ID}")
         except Exception as exc:
             log.warning(f"[PAYMENT] text fallback failed: {_safe_error(exc)}", exc_info=True)
-    try:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=await _setting("payment_button_instruction", "After payment, click the button below:"),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
-                [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
-            ]),
-        )
-    except Exception as exc:
-        log.error(f"[PAYMENT] send action buttons failed: {_safe_error(exc)}")
+    else:
+        try:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=await _setting("payment_button_instruction", "After payment, click the button below:"),
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ I Have Paid",  callback_data=f"paid_{order_id}")],
+                    [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
+                ]),
+            )
+        except Exception as exc:
+            log.error(f"[PAYMENT] send action buttons failed: {_safe_error(exc)}")
     await _admin_notify(context,
         f"🔔 ORDER BARU!\n• Order: {order_id}\n• User: @{order.get('username','')}\n"
         f"• Produk: {order.get('product_name','')}\n• RM {order['amount']}")
@@ -3293,20 +3297,20 @@ async def cmd_checkrent(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 days_left = str(max(0, diff))
             except Exception:
                 days_left = "?"
-        active_icon = "✅ Active" if is_tenant_active() else "❌ Expired"
-        dashboard_enabled = "✅ Yes" if t.get("dashboard_secret") else "No"
+        active_icon = "Active" if is_tenant_active() else "Expired"
+        dashboard_enabled = "Yes" if t.get("dashboard_secret") else "No"
         msg = (
-            f"📋 **Tenant Rental Info**\n\n"
+            f"📋 Tenant Rental Info\n\n"
             f"Name: {name}\n"
             f"Bot: @{bot_username}\n"
-            f"ID: `{TENANT_ID}`\n"
+            f"ID: {TENANT_ID}\n"
             f"Status: {status} ({active_icon})\n"
             f"Rent Start: {rent_start}\n"
             f"Rent End: {str(rent_end)[:10] if rent_end != 'N/A' else rent_end}\n"
             f"Days Left: {days_left}\n"
             f"Dashboard: {dashboard_enabled}"
         )
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(msg)
     except Exception as exc:
         await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
 
@@ -3436,18 +3440,20 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             checks.append((f"Available credentials ({len(unused_creds)})", len(unused_creds) > 0))
     except Exception:
         checks.append(("Products", False))
-    lines = ["🔍 **Tenant Setup Status**\n"]
+    lines = ["Tenant Setup Status"]
     all_ok = True
     for label, ok in checks:
-        icon = "✅" if ok else "❌"
+        icon = "+" if ok else "-"
         lines.append(f"{icon} {label}")
         if not ok:
             all_ok = False
     if all_ok:
-        lines.append("\n✅ **All checks passed!**")
+        lines.append("")
+        lines.append("All checks passed!")
     else:
-        lines.append("\n⚠️ Some checks failed. Use /setup for guidance.")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        lines.append("")
+        lines.append("Some checks failed. Use /setup for guidance.")
+    await update.message.reply_text("\n".join(lines))
 
 
 # ─── Master Admin Tenant Management Commands ─────────────────────────────────
