@@ -146,10 +146,6 @@ async def _block_if_expired(update, context) -> bool:
             msg = "⚠️ Shop is currently unavailable. The store owner's bot rental has expired."
         try:
             if update.callback_query:
-                try:
-                    await update.callback_query.answer()
-                except Exception:
-                    pass
                 await update.callback_query.edit_message_text(msg)
             elif update.message:
                 await update.message.reply_text(msg)
@@ -1741,6 +1737,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
+    if not order_id:
+        log.warning(f"[CANCEL] no order_id provided user_id={user_id}")
+        return
     try:
         rows = await _run_supabase(
             f"orders.cancel_fetch id={order_id}",
@@ -1761,30 +1760,46 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         status = str(order.get("status") or "")
         if status != "pending":
             await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
-            err_msg = await context.bot.send_message(
+            info_msg = await context.bot.send_message(
                 chat_id,
-                f"⚠️ Order ini tidak boleh dibatalkan kerana status semasa ialah: {status or '-'}",
+                f"✅ Order ini sudah {status}. Tiada tindakan diperlukan.",
                 reply_markup=back_shop(),
             )
+            track_flow_message(context, info_msg, "error_message")
+            return
+
+        # Acquire cancel lock to prevent double-cancel (5s window)
+        if not _acquire_lock(context, user_id, order_id, "cancel"):
+            log.info(f"[CANCEL] double-click blocked user_id={user_id} order_id={order_id}")
+            return
+
+        cancelled = False
+        try:
+            await _run_supabase(
+                f"orders.cancel id={order_id}",
+                lambda: sb_patch("orders", f"id=eq.{order_id}&user_id=eq.{user_id}&status=eq.pending", {"status": "cancelled"}),
+            )
+            cancelled = True
+        except Exception as exc:
+            log.exception(f"[CANCEL] Supabase patch failed order_id={order_id} user_id={user_id}")
+        finally:
+            _release_lock(context, user_id, order_id, "cancel")
+        if not cancelled:
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal batalkan order. Sila cuba lagi.", reply_markup=back_shop())
             track_flow_message(context, err_msg, "error_message")
             return
-
-        # Acquire cancel lock to prevent double-cancel
-        if not _acquire_lock(context, user_id, order_id, "cancel"):
-            await update.callback_query.answer("Order already cancelled.")
-            return
-
-        await _run_supabase(
-            f"orders.cancel id={order_id}",
-            lambda: sb_patch("orders", f"id=eq.{order_id}&user_id=eq.{user_id}&status=eq.pending", {"status": "cancelled"}),
-        )
     except Exception as exc:
-        log.warning(f"Supabase cancel: {_safe_error(exc)}")
-    _release_lock(context, user_id, order_id, "cancel")
+        log.exception(f"[CANCEL] unexpected error order_id={order_id} user_id={user_id}")
+        await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal batalkan order. Sila cuba lagi.", reply_markup=back_shop())
+        track_flow_message(context, err_msg, "error_message")
+        return
+
     await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
     cancel_msg = await context.bot.send_message(
         chat_id,
-        f"❌ Order {order_id} telah dibatalkan. Terima kasih!",
+        f"✅ Order cancelled. You can place a new order now.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🛍 Back to Shop", callback_data="shop")],
         ]),
@@ -2415,17 +2430,44 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
     log.info(f"Button: {data} from {update.effective_user.id}")
 
-    # ── Rate limit check — answers callback with alert if rate-limited ────────
+    # ═══ Answer immediately to dismiss Telegram loading BEFORE any slow logic ═══
+    try:
+        await q.answer()
+    except Exception:
+        log.exception(f"[BUTTON] Failed to answer callback query data={data!r}")
+
+    # ── Rate limit check — edit message since answer() already consumed alert ──
     if _is_rate_limited(update.effective_user.id):
-        await q.answer("⏳ Terlalu laju! Sila tunggu sebentar.", show_alert=True)
+        try:
+            await q.edit_message_text("⏳ Terlalu laju! Sila tunggu sebentar.")
+        except Exception:
+            pass
         return
 
-    # ── Expired check — answers callback via edit ─────────────────────────────
+    # ── Expired check (does Supabase query — already answered above) ───────────
     if await _block_if_expired(update, context):
         return
 
-    # ── Dismiss Telegram loading spinner (answer ONCE, never again below) ────
-    await q.answer()
+    # ── Backward compatibility for old callback data patterns ────────────────
+    if data == "continue_payment" or data.startswith("continue_payment:"):
+        suffix = data.split(":", 1)[1] if ":" in data else ""
+        data = f"payment_{suffix}"
+        log.info(f"[COMPAT] normalized continue_payment → payment_ order_id={suffix!r}")
+    elif data.startswith("pay:"):
+        suffix = data.split(":", 1)[1]
+        data = f"payment_{suffix}"
+        log.info(f"[COMPAT] normalized pay: → payment_ order_id={suffix!r}")
+    elif data.startswith("cancel:"):
+        suffix = data.split(":", 1)[1]
+        data = f"cancel_{suffix}"
+        log.info(f"[COMPAT] normalized cancel: → cancel_ order_id={suffix!r}")
+    elif data == "cancel_order":
+        data = "cancel_"
+        log.info("[COMPAT] normalized cancel_order → cancel_")
+    elif data.startswith("cancel_order:"):
+        suffix = data.split(":", 1)[1]
+        data = f"cancel_{suffix}"
+        log.info(f"[COMPAT] normalized cancel_order: → cancel_ order_id={suffix!r}")
 
     try:
         if   data == "home":               await show_home(update, context)
@@ -2433,7 +2475,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "myorders":           await my_orders(update, context)
         elif data == "referral":           await show_referral(update, context)
         elif data == "support":            await show_support(update, context)
-        elif data == "qty_display":        pass  # display-only button, answer() already called above
+        elif data == "qty_display":        pass
 
         elif data.startswith("product_"):
             await show_product(update, context, int(data.split("_")[1]))
@@ -2500,8 +2542,14 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parts = data.split("_")
             await create_order(update, context, int(parts[1]), int(parts[2]))
 
-        elif data.startswith("payment_"):
-            order_id = data[len("payment_"):]
+        elif data.startswith("payment_") or data.startswith("continue_payment_") or data.startswith("pay_"):
+            # Handle both payment_ and backward-compat patterns
+            if data.startswith("payment_"):
+                order_id = data[len("payment_"):]
+            elif data.startswith("continue_payment_"):
+                order_id = data[len("continue_payment_"):]
+            else:
+                order_id = data[len("pay_"):]
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
             log.info(f"[PAYMENT] callback data={data!r} user_id={user_id} tenant_id={TENANT_ID}")
@@ -2531,37 +2579,67 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             opened = context.user_data.setdefault('payment_opened', set())
             if order_id in opened:
                 log.info(f"[PAYMENT] duplicate click blocked order_id={order_id} user_id={user_id}")
+                try:
+                    await context.bot.send_message(chat_id, "💳 Payment page already opened. Please check the messages above.")
+                except Exception:
+                    pass
                 return
             opened.add(order_id)
-            # Delete tracked order_summary / active_order and the callback message
-            await delete_flow_messages(context, context.bot, chat_id, user_id,
-                                       ["order_summary", "active_order", "error_message"])
-            await safe_delete_message(context.bot, chat_id, query.message.message_id)
+            # Show payment page FIRST, then clean up old messages (so failure doesn't lose old content)
             log.info(f"[PAYMENT] calling show_payment order_id={order_id} user_id={user_id}")
             await show_payment(update, context, order_id)
+            try:
+                await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                           ["order_summary", "active_order", "error_message"])
+                await safe_delete_message(context.bot, chat_id, q.message.message_id)
+            except Exception as exc:
+                log.warning(f"[PAYMENT] cleanup after show_payment: {_safe_error(exc)}")
 
         elif data.startswith("paid_"):
             order_id = data[len("paid_"):]
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
             log.info(f"[PAID] callback data={data!r} user_id={user_id} tenant_id={TENANT_ID}")
-            # Clean up payment_qr and receipt_instruction before calling handle_paid
-            await delete_flow_messages(context, context.bot, chat_id, user_id,
-                                       ["payment_qr", "receipt_instruction", "error_message"])
-            await safe_delete_message(context.bot, chat_id, query.message.message_id)
+            # handle_paid validates & sends receipt instruction FIRST, then cleanup
             await handle_paid(update, context, order_id)
+            try:
+                await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                           ["payment_qr", "error_message"])
+                await safe_delete_message(context.bot, chat_id, q.message.message_id)
+            except Exception as exc:
+                log.warning(f"[PAID] cleanup after handle_paid: {_safe_error(exc)}")
 
         elif data.startswith("cancel_"):
             order_id = data[len("cancel_"):]
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
-            # Clean up all tracked order/payment messages
-            await delete_flow_messages(context, context.bot, chat_id, user_id,
-                                       ["order_summary", "active_order", "payment_qr",
-                                        "receipt_instruction", "error_message"])
-            await safe_delete_message(context.bot, chat_id, query.message.message_id)
-            log.info(f"[CANCEL] order_id={order_id} user_id={user_id} action=cancel_order")
+            log.info(f"[CANCEL] callback data={data!r} user_id={user_id} order_id={order_id!r}")
+            # Fallback: if no order_id in callback, look up user's active pending order
+            if not order_id:
+                try:
+                    rows = await _run_supabase(
+                        f"orders.active_cancel user={user_id}",
+                        lambda: sb_get("orders", f"select=id&user_id=eq.{user_id}&status=eq.pending&limit=1"),
+                    )
+                    if rows and rows[0].get("id"):
+                        order_id = rows[0]["id"]
+                        log.info(f"[CANCEL] found active order_id={order_id} for user={user_id}")
+                except Exception as exc:
+                    log.exception(f"[CANCEL] active order lookup failed user_id={user_id}")
+            if not order_id:
+                await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+                err_msg = await context.bot.send_message(chat_id, "⚠️ Tiada order aktif untuk dibatalkan.", reply_markup=back_shop())
+                track_flow_message(context, err_msg, "error_message")
+                return
+            # Cancel order FIRST, then clean up old messages (so failure doesn't lose old content)
             await cancel_order(update, context, order_id)
+            try:
+                await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                           ["order_summary", "active_order", "payment_qr",
+                                            "receipt_instruction", "error_message"])
+                await safe_delete_message(context.bot, chat_id, q.message.message_id)
+            except Exception as exc:
+                log.warning(f"[CANCEL] cleanup after cancel_order: {_safe_error(exc)}")
 
         elif data.startswith("approve_"):
             await approve_order(update, context, data[len("approve_"):])
