@@ -11,6 +11,7 @@ import logging
 import threading
 import asyncio
 import json
+import re
 import urllib.error
 import urllib.request
 from types import SimpleNamespace
@@ -81,6 +82,7 @@ SUPABASE_URL         = _get_env("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY         = _get_env("SUPABASE_KEY")
 SUPABASE_SERVICE_KEY = _get_env("SUPABASE_SERVICE_KEY")
 ADMIN_ID     = 0
+MASTER_ADMIN_ID = int(_get_env("MASTER_ADMIN_ID", "0"))
 REQUIRED_CHANNEL     = "@berrystorrel"
 REQUIRED_CHANNEL_URL = "https://t.me/berrystorrel"
 PORT         = int(_get_env("PORT", "5000"))
@@ -89,6 +91,70 @@ BASE_DIR            = os.path.dirname(os.path.abspath(__file__))
 QR_PATH             = os.path.join(BASE_DIR, "payment_qr.png")
 BANNER_PATH         = os.path.join(BASE_DIR, "banner.png")
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
+TENANT_ID           = _get_env("TENANT_ID")
+
+TENANT_TABLES = {"products", "product_variants", "orders", "credentials", "users", "bot_settings", "push_subscriptions", "rental_payments", "points"}
+
+def _ensure_tenant_filter(table: str, params: str = "") -> str:
+    if TENANT_ID and table in TENANT_TABLES:
+        tenant_param = f"tenant_id=eq.{TENANT_ID}"
+        if params:
+            if not re.search(r'(^|&)tenant_id=', params):
+                return f"{tenant_param}&{params}"
+        else:
+            return tenant_param
+    return params
+
+def _ensure_tenant_data(data: dict) -> dict:
+    if TENANT_ID and not data.get("tenant_id"):
+        d = dict(data)
+        d["tenant_id"] = TENANT_ID
+        return d
+    return data
+
+def require_tenant_id() -> bool:
+    return bool(TENANT_ID)
+
+def is_admin_user(user_id: int) -> bool:
+    return user_id == ADMIN_ID
+
+def is_tenant_active() -> bool:
+    if not TENANT_ID:
+        return False
+    try:
+        rows = sb_get("tenants", f"select=id,status,rent_end&id=eq.{TENANT_ID}&limit=1")
+        if not rows:
+            return False
+        t = rows[0]
+        if t.get("status") != "active":
+            return False
+        rent_end = t.get("rent_end")
+        if rent_end:
+            from datetime import datetime, timezone
+            end = datetime.fromisoformat(rent_end.replace("Z", "+00:00"))
+            if end < datetime.now(timezone.utc):
+                return False
+        return True
+    except Exception as exc:
+        log.warning(f"Tenant check failed: {_safe_error(exc)}")
+        return True
+
+async def _block_if_expired(update, context) -> bool:
+    user = update.effective_user
+    if not is_tenant_active():
+        if user.id == ADMIN_ID:
+            msg = "⚠️ Your bot rental has expired. Please renew to continue using the bot."
+        else:
+            msg = "⚠️ Shop is currently unavailable. The store owner's bot rental has expired."
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(msg)
+            elif update.message:
+                await update.message.reply_text(msg)
+        except Exception:
+            pass
+        return True
+    return False
 
 def _redact(text: object) -> str:
     value = str(text)
@@ -121,6 +187,30 @@ log.info(f"SUPABASE_URL : {'✅ ' + SUPABASE_URL[:35] if SUPABASE_URL else '❌ 
 log.info(f"SUPABASE_KEY : {'✅ set (len=' + str(len(SUPABASE_KEY)) + ')' if SUPABASE_KEY else '❌ MISSING'}")
 log.info(f"SUPABASE_SERVICE_KEY : {'✅ set (len=' + str(len(SUPABASE_SERVICE_KEY)) + ')' if SUPABASE_SERVICE_KEY else '⚠️ NOT SET — admin writes will use anon key'}")
 log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
+log.info(f"MASTER_ADMIN_ID: {MASTER_ADMIN_ID if MASTER_ADMIN_ID else '❌ NOT SET'}")
+log.info(f"TENANT_ID    : {'✅ ' + TENANT_ID[:20] if TENANT_ID else '❌ MISSING'}")
+log.info(f"REQUIRED_CHANNEL: {REQUIRED_CHANNEL if REQUIRED_CHANNEL else '❌ NOT SET'}")
+if TENANT_ID:
+    try:
+        t_rows = sb_get("tenants", f"select=id,status,rent_end,name,bot_username&id=eq.{TENANT_ID}&limit=1")
+        if t_rows:
+            t = t_rows[0]
+            log.info(f"TENANT name   : {t.get('name', 'N/A')}")
+            log.info(f"TENANT bot    : @{t.get('bot_username', 'N/A')}")
+            log.info(f"TENANT status : {t.get('status')}")
+            log.info(f"TENANT rent_end: {t.get('rent_end')}")
+            log.info(f"TENANT active : {is_tenant_active()}")
+            qr_file_id = sb_get("bot_settings", f"select=value&key=eq.payment_qr_file_id&limit=1")
+            qr_url = sb_get("bot_settings", f"select=value&key=eq.payment_qr_url&limit=1")
+            banner_file_id = sb_get("bot_settings", f"select=value&key=eq.banner_file_id&limit=1")
+            banner_url = sb_get("bot_settings", f"select=value&key=eq.banner_url&limit=1")
+            log.info(f"TENANT QR file_id: {'✅' if qr_file_id and qr_file_id[0].get('value') else '❌'}")
+            log.info(f"TENANT QR URL   : {'✅' if qr_url and qr_url[0].get('value') else '❌'}")
+            log.info(f"TENANT banner   : {'✅' if (banner_file_id and banner_file_id[0].get('value')) or (banner_url and banner_url[0].get('value')) else '❌'}")
+        else:
+            log.warning(f"TENANT_ID {TENANT_ID} not found in tenants table")
+    except Exception as exc:
+        log.warning(f"TENANT lookup failed: {_safe_error(exc)}")
 log.info("=" * 50)
 
 if not BOT_TOKEN:
@@ -202,12 +292,13 @@ def _sb_admin_headers() -> dict:
 def sb_get(table: str, params: str = "") -> list:
     """SELECT rows. Returns list of dicts."""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
-    if params:
-        url += "?" + params
+    effective_params = _ensure_tenant_filter(table, params)
+    if effective_params:
+        url += "?" + effective_params
     r = _httpx.get(url, headers=_sb_headers(), timeout=15)
     r.raise_for_status()
     data = r.json()
-    log.debug(f"[SB GET] {table}?{params} → {len(data) if isinstance(data, list) else data}")
+    log.debug(f"[SB GET] {table}?{effective_params} → {len(data) if isinstance(data, list) else data}")
     return data
 
 
@@ -216,7 +307,7 @@ def sb_post(table: str, data: dict) -> list:
     r = _httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
         headers={**_sb_headers(), "Prefer": "return=representation"},
-        json=data, timeout=15,
+        json=_ensure_tenant_data(data), timeout=15,
     )
     r.raise_for_status()
     return r.json()
@@ -227,7 +318,7 @@ def sb_upsert(table: str, data: dict) -> list:
     r = _httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
         headers={**_sb_headers(), "Prefer": "return=representation,resolution=merge-duplicates"},
-        json=data, timeout=15,
+        json=_ensure_tenant_data(data), timeout=15,
     )
     r.raise_for_status()
     return r.json()
@@ -235,8 +326,9 @@ def sb_upsert(table: str, data: dict) -> list:
 
 def sb_patch(table: str, params: str, data: dict) -> list:
     """UPDATE rows matching params. Returns list of updated rows."""
+    effective_params = _ensure_tenant_filter(table, params)
     r = _httpx.patch(
-        f"{SUPABASE_URL}/rest/v1/{table}?{params}",
+        f"{SUPABASE_URL}/rest/v1/{table}?{effective_params}",
         headers={**_sb_headers(), "Prefer": "return=representation"},
         json=data, timeout=15,
     )
@@ -247,8 +339,9 @@ def sb_patch(table: str, params: str, data: dict) -> list:
 def sb_admin_get(table: str, params: str = "") -> list:
     """SELECT rows using service role key (bypasses RLS)."""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
-    if params:
-        url += "?" + params
+    effective_params = _ensure_tenant_filter(table, params)
+    if effective_params:
+        url += "?" + effective_params
     r = _httpx.get(url, headers=_sb_admin_headers(), timeout=15)
     r.raise_for_status()
     return r.json()
@@ -259,7 +352,7 @@ def sb_admin_post(table: str, data: dict) -> list:
     r = _httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
         headers={**_sb_admin_headers(), "Prefer": "return=representation"},
-        json=data, timeout=15,
+        json=_ensure_tenant_data(data), timeout=15,
     )
     r.raise_for_status()
     return r.json()
@@ -267,10 +360,21 @@ def sb_admin_post(table: str, data: dict) -> list:
 
 def sb_admin_patch(table: str, params: str, data: dict) -> list:
     """UPDATE rows using service role key (bypasses RLS)."""
+    effective_params = _ensure_tenant_filter(table, params)
     r = _httpx.patch(
-        f"{SUPABASE_URL}/rest/v1/{table}?{params}",
+        f"{SUPABASE_URL}/rest/v1/{table}?{effective_params}",
         headers={**_sb_admin_headers(), "Prefer": "return=representation"},
         json=data, timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+def sb_admin_upsert(table: str, data: dict) -> list:
+    """UPSERT using service role key (bypasses RLS)."""
+    r = _httpx.post(
+        f"{SUPABASE_URL}/rest/v1/{table}",
+        headers={**_sb_admin_headers(), "Prefer": "return=representation,resolution=merge-duplicates"},
+        json=_ensure_tenant_data(data), timeout=15,
     )
     r.raise_for_status()
     return r.json()
@@ -390,7 +494,7 @@ async def _load_bot_settings():
             lambda: sb_get("bot_settings", "select=key,value")
         )
         _bot_settings = {r["key"]: r["value"] for r in rows}
-        log.info(f"[SETTINGS] Loaded {len(_bot_settings)} settings from Supabase")
+        log.info(f"[SETTINGS] Loaded {len(_bot_settings)} settings from Supabase for tenant={TENANT_ID}")
     except Exception as exc:
         log.warning(f"[SETTINGS] Failed to load settings: {exc}")
 
@@ -481,7 +585,10 @@ def dashboard():
     for path in dashboard_paths:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
-                return f.read(), 200, {"Content-Type": "text/html"}
+                html = f.read()
+            tenant_script = f'<script>const TENANT_ID = {json.dumps(TENANT_ID or "")};</script>\n'
+            html = html.replace("</head>", tenant_script + "</head>")
+            return html, 200, {"Content-Type": "text/html"}
     return "Dashboard not found", 404
 
 @_app.route("/api/dashboard/approve-order", methods=["POST"])
@@ -858,6 +965,8 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _check_membership(context.bot, update.effective_user.id):
         await _send_join_message(update)
         return
+    if await _block_if_expired(update, context):
+        return
 
     _t_shop = time.monotonic()
     try:
@@ -960,55 +1069,37 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
 
-    # ── Banner send with file_id caching ──────────────────────────────────────
-    global _banner_file_id, _banner_bytes
+    # ── Banner send with tenant-specific banner from settings ────────────────
     banner_sent = False
     _t_banner = time.monotonic()
+    _banner_file_id = await _setting("banner_file_id", "")
+    _banner_url = await _setting("banner_url", "")
+    _photo = None
 
-    if os.path.exists(BANNER_PATH):
-        # 1. Try cached Telegram file_id (fastest — no upload)
-        if _banner_file_id:
-            try:
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=_banner_file_id,
-                    caption=text,
-                    reply_markup=build_product_keyboard(products),
-                )
-                banner_sent = True
-                log.info(f"[BANNER] Sent via file_id ms={int((time.monotonic()-_t_banner)*1000)}")
-            except Exception as exc:
-                log.warning(f"[BANNER] file_id failed, re-uploading: {_safe_error(exc)}")
-                _banner_file_id = None
+    # Priority 1: Telegram file_id
+    if _banner_file_id:
+        _photo = _banner_file_id
+    # Priority 2: URL
+    elif _banner_url:
+        _photo = _banner_url
 
-        # 2. Upload from memory bytes (loads disk once, then reuses bytes)
-        if not banner_sent:
-            try:
-                if _banner_bytes is None:
-                    with open(BANNER_PATH, "rb") as f:
-                        _banner_bytes = f.read()
-                    log.info(f"[BANNER] Loaded into memory size={len(_banner_bytes)//1024}KB")
-                sent_msg = await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=_banner_bytes,
-                    caption=text,
-                    read_timeout=30,
-                    write_timeout=30,
-                    reply_markup=build_product_keyboard(products),
-                )
-                if sent_msg.photo:
-                    _banner_file_id = sent_msg.photo[-1].file_id
-                    log.info(f"[BANNER] Uploaded and file_id cached ms={int((time.monotonic()-_t_banner)*1000)}")
-                banner_sent = True
-            except Exception as exc:
-                log.warning(f"[BANNER] Upload failed: {_safe_error(exc)}")
-                _banner_bytes = None
+    if _photo:
+        try:
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=_photo,
+                caption=text,
+                reply_markup=build_product_keyboard(products),
+            )
+            banner_sent = True
+            log.info(f"[BANNER] Sent via tenant banner ms={int((time.monotonic()-_t_banner)*1000)}")
+        except Exception as exc:
+            log.warning(f"[BANNER] tenant banner failed: {_safe_error(exc)}")
 
     if banner_sent:
         return
 
-    # Fallback: no banner or send failed — text only
-    log.info(f"[BANNER] Sending text-only (banner_path_exists={os.path.exists(BANNER_PATH)})")
+    log.info(f"[BANNER] Sending text-only (banner configured={'yes' if _photo else 'no'})")
     if update.callback_query:
         await context.bot.send_message(
             chat_id=chat_id,
@@ -1368,8 +1459,13 @@ def get_qr_path():
     return None
 
 
+async def _get_tenant_qr() -> tuple[str, str]:
+    """Get tenant-specific QR as (file_id, url). Either may be empty."""
+    file_id = await _setting('payment_qr_file_id', '')
+    url = await _setting('payment_qr_url', '')
+    return file_id, url
+
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
-    global _qr_file_id, _qr_bytes
     _t_pay = time.monotonic()
     query = update.callback_query
     try:
@@ -1395,68 +1491,51 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     qr_sent = False
     _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
     _pay_instruction = await _setting('payment_instruction', 'Scan QR code below to pay 👇')
+    _qr_file_id, _qr_url = await _get_tenant_qr()
     caption = (
         f"{_pay_title}\n\n"
         f"Order ID: {order_id}\n"
         f"Amount: RM {order['amount']}\n\n"
         f"{_pay_instruction}"
     )
+    # Priority 1: Telegram file_id
     if _qr_file_id:
         try:
-            _t_qr_send = time.monotonic()
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=_qr_file_id,
                 caption=caption,
             )
             qr_sent = True
-            log.info(f"[TIMING] show_payment qr_send_ms={int((time.monotonic()-_t_qr_send)*1000)} source=file_id order_id={order_id}")
-            log.info(f"[PAYMENT] QR sent using cached file_id")
+            log.info(f"[PAYMENT] QR sent via file_id order_id={order_id}")
         except Exception as exc:
-            log.warning(f"[PAYMENT] cached file_id failed, resetting and re-uploading: {_safe_error(exc)}")
-            _qr_file_id = None
-    if not qr_sent:
-        qr = get_qr_path()
-        if qr:
-            try:
-                if _qr_bytes is None:
-                    with open(qr, "rb") as qr_file:
-                        _qr_bytes = qr_file.read()
-                    log.info(f"[QR DEBUG] QR bytes loaded into memory size={len(_qr_bytes)}")
-                _t_qr_send = time.monotonic()
-                sent_msg = await context.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=_qr_bytes,
-                    caption=caption,
-                    read_timeout=30,
-                    write_timeout=30,
-                    connect_timeout=30,
-                )
-                if sent_msg.photo:
-                    _qr_file_id = sent_msg.photo[-1].file_id
-                    log.info(f"[PAYMENT] QR file_id cached: {_qr_file_id[:20]}...")
-                qr_sent = True
-                log.info(f"[TIMING] show_payment qr_send_ms={int((time.monotonic()-_t_qr_send)*1000)} source=bytes order_id={order_id}")
-            except Exception as exc:
-                log.warning(f"[PAYMENT] send_photo failed (exact error): {_safe_error(exc)}", exc_info=True)
-                _qr_bytes = None  # reset so next attempt re-reads from disk
-        else:
-            log.warning(f"[PAYMENT] QR file not found — QR_PATH={QR_PATH} exists={os.path.exists(QR_PATH)} cwd={os.getcwd()}")
-    log.info(f"[PAYMENT] qr_sent={qr_sent} total_ms={int((time.monotonic()-_t_pay)*1000)}")
+            log.warning(f"[PAYMENT] file_id failed: {_safe_error(exc)}")
+    # Priority 2: URL
+    if not qr_sent and _qr_url:
+        try:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=_qr_url,
+                caption=caption,
+            )
+            qr_sent = True
+            log.info(f"[PAYMENT] QR sent via URL order_id={order_id}")
+        except Exception as exc:
+            log.warning(f"[PAYMENT] URL failed: {_safe_error(exc)}")
     if not qr_sent:
         try:
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=(
-                    f"💳 PAYMENT DETAILS\n\n"
+                    f"{_pay_title}\n\n"
                     f"Order ID: {order_id}\n"
                     f"Amount: RM {order['amount']}\n\n"
-                    f"⚠️ QR code tidak tersedia. Hubungi admin."
+                    f"⚠️ Payment QR is not configured yet. Please contact the store owner."
                 ),
             )
-            log.warning(f"[PAYMENT] fell back to text message (QR unavailable)")
+            log.warning(f"[PAYMENT] QR not configured for tenant {TENANT_ID}")
         except Exception as exc:
-            log.warning(f"[PAYMENT] text fallback also failed (exact error): {_safe_error(exc)}", exc_info=True)
+            log.warning(f"[PAYMENT] text fallback failed: {_safe_error(exc)}", exc_info=True)
     try:
         await context.bot.send_message(
             chat_id=query.message.chat_id,
@@ -1509,6 +1588,8 @@ async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _block_if_expired(update, context):
+        return
     order_id = context.user_data.get("pending_receipt")
     if not order_id:
         return
@@ -1618,6 +1699,8 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 # ─── My Orders ────────────────────────────────────────────────────────────────
 
 async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await _block_if_expired(update, context):
+        return
     user = update.effective_user
 
     try:
@@ -2190,6 +2273,9 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("⏳ Terlalu laju! Sila tunggu sebentar.", show_alert=True)
         return
 
+    if await _block_if_expired(update, context):
+        return
+
     try:
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
@@ -2511,6 +2597,8 @@ async def cmd_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
         return
+    if await _block_if_expired(update, context):
+        return
 
     try:
         products = await _run_supabase(
@@ -2585,6 +2673,8 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
         return
+    if await _block_if_expired(update, context):
+        return
 
     message = " ".join(context.args).strip() if context.args else ""
     if not message:
@@ -2646,6 +2736,8 @@ async def cmd_adminorders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
         return
+    if await _block_if_expired(update, context):
+        return
 
     try:
         orders = await _run_supabase(
@@ -2693,24 +2785,26 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
         return
+    if await _block_if_expired(update, context):
+        return
 
     try:
         all_orders_result = await _run_supabase(
             "admin.orders_summary",
-            lambda sb: sb.table("orders").select("status, amount").execute(),
+            lambda: sb_get("orders", "select=status,amount"),
         )
         products_result = await _run_supabase(
             "admin.products_summary",
-            lambda sb: sb.table("products").select("name, stock, price").execute(),
+            lambda: sb_get("products", "select=name,stock,price"),
         )
         users_result = await _run_supabase(
             "admin.users_summary",
-            lambda sb: sb.table("users").select("id").execute(),
+            lambda: sb_get("users", "select=id"),
         )
 
-        all_orders     = all_orders_result.data or []
-        products       = products_result.data or []
-        total_users    = len(users_result.data or [])
+        all_orders     = all_orders_result or []
+        products       = products_result or []
+        total_users    = len(users_result or [])
 
         pending        = [o for o in all_orders if o["status"] == "pending"]
         waiting        = [o for o in all_orders if o["status"] == "waiting_approval"]
@@ -2767,6 +2861,8 @@ async def cmd_addcred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: /addcred PRODUCT_ID — then send email:password lines."""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Not allowed")
+        return
+    if await _block_if_expired(update, context):
         return
     if not context.args:
         await update.message.reply_text(
@@ -2840,6 +2936,8 @@ async def cmd_credstock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Not allowed")
         return
+    if await _block_if_expired(update, context):
+        return
     try:
         products = await _run_supabase(
             "products.credstock",
@@ -2880,6 +2978,8 @@ async def cmd_credcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: /credcheck PRODUCT_ID — show unused credentials for a product."""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Not allowed")
+        return
+    if await _block_if_expired(update, context):
         return
     if not context.args:
         await update.message.reply_text(
@@ -2945,6 +3045,8 @@ async def cmd_credcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_unsent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
+        return
+    if await _block_if_expired(update, context):
         return
 
     try:
@@ -3151,8 +3253,460 @@ async def cmd_salesreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
         return
+    if await _block_if_expired(update, context):
+        return
 
     await _send_daily_sales_report(context)
+
+
+# ─── Tenant Admin Commands ───────────────────────────────────────────────────
+
+async def cmd_checkrent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /checkrent — show tenant rental status."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    if not TENANT_ID:
+        await update.message.reply_text("❌ TENANT_ID not configured.")
+        return
+    try:
+        rows = await asyncio.to_thread(
+            lambda: sb_admin_get("tenants", f"select=*&id=eq.{TENANT_ID}&limit=1")
+        )
+        if not rows:
+            await update.message.reply_text(f"❌ Tenant '{TENANT_ID}' not found in DB.")
+            return
+        t = rows[0]
+        name = t.get("name") or t.get("id", "?")
+        bot_username = t.get("bot_username", "?")
+        status = t.get("status", "?")
+        rent_start = t.get("rent_start", "N/A")
+        if rent_start and rent_start != "N/A":
+            rent_start = str(rent_start)[:10]
+        rent_end = t.get("rent_end", "N/A")
+        days_left = "N/A"
+        if rent_end and rent_end != "N/A":
+            try:
+                end = datetime.fromisoformat(str(rent_end).replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                diff = (end - now).days
+                days_left = str(max(0, diff))
+            except Exception:
+                days_left = "?"
+        active_icon = "✅ Active" if is_tenant_active() else "❌ Expired"
+        dashboard_enabled = "✅ Yes" if t.get("dashboard_secret") else "No"
+        msg = (
+            f"📋 **Tenant Rental Info**\n\n"
+            f"Name: {name}\n"
+            f"Bot: @{bot_username}\n"
+            f"ID: `{TENANT_ID}`\n"
+            f"Status: {status} ({active_icon})\n"
+            f"Rent Start: {rent_start}\n"
+            f"Rent End: {str(rent_end)[:10] if rent_end != 'N/A' else rent_end}\n"
+            f"Days Left: {days_left}\n"
+            f"Dashboard: {dashboard_enabled}"
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
+
+
+async def cmd_setqr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /setqr — set tenant payment QR code (reply to a photo)."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    if not TENANT_ID:
+        await update.message.reply_text("❌ TENANT_ID not configured.")
+        return
+    if not update.message.reply_to_message or not update.message.reply_to_message.photo:
+        await update.message.reply_text("Reply to a photo with /setqr to set it as the payment QR.")
+        return
+    photo = update.message.reply_to_message.photo[-1]
+    file_id = photo.file_id
+    try:
+        rows = sb_admin_upsert("bot_settings", {"key": "payment_qr_file_id", "value": file_id, "tenant_id": TENANT_ID})
+        await _load_bot_settings()
+        await update.message.reply_text(f"✅ Payment QR updated.")
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
+
+
+async def cmd_setbanner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /setbanner — set tenant shop banner (reply to a photo)."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    if not TENANT_ID:
+        await update.message.reply_text("❌ TENANT_ID not configured.")
+        return
+    if not update.message.reply_to_message or not update.message.reply_to_message.photo:
+        await update.message.reply_text("Reply to a photo with /setbanner to set it as the shop banner.")
+        return
+    photo = update.message.reply_to_message.photo[-1]
+    file_id = photo.file_id
+    try:
+        rows = sb_admin_upsert("bot_settings", {"key": "banner_file_id", "value": file_id, "tenant_id": TENANT_ID})
+        await _load_bot_settings()
+        await update.message.reply_text(f"✅ Shop banner updated.")
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
+
+
+async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /setup — guide to configure a new tenant bot."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    msg = (
+        "🔧 **Tenant Setup Guide**\n\n"
+        "1. Ensure TENANT_ID is set in environment\n"
+        "2. Add your tenant record to Supabase `tenants` table\n"
+        "3. Use /setqr (reply to a photo) to set payment QR\n"
+        "4. Use /setbanner (reply to a photo) to set shop banner\n"
+        "5. Add products via dashboard or manually\n"
+        "6. Use /checkrent to verify tenant status\n"
+        "7. Use /checksetup to verify everything is ready\n\n"
+        "Your bot serves tenant: `" + (TENANT_ID or "❌ NOT SET") + "`"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+# ─── Heartbeat for Central Dashboard ──────────────────────────────────────────
+
+async def _heartbeat(context: ContextTypes.DEFAULT_TYPE = None):
+    """Update tenants.last_heartbeat_at and bot_status for this tenant."""
+    if not TENANT_ID:
+        return
+    try:
+        now_utc = datetime.now(timezone.utc).isoformat()
+        await asyncio.to_thread(
+            lambda: sb_admin_patch("tenants", f"id=eq.{TENANT_ID}", {
+                "last_heartbeat_at": now_utc,
+                "bot_status": "online",
+            })
+        )
+        log.info("Tenant heartbeat updated")
+    except Exception as exc:
+        log.warning(f"Tenant heartbeat failed: {_safe_error(exc)}")
+
+
+async def _heartbeat_startup():
+    """Run heartbeat once at startup."""
+    await _heartbeat()
+
+
+async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /checksetup — verify tenant setup completeness."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    checks = []
+    checks.append(("TENANT_ID configured", bool(TENANT_ID)))
+    rental_active = False
+    if TENANT_ID:
+        try:
+            rows = await asyncio.to_thread(
+                lambda: sb_admin_get("tenants", f"select=id,status&id=eq.{TENANT_ID}&limit=1")
+            )
+            in_db = bool(rows)
+            checks.append(("Tenant in database", in_db))
+            active = rows and rows[0].get("status") in ("active", "trial")
+            rental_active = active
+            checks.append(("Rental active", active))
+        except Exception:
+            checks.append(("Tenant in database", False))
+            checks.append(("Rental active", False))
+        qr_file_id = await _setting("payment_qr_file_id", "")
+        qr_url = await _setting("payment_qr_url", "")
+        qr_ok = bool(qr_file_id) or bool(qr_url)
+        checks.append(("Payment QR configured", qr_ok))
+        banner_file_id = await _setting("banner_file_id", "")
+        banner_url = await _setting("banner_url", "")
+        banner_ok = bool(banner_file_id) or bool(banner_url)
+        checks.append(("Banner configured", banner_ok))
+    try:
+        products = await asyncio.to_thread(lambda: sb_get("products", "select=id"))
+        product_count = len(products)
+        checks.append(("Products", product_count > 0))
+        if product_count > 0:
+            variants = await asyncio.to_thread(lambda: sb_get("product_variants", "select=id"))
+            checks.append((f"Variants ({len(variants)})", True))
+            unused_creds = await asyncio.to_thread(lambda: sb_get("credentials", "select=id&is_used=eq.false"))
+            checks.append((f"Available credentials ({len(unused_creds)})", len(unused_creds) > 0))
+    except Exception:
+        checks.append(("Products", False))
+    lines = ["🔍 **Tenant Setup Status**\n"]
+    all_ok = True
+    for label, ok in checks:
+        icon = "✅" if ok else "❌"
+        lines.append(f"{icon} {label}")
+        if not ok:
+            all_ok = False
+    if all_ok:
+        lines.append("\n✅ **All checks passed!**")
+    else:
+        lines.append("\n⚠️ Some checks failed. Use /setup for guidance.")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+# ─── Master Admin Tenant Management Commands ─────────────────────────────────
+
+DEFAULT_TENANT_SETTINGS = {
+    "welcome_message": "",
+    "support_username": "",
+    "shop_title": "LIST PRODUCT",
+    "shop_footer": "Taip nombor atau tekan butang di bawah",
+    "out_of_stock_msg": "Stok habis",
+    "product_delivery_note": "Produk digital akan dihantar selepas pembayaran",
+    "payment_title": "PAYMENT DETAILS",
+    "payment_instruction": "Scan QR below to pay",
+    "payment_button_instruction": "Saya sudah bayar",
+    "order_summary_title": "ORDER SUMMARY",
+    "order_proceed_msg": "Sila buat pembayaran",
+    "delivery_msg": "Produk sedang dihantar",
+    "auto_delivery_msg": "Produk akan dihantar secara automatik",
+    "testimonial_template": "",
+    "payment_qr_file_id": "",
+    "banner_file_id": "",
+}
+
+
+def _is_master_admin(user_id: int) -> bool:
+    return MASTER_ADMIN_ID > 0 and user_id == MASTER_ADMIN_ID
+
+
+async def cmd_newtenant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Master admin: /newtenant Name | bot_username | owner_id | owner_username | monthly_price | months"""
+    if not _is_master_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Only the bot platform owner can use this command.")
+        return
+    args = " ".join(context.args).strip()
+    parts = [p.strip() for p in args.split("|")]
+    if len(parts) < 6:
+        await update.message.reply_text(
+            "Usage:\n/newtenant Store Name | bot_username | owner_telegram_id | owner_username | monthly_price | months\n\n"
+            "Example:\n/newtenant Afiq Store | afiqshop_bot | 123456789 | afiq | 30 | 1"
+        )
+        return
+    name, bot_username, owner_id_str, owner_username, price_str, months_str = parts[:6]
+    try:
+        owner_id = int(owner_id_str)
+        monthly_price = float(price_str)
+        months = int(months_str)
+    except ValueError:
+        await update.message.reply_text("❌ owner_telegram_id, monthly_price, and months must be numeric.")
+        return
+    if months < 1:
+        await update.message.reply_text("❌ months must be at least 1.")
+        return
+    now_utc = datetime.now(timezone.utc)
+    rent_start = now_utc.isoformat()
+    rent_end = (now_utc + timedelta(days=30 * months)).isoformat()
+    try:
+        rows = sb_admin_post("tenants", {
+            "name": name,
+            "bot_username": bot_username,
+            "owner_telegram_id": str(owner_id),
+            "owner_username": owner_username,
+            "status": "active",
+            "plan_name": "monthly",
+            "monthly_price": monthly_price,
+            "rent_start": rent_start,
+            "rent_end": rent_end,
+            "notes": "Created from /newtenant",
+        })
+        if not rows:
+            await update.message.reply_text("❌ Failed to create tenant — no row returned.")
+            return
+        tenant = rows[0]
+        tenant_id = tenant.get("id") or tenant.get("tenant_id")
+        if not tenant_id:
+            await update.message.reply_text("❌ Tenant created but could not read ID.")
+            return
+        # Insert default bot_settings for this tenant
+        for key, value in DEFAULT_TENANT_SETTINGS.items():
+            sb_admin_post("bot_settings", {
+                "key": key,
+                "value": value,
+                "tenant_id": tenant_id,
+            })
+        msg = (
+            f"✅ **Tenant Created Successfully**\n\n"
+            f"Name: {name}\n"
+            f"Bot Username: @{bot_username}\n"
+            f"Owner ID: {owner_id}\n"
+            f"Rent Start: {rent_start}\n"
+            f"Rent End: {rent_end}\n"
+            f"TENANT_ID: `{tenant_id}`\n\n"
+            f"**Render env template:**\n"
+            f"```\n"
+            f"BOT_TOKEN=\n"
+            f"ADMIN_ID={owner_id}\n"
+            f"TENANT_ID={tenant_id}\n"
+            f"REQUIRED_CHANNEL=\n"
+            f"REQUIRED_CHANNEL_URL=\n"
+            f"SUPABASE_URL={SUPABASE_URL}\n"
+            f"SUPABASE_KEY={SUPABASE_KEY}\n"
+            f"SUPABASE_SERVICE_KEY={SUPABASE_SERVICE_KEY}\n"
+            f"DASHBOARD_ADMIN_SECRET=\n"
+            f"```"
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error creating tenant: {_safe_error(exc)}")
+
+
+async def cmd_tenantlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Master admin: /tenantlist — show recent tenants."""
+    if not _is_master_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Only the bot platform owner can use this command.")
+        return
+    try:
+        rows = sb_admin_get("tenants", "select=id,name,bot_username,status,rent_end,owner_telegram_id&order=created_at.desc&limit=20")
+        if not rows:
+            await update.message.reply_text("No tenants found.")
+            return
+        lines = ["📋 **Recent Tenants**\n"]
+        for t in rows:
+            tid = t.get("id", "?")
+            name = t.get("name", "?")
+            bot = t.get("bot_username", "?")
+            status = t.get("status", "?")
+            rent_end = (t.get("rent_end") or "?")[:10]
+            lines.append(f"`{tid}` | {name} | @{bot} | {status} | ends {rent_end}")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
+
+
+async def cmd_tenantinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Master admin: /tenantinfo TENANT_ID — show tenant details."""
+    if not _is_master_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Only the bot platform owner can use this command.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /tenantinfo TENANT_ID")
+        return
+    tenant_id = context.args[0].strip()
+    try:
+        rows = sb_admin_get("tenants", f"select=*&id=eq.{tenant_id}&limit=1")
+        if not rows:
+            await update.message.reply_text(f"❌ Tenant `{tenant_id}` not found.")
+            return
+        t = rows[0]
+        settings_rows = sb_admin_get("bot_settings", f"select=key,value&tenant_id=eq.{tenant_id}")
+        settings_map = {s["key"]: s["value"] for s in (settings_rows or [])}
+        qr_set = bool(settings_map.get("payment_qr_file_id"))
+        banner_set = bool(settings_map.get("banner_file_id"))
+        product_count = len(sb_admin_get("products", f"select=id&tenant_id=eq.{tenant_id}") or [])
+        user_count = len(sb_admin_get("users", f"select=id&tenant_id=eq.{tenant_id}") or [])
+        order_count = len(sb_admin_get("orders", f"select=id&tenant_id=eq.{tenant_id}") or [])
+        msg = (
+            f"📋 **Tenant Info: `{tenant_id}`**\n\n"
+            f"Name: {t.get('name', '?')}\n"
+            f"Bot: @{t.get('bot_username', '?')}\n"
+            f"Owner ID: {t.get('owner_telegram_id', '?')}\n"
+            f"Owner: {t.get('owner_username', '?')}\n"
+            f"Status: {t.get('status', '?')}\n"
+            f"Plan: {t.get('plan_name', '?')}\n"
+            f"Price: {t.get('monthly_price', '?')}\n"
+            f"Rent Start: {t.get('rent_start', '?')[:10]}\n"
+            f"Rent End: {t.get('rent_end', '?')[:10]}\n\n"
+            f"**Setup Status:**\n"
+            f"QR set: {'✅' if qr_set else '❌'}\n"
+            f"Banner set: {'✅' if banner_set else '❌'}\n"
+            f"Products: {product_count}\n"
+            f"Users: {user_count}\n"
+            f"Orders: {order_count}"
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
+
+
+async def cmd_extendtenant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Master admin: /extendtenant TENANT_ID months — extend rent."""
+    if not _is_master_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Only the bot platform owner can use this command.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /extendtenant TENANT_ID months")
+        return
+    tenant_id = context.args[0].strip()
+    try:
+        months = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ months must be a number.")
+        return
+    if months < 1:
+        await update.message.reply_text("❌ months must be at least 1.")
+        return
+    try:
+        rows = sb_admin_get("tenants", f"select=id,rent_end,name&id=eq.{tenant_id}&limit=1")
+        if not rows:
+            await update.message.reply_text(f"❌ Tenant `{tenant_id}` not found.")
+            return
+        t = rows[0]
+        current_end = t.get("rent_end")
+        if current_end:
+            try:
+                base = datetime.fromisoformat(current_end.replace("Z", "+00:00"))
+            except ValueError:
+                base = datetime.now(timezone.utc)
+        else:
+            base = datetime.now(timezone.utc)
+        new_end = (base + timedelta(days=30 * months)).isoformat()
+        sb_admin_patch("tenants", f"id=eq.{tenant_id}", {"rent_end": new_end, "status": "active"})
+        await update.message.reply_text(
+            f"✅ **Tenant Extended**\n\n"
+            f"Tenant: {t.get('name', tenant_id)}\n"
+            f"Months added: {months}\n"
+            f"New rent end: {new_end[:10]}",
+            parse_mode="Markdown"
+        )
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
+
+
+async def cmd_suspendtenant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Master admin: /suspendtenant TENANT_ID — suspend a tenant."""
+    if not _is_master_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Only the bot platform owner can use this command.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /suspendtenant TENANT_ID")
+        return
+    tenant_id = context.args[0].strip()
+    try:
+        rows = sb_admin_get("tenants", f"select=id,name&id=eq.{tenant_id}&limit=1")
+        if not rows:
+            await update.message.reply_text(f"❌ Tenant `{tenant_id}` not found.")
+            return
+        sb_admin_patch("tenants", f"id=eq.{tenant_id}", {"status": "suspended"})
+        await update.message.reply_text(f"✅ Tenant `{rows[0].get('name', tenant_id)}` suspended.")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
+
+
+async def cmd_activatetenant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Master admin: /activatetenant TENANT_ID — activate a tenant."""
+    if not _is_master_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Only the bot platform owner can use this command.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /activatetenant TENANT_ID")
+        return
+    tenant_id = context.args[0].strip()
+    try:
+        rows = sb_admin_get("tenants", f"select=id,name&id=eq.{tenant_id}&limit=1")
+        if not rows:
+            await update.message.reply_text(f"❌ Tenant `{tenant_id}` not found.")
+            return
+        sb_admin_patch("tenants", f"id=eq.{tenant_id}", {"status": "active"})
+        await update.message.reply_text(f"✅ Tenant `{rows[0].get('name', tenant_id)}` activated.")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
 
 
 def build_app() -> Application:
@@ -3173,6 +3727,17 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("credcheck", cmd_credcheck))
     app.add_handler(CommandHandler("points",    cmd_points))
     app.add_handler(CommandHandler("salesreport", cmd_salesreport))
+    app.add_handler(CommandHandler("checkrent",  cmd_checkrent))
+    app.add_handler(CommandHandler("setup",      cmd_setup))
+    app.add_handler(CommandHandler("setqr",      cmd_setqr))
+    app.add_handler(CommandHandler("setbanner",  cmd_setbanner))
+    app.add_handler(CommandHandler("checksetup", cmd_checksetup))
+    app.add_handler(CommandHandler("newtenant",  cmd_newtenant))
+    app.add_handler(CommandHandler("tenantlist", cmd_tenantlist))
+    app.add_handler(CommandHandler("tenantinfo", cmd_tenantinfo))
+    app.add_handler(CommandHandler("extendtenant", cmd_extendtenant))
+    app.add_handler(CommandHandler("suspendtenant", cmd_suspendtenant))
+    app.add_handler(CommandHandler("activatetenant", cmd_activatetenant))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -3192,6 +3757,14 @@ def build_app() -> Application:
             name="daily_sales_report",
         )
         log.info("[SALES REPORT] Daily sales report job registered")
+        # ── Heartbeat (every 5 min) ────────────────────────────────────────────
+        app.job_queue.run_repeating(
+            _heartbeat,
+            interval=5 * 60,
+            first=10,
+            name="tenant_heartbeat",
+        )
+        log.info("[HEARTBEAT] Tenant heartbeat job registered (every 5 min)")
     else:
         log.warning("[AUTO-CANCEL] JobQueue unavailable. Install python-telegram-bot[job-queue] to enable auto-cancel.")
         log.warning("[SALES REPORT] JobQueue unavailable. Daily sales report disabled.")
@@ -3199,8 +3772,10 @@ def build_app() -> Application:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             loop.create_task(_load_bot_settings())
+            loop.create_task(_heartbeat_startup())
         else:
             loop.run_until_complete(_load_bot_settings())
+            loop.run_until_complete(_heartbeat_startup())
     except Exception:
         pass
     return app

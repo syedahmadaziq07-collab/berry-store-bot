@@ -1807,6 +1807,15 @@ async function doConnect() {
   }
   try {
     sb = supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    if (TENANT_ID) {
+      const _origFrom = sb.from.bind(sb);
+      const _tenantTables = new Set(['products','product_variants','orders','credentials','users','bot_settings','push_subscriptions','rental_payments']);
+      sb.from = function(table) {
+        let q = _origFrom(table);
+        if (_tenantTables.has(table)) q = q.eq('tenant_id', TENANT_ID);
+        return q;
+      };
+    }
     _sbUrl = url;
     _sbKey = key;
     _dashSecret = dashSecret;
@@ -3526,6 +3535,15 @@ document.querySelectorAll('.overlay').forEach(o=>{
   if (savedUrl && savedKey) {
     try {
       sb = supabase.createClient(savedUrl, savedKey, { auth: { persistSession: false, autoRefreshToken: false } });
+      if (TENANT_ID) {
+        const _origFrom = sb.from.bind(sb);
+        const _tenantTables = new Set(['products','product_variants','orders','credentials','users','bot_settings','push_subscriptions','rental_payments']);
+        sb.from = function(table) {
+          let q = _origFrom(table);
+          if (_tenantTables.has(table)) q = q.eq('tenant_id', TENANT_ID);
+          return q;
+        };
+      }
       _sbUrl = savedUrl;
       _sbKey = savedKey;
       setConn(true);
