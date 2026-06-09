@@ -953,6 +953,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         log.warning(f"Admin start notify failed: {e}")
 
+    # STEP 4: Promo message (always sent, never configurable)
+    try:
+        await update.message.reply_text(
+            "Want an auto-order bot for your own shop? PM @berryrc to rent one 🚀"
+        )
+    except Exception as e:
+        log.warning(f"Promo message failed: {e}")
+
 # ─── Shop ─────────────────────────────────────────────────────────────────────
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
