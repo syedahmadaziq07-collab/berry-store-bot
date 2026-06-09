@@ -88,8 +88,6 @@ REQUIRED_CHANNEL_URL = "https://t.me/berrystorrel"
 PORT         = int(_get_env("PORT", "5000"))
 DASHBOARD_ADMIN_SECRET = _get_env("DASHBOARD_ADMIN_SECRET")
 BASE_DIR            = os.path.dirname(os.path.abspath(__file__))
-QR_PATH             = os.path.join(BASE_DIR, "payment_qr.png")
-BANNER_PATH         = os.path.join(BASE_DIR, "banner.png")
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 TENANT_ID           = _get_env("TENANT_ID")
 
@@ -173,10 +171,6 @@ except ValueError:
 
 TESTIMONIALS_CHANNEL_ID   = -1003850553745
 TESTIMONIALS_CHANNEL_ID_2 = -1003831715755
-_qr_file_id:     str   | None = None
-_qr_bytes:       bytes | None = None   # QR image cached in memory after first disk read
-_banner_file_id: str   | None = None
-_banner_bytes:   bytes | None = None   # Banner cached in memory after first disk read
 _bot_settings:   dict         = {}
 
 # ─── Startup Check ────────────────────────────────────────────────────────────
@@ -1069,17 +1063,15 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
 
-    # ── Banner send with tenant-specific banner from settings ────────────────
+    # ── Banner send with tenant-scoped bot_settings ─────────────────────────
     banner_sent = False
     _t_banner = time.monotonic()
     _banner_file_id = await _setting("banner_file_id", "")
     _banner_url = await _setting("banner_url", "")
     _photo = None
 
-    # Priority 1: Telegram file_id
     if _banner_file_id:
         _photo = _banner_file_id
-    # Priority 2: URL
     elif _banner_url:
         _photo = _banner_url
 
@@ -1444,26 +1436,12 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
-def get_qr_path():
-    """Return absolute path to payment_qr.png using BASE_DIR. Falls back to cwd."""
-    log.info(f"[QR DEBUG] BASE_DIR={BASE_DIR} QR_PATH={QR_PATH} exists={os.path.exists(QR_PATH)}")
-    if os.path.exists(QR_PATH):
-        log.info(f"[QR DEBUG] qr path found={QR_PATH}")
-        return QR_PATH
-    # Fallback: try current working directory in case cwd differs from BASE_DIR
-    cwd_qr = os.path.join(os.getcwd(), "payment_qr.png")
-    if os.path.exists(cwd_qr):
-        log.info(f"[QR DEBUG] qr path found (cwd fallback)={cwd_qr}")
-        return cwd_qr
-    log.warning(f"[QR DEBUG] qr path found=None — checked BASE_DIR path={QR_PATH}, cwd path={cwd_qr}")
-    return None
-
-
 async def _get_tenant_qr() -> tuple[str, str]:
     """Get tenant-specific QR as (file_id, url). Either may be empty."""
     file_id = await _setting('payment_qr_file_id', '')
     url = await _setting('payment_qr_url', '')
     return file_id, url
+
 
 async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
     _t_pay = time.monotonic()
@@ -1498,7 +1476,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         f"Amount: RM {order['amount']}\n\n"
         f"{_pay_instruction}"
     )
-    # Priority 1: Telegram file_id
+
     if _qr_file_id:
         try:
             await context.bot.send_photo(
@@ -1510,7 +1488,6 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             log.info(f"[PAYMENT] QR sent via file_id order_id={order_id}")
         except Exception as exc:
             log.warning(f"[PAYMENT] file_id failed: {_safe_error(exc)}")
-    # Priority 2: URL
     if not qr_sent and _qr_url:
         try:
             await context.bot.send_photo(
@@ -1536,7 +1513,7 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
                     [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_{order_id}")],
                 ]),
             )
-            log.warning(f"[PAYMENT] QR not configured for tenant {TENANT_ID}")
+            log.warning(f"[PAYMENT] QR not configured for tenant")
         except Exception as exc:
             log.warning(f"[PAYMENT] text fallback failed: {_safe_error(exc)}", exc_info=True)
     else:
