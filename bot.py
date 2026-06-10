@@ -4109,8 +4109,8 @@ async def cmd_activatetenant(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start",  cmd_start))
-    app.add_handler(CommandHandler("ping",        cmd_ping))
+    app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
+    app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
     app.add_handler(CommandHandler("admin",       cmd_admin))
     app.add_handler(CommandHandler("adminorders", cmd_adminorders))
     app.add_handler(CommandHandler("unsent",      cmd_unsent))
@@ -4139,7 +4139,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("activatetenant", cmd_activatetenant))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)); log.info("[HANDLERS] message handler registered")
     app.add_error_handler(on_error)
     # ── Tenant validation (safe to call sb_get now) ──────────────────────────
     log.info("─" * 35)
@@ -4218,6 +4218,26 @@ def main():
             app = build_app()
             _telegram_app = app
             _telegram_loop = asyncio.get_event_loop()
+
+            # Clear any lingering webhook so polling takes over cleanly
+            try:
+                _telegram_loop.run_until_complete(
+                    app.bot.delete_webhook(drop_pending_updates=True)
+                )
+                log.info("[WEBHOOK] delete_webhook ok")
+            except Exception as exc:
+                log.warning(f"[WEBHOOK] delete_webhook failed: {_safe_error(exc)}")
+
+            # Log webhook info for diagnostics
+            try:
+                wh = _telegram_loop.run_until_complete(app.bot.get_webhook_info())
+                log.info(f"[WEBHOOK_INFO] url={wh.url!r}")
+                log.info(f"[WEBHOOK_INFO] pending_update_count={wh.pending_update_count}")
+                log.info(f"[WEBHOOK_INFO] last_error_message={wh.last_error_message!r}")
+                log.info(f"[WEBHOOK_INFO] last_error_date={wh.last_error_date}")
+            except Exception as exc:
+                log.warning(f"[WEBHOOK_INFO] Could not fetch: {_safe_error(exc)}")
+
             log.info("[POLLING] started")
             app.run_polling(
                 drop_pending_updates=True,
