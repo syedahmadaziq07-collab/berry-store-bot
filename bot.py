@@ -55,6 +55,22 @@ if _EARLY_TOKEN:
 
     print("🚀 This instance is now the ONLY running bot!")
 
+    # Log current webhook info for diagnostics
+    try:
+        _wh_resp = _httpx_early.get(
+            f"https://api.telegram.org/bot{_EARLY_TOKEN}/getWebhookInfo",
+            timeout=10,
+        )
+        _wh_data = _wh_resp.json()
+        _wh_result = _wh_data.get("result") or {}
+        print(f"[WEBHOOK_INFO] url={_wh_result.get('url','')!r} "
+              f"has_custom_certificate={_wh_result.get('has_custom_certificate')} "
+              f"pending_update_count={_wh_result.get('pending_update_count')} "
+              f"last_error_date={_wh_result.get('last_error_date')} "
+              f"last_error_message={_wh_result.get('last_error_message','')!r}")
+    except Exception as _e:
+        print(f"[WEBHOOK_INFO] Could not fetch: {_e}")
+
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 # Logs to console AND to bot.log file for debugging
 
@@ -2741,6 +2757,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     user_id = update.effective_user.id
     text    = (update.message.text or "").strip()
+    log.info(f"[MESSAGE] received")
+    log.info(f"[MESSAGE] text={text!r}")
+    log.info(f"[MESSAGE] user_id={user_id}")
+    log.info(f"[MESSAGE] chat_id={update.effective_chat.id}")
 
     # ── Reply keyboard: "🏠 Home" button ──────────────────────────────────────
     if text == "🏠 Home":
@@ -3090,7 +3110,10 @@ async def cmd_adminorders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── /ping ────────────────────────────────────────────────────────────────────
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Pong! Bot hidup ✅")
+    log.info(f"[PING] received")
+    log.info(f"[PING] user_id={update.effective_user.id}")
+    log.info(f"[PING] chat_id={update.effective_chat.id}")
+    await update.message.reply_text("pong")
 
 # ─── /admin Dashboard ─────────────────────────────────────────────────────────
 
@@ -3157,16 +3180,13 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Global Error Handler ─────────────────────────────────────────────────────
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
+    log.exception("[TELEGRAM_ERROR] update=%s error=%s", update, context.error)
     if isinstance(context.error, Conflict):
-        log.error(
-            "Telegram polling conflict detected. Another running bot instance is using the same token. "
-            "Stop the old Replit/deployment/session that uses this bot token."
-        )
+        log.error("[POLLING_ERROR] Conflict: Another bot instance is using the same token.")
         return
     if isinstance(context.error, InvalidToken):
-        log.error("Telegram token rejected by Telegram API. Check the TELEGRAM_BOT_TOKEN secret.")
+        log.error("[POLLING_ERROR] InvalidToken: Telegram token rejected by API.")
         return
-    log.error(f"Telegram error: {_safe_error(context.error)}", exc_info=True)
 
 # ─── /addcred ─────────────────────────────────────────────────────────────────
 
