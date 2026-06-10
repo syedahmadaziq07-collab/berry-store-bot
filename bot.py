@@ -1548,7 +1548,7 @@ async def _refresh_payment_settings():
     """Force-refresh payment/banner settings from Supabase, bypassing cache."""
     global _bot_settings
     keys = ["payment_qr_file_id", "payment_qr_url", "banner_file_id", "banner_url",
-            "payment_title", "payment_instruction"]
+            "payment_title", "payment_instruction", "payment_button_instruction"]
     # Remove stale cached values so _setting() re-fetches from Supabase
     for k in keys:
         _bot_settings.pop(k, None)
@@ -1561,18 +1561,39 @@ async def _refresh_payment_settings():
             for r in rows:
                 rk = r.get("key")
                 if rk in keys:
-                    _bot_settings[rk] = r.get("value", "")
+                    _bot_settings[rk] = r.get("value") or ""
+        _qr_url_val = _bot_settings.get("payment_qr_url", "")
+        _qr_file_val = _bot_settings.get("payment_qr_file_id", "")
         log.info(f"[PAYMENT_SETTINGS] refreshed for tenant_id={TENANT_ID}")
-        log.info(f"[PAYMENT_SETTINGS] payment_qr_url present={'yes' if _bot_settings.get('payment_qr_url') else 'no'}")
-        log.info(f"[PAYMENT_SETTINGS] payment_qr_file_id present={'yes' if _bot_settings.get('payment_qr_file_id') else 'no'}")
+        log.info(f"[PAYMENT_SETTINGS] payment_qr_file_id present={'yes' if _qr_file_val else 'no'}")
+        log.info(f"[PAYMENT_SETTINGS] payment_qr_url present={'yes' if _qr_url_val else 'no'}")
+        if _qr_url_val:
+            log.info(f"[PAYMENT_SETTINGS] payment_qr_url value prefix={_qr_url_val[:60]!r}")
     except Exception as exc:
         log.warning(f"[PAYMENT_SETTINGS] refresh failed: {_safe_error(exc)}")
 
 
 async def _get_tenant_qr() -> tuple[str, str]:
-    """Get tenant-specific QR as (file_id, url). Either may be empty."""
-    file_id = await _setting('payment_qr_file_id', '')
-    url = await _setting('payment_qr_url', '')
+    """Get tenant-specific QR as (file_id, url). Always fetches fresh from Supabase."""
+    file_id = ""
+    url = ""
+    try:
+        rows = await asyncio.to_thread(
+            lambda: sb_get("bot_settings", "select=key,value&key=in.(payment_qr_file_id,payment_qr_url)")
+        )
+        if rows:
+            for r in rows:
+                rk = r.get("key")
+                rv = r.get("value") or ""
+                if rk == "payment_qr_file_id":
+                    file_id = rv
+                elif rk == "payment_qr_url":
+                    url = rv
+        log.info(f"[QR_FETCH] tenant_id={TENANT_ID} file_id={'yes' if file_id else 'no'} url={'yes' if url else 'no'}")
+        if url:
+            log.info(f"[QR_FETCH] url prefix={url[:60]!r}")
+    except Exception as exc:
+        log.warning(f"[QR_FETCH] failed: {_safe_error(exc)}")
     return file_id, url
 
 
@@ -1582,10 +1603,13 @@ async def send_payment_page(context, chat_id: int, user_id: int, order: dict, or
     Does NOT send admin notification — caller decides."""
     # Force-fresh settings so QR changes appear immediately (not stale cache)
     await _refresh_payment_settings()
+    _qr_file_id, _qr_url = await _get_tenant_qr()
+    # Sync fresh QR values into cache so _setting() calls below use latest
+    _bot_settings["payment_qr_file_id"] = _qr_file_id
+    _bot_settings["payment_qr_url"] = _qr_url
     qr_sent = False
     _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
     _pay_instruction = await _setting('payment_instruction', 'Scan QR code below to pay 👇')
-    _qr_file_id, _qr_url = await _get_tenant_qr()
 
     log.info(f"[PAYMENT] send_payment_page order_id={order_id} user_id={user_id} "
              f"tenant_id={TENANT_ID} qr_file_id={'yes' if _qr_file_id else 'no'} "
@@ -3865,19 +3889,20 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         s_count = 0
         lines.append("❌ Bot settings — query failed")
 
-    # QR check
+    # Payment QR and banner
     if TENANT_ID:
         qr_file_id = await _setting("payment_qr_file_id", "")
         qr_url = await _setting("payment_qr_url", "")
-        qr_ok = bool(qr_file_id) or bool(qr_url)
-        lines.append(f"{'✅' if qr_ok else '⚠️'} Payment QR: {qr_file_id or ''} / {qr_url or ''}")
-        banner_file_id = await _setting("banner_file_id", "")
         banner_url = await _setting("banner_url", "")
-        banner_ok = bool(banner_file_id) or bool(banner_url)
-        lines.append(f"{'✅' if banner_ok else 'ℹ️'} Banner: {banner_file_id or ''} / {banner_url or ''}")
+        banner_file_id = await _setting("banner_file_id", "")
+        lines.append(f"Payment QR URL present: {'true' if qr_url else 'false'}")
+        lines.append(f"Payment QR File present: {'true' if qr_file_id else 'false'}")
+        lines.append(f"Banner URL present: {'true' if banner_url else 'false'}")
+        lines.append(f"Banner File present: {'true' if banner_file_id else 'false'}")
 
     # Overall readiness
     shop_ready = p_count > 0
+    qr_ok = bool(qr_file_id) or bool(qr_url) if TENANT_ID else False
     lines.append("─" * 35)
     lines.append(f"{'✅ Shop ready' if shop_ready else '❌ Shop NOT ready — add products first'}")
     lines.append("")
