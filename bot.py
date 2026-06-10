@@ -3,6 +3,8 @@ Telegram Store Bot — Stable Version for Replit
 Run: python bot.py
 """
 
+BOT_BUILD = "coistr-start-fix-v3"
+
 import os
 import sys
 import time
@@ -200,6 +202,7 @@ log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
 log.info(f"MASTER_ADMIN_ID: {MASTER_ADMIN_ID if MASTER_ADMIN_ID else '❌ NOT SET'}")
 log.info(f"TENANT_ID    : {'✅ ' + TENANT_ID[:20] if TENANT_ID else '❌ MISSING'}")
 log.info(f"REQUIRED_CHANNEL: {REQUIRED_CHANNEL if REQUIRED_CHANNEL else '❌ NOT SET'}")
+log.info(f"[BOT_BUILD] {BOT_BUILD}")
 # NOTE: Tenant validity check moved into _log_tenant_info() called from
 # build_app() — do NOT call sb_get here, it's not defined yet.
 log.info("=" * 50)
@@ -580,7 +583,7 @@ def _dashboard_admin_ids() -> list[int]:
 
 @_app.route("/")
 def _index():
-    return "Bot hidup ✅", 200
+    return f"OK {BOT_BUILD}", 200
 
 @_app.route("/health")
 def _health():
@@ -903,6 +906,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     log.info(f"[START] received /start")
     log.info(f"[START] user_id={user.id}")
+    log.info(f"[START] chat_id={update.effective_chat.id}")
     log.info(f"[START] tenant_id={TENANT_ID}")
     log.info(f"[START] admin_id={ADMIN_ID}")
     log.info(f"[START] required_channel={REQUIRED_CHANNEL}")
@@ -4109,8 +4113,8 @@ async def cmd_activatetenant(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
+    app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     app.add_handler(CommandHandler("admin",       cmd_admin))
     app.add_handler(CommandHandler("adminorders", cmd_adminorders))
     app.add_handler(CommandHandler("unsent",      cmd_unsent))
