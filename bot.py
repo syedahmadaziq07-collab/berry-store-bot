@@ -184,27 +184,8 @@ log.info(f"ADMIN_ID     : {ADMIN_ID if ADMIN_ID else '❌ MISSING'}")
 log.info(f"MASTER_ADMIN_ID: {MASTER_ADMIN_ID if MASTER_ADMIN_ID else '❌ NOT SET'}")
 log.info(f"TENANT_ID    : {'✅ ' + TENANT_ID[:20] if TENANT_ID else '❌ MISSING'}")
 log.info(f"REQUIRED_CHANNEL: {REQUIRED_CHANNEL if REQUIRED_CHANNEL else '❌ NOT SET'}")
-if TENANT_ID:
-    try:
-        t_rows = sb_get("tenants", f"select=id,status,rent_end,name,bot_username&id=eq.{TENANT_ID}&limit=1")
-        if t_rows:
-            t = t_rows[0]
-            log.info(f"TENANT name   : {t.get('name', 'N/A')}")
-            log.info(f"TENANT bot    : @{t.get('bot_username', 'N/A')}")
-            log.info(f"TENANT status : {t.get('status')}")
-            log.info(f"TENANT rent_end: {t.get('rent_end')}")
-            log.info(f"TENANT active : {is_tenant_active()}")
-            qr_file_id = sb_get("bot_settings", f"select=value&key=eq.payment_qr_file_id&limit=1")
-            qr_url = sb_get("bot_settings", f"select=value&key=eq.payment_qr_url&limit=1")
-            banner_file_id = sb_get("bot_settings", f"select=value&key=eq.banner_file_id&limit=1")
-            banner_url = sb_get("bot_settings", f"select=value&key=eq.banner_url&limit=1")
-            log.info(f"TENANT QR file_id: {'✅' if qr_file_id and qr_file_id[0].get('value') else '❌'}")
-            log.info(f"TENANT QR URL   : {'✅' if qr_url and qr_url[0].get('value') else '❌'}")
-            log.info(f"TENANT banner   : {'✅' if (banner_file_id and banner_file_id[0].get('value')) or (banner_url and banner_url[0].get('value')) else '❌'}")
-        else:
-            log.warning(f"TENANT_ID {TENANT_ID} not found in tenants table")
-    except Exception as exc:
-        log.warning(f"TENANT lookup failed: {_safe_error(exc)}")
+# NOTE: Tenant validity check moved into _log_tenant_info() called from
+# build_app() — do NOT call sb_get here, it's not defined yet.
 log.info("=" * 50)
 
 if not BOT_TOKEN:
@@ -383,6 +364,33 @@ def _test_supabase() -> tuple:
         return False, f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
     except Exception as exc:
         return False, f"{type(exc).__name__}: {exc}"
+
+
+def _log_tenant_info():
+    """Log tenant configuration. Call only after sb_get is defined (i.e. from build_app)."""
+    if not TENANT_ID:
+        log.info("[TENANT] No TENANT_ID configured — skipping tenant lookup")
+        return
+    try:
+        t_rows = sb_get("tenants", f"select=id,status,rent_end,name,bot_username&id=eq.{TENANT_ID}&limit=1")
+        if t_rows:
+            t = t_rows[0]
+            log.info(f"[TENANT] name   : {t.get('name', 'N/A')}")
+            log.info(f"[TENANT] bot    : @{t.get('bot_username', 'N/A')}")
+            log.info(f"[TENANT] status : {t.get('status')}")
+            log.info(f"[TENANT] rent_end: {t.get('rent_end')}")
+            log.info(f"[TENANT] active : {is_tenant_active()}")
+            qr_fid = sb_get("bot_settings", "select=value&key=eq.payment_qr_file_id&limit=1")
+            qr_url = sb_get("bot_settings", "select=value&key=eq.payment_qr_url&limit=1")
+            b_fid  = sb_get("bot_settings", "select=value&key=eq.banner_file_id&limit=1")
+            b_url  = sb_get("bot_settings", "select=value&key=eq.banner_url&limit=1")
+            log.info(f"[TENANT] QR file_id: {'✅' if qr_fid and qr_fid[0].get('value') else '❌'}")
+            log.info(f"[TENANT] QR URL   : {'✅' if qr_url and qr_url[0].get('value') else '❌'}")
+            log.info(f"[TENANT] banner   : {'✅' if (b_fid and b_fid[0].get('value')) or (b_url and b_url[0].get('value')) else '❌'}")
+        else:
+            log.warning(f"[TENANT] ID {TENANT_ID} not found in tenants table — setup incomplete")
+    except Exception as exc:
+        log.warning(f"[TENANT] lookup failed (will retry at runtime): {_safe_error(exc)}")
 
 
 # ── Startup connectivity test — 3 attempts ────────────────────────────────────
@@ -877,93 +885,105 @@ async def _send_join_message(update: Update):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if not await _check_membership(context.bot, user.id):
-        await _send_join_message(update)
-        return
-    log.info(f"/start from {user.id} (@{user.username})")
-
-    # Clean up old flow messages before sending new ones
-    chat_id = update.effective_chat.id
-    await delete_flow_messages(context, context.bot, chat_id, user.id)
-
-    # Instant reply so user knows bot is alive
-    await update.message.reply_text("Bot hidup ✅")
-
-    total_users = total_sold = 0
-    is_new_user = False
+    log.info(f"[START] received /start")
+    log.info(f"[START] user_id={user.id}")
+    log.info(f"[START] tenant_id={TENANT_ID}")
+    log.info(f"[START] admin_id={ADMIN_ID}")
+    log.info(f"[START] required_channel={REQUIRED_CHANNEL}")
     try:
-        def start_stats():
-            # STEP 1: Check if user is new BEFORE saving to database
-            try:
-                existing = sb_get("users", f"select=id&id=eq.{user.id}")
-                is_new = len(existing) == 0
-            except Exception:
-                is_new = False
-            # STEP 2: Save user to database as usual (existing code)
-            sb_upsert("users", {
-                "id": user.id,
-                "username": user.username or "",
-                "first_name": user.first_name or "",
-            })
-            users = sb_get("users", "select=id")
-            sold  = sb_get("orders", "select=id&status=eq.completed")
-            return len(users), len(sold), is_new
-        total_users, total_sold, is_new_user = await _run_supabase("start.stats", start_stats)
-    except Exception as exc:
-        log.warning(f"Supabase /start: {_safe_error(exc)}")
+        if not await _check_membership(context.bot, user.id):
+            await _send_join_message(update)
+            return
+        log.info(f"/start from {user.id} (@{user.username})")
 
-    now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%A, %d %B %Y %H:%M:%S")
-    _welcome = await _setting('welcome_message', 'Welcome to Berry Store.')
-    await update.message.reply_text(
-        f"{_welcome}\n"
-        f"Updated: {now}\n\n"
-        f"👋 Hi {user.first_name}!\n\n"
-        f"👤 Account\n"
-        f"• ID: {user.id}\n"
-        f"• Username: @{user.username or 'tiada'}\n\n"
-        f"📊 Store Stats\n"
-        f"• Total Users: {total_users}\n"
-        f"• Total Sold: {total_sold} pcs\n\n"
-        f"Tekan butang di bawah untuk mula!",
-        reply_markup=main_kb(),
-    )
+        # Clean up old flow messages before sending new ones
+        chat_id = update.effective_chat.id
+        await delete_flow_messages(context, context.bot, chat_id, user.id)
 
-    # STEP 3: Send notification to admin after saving
-    try:
-        now_str = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
-        if is_new_user:
-            notif_text = (
-                "👤 PELANGGAN BARU MASUK!\n"
-                "━━━━━━━━━━━━━━━━━━\n"
-                f"• Nama: {user.first_name}\n"
-                f"• Username: @{user.username or 'tiada'}\n"
-                f"• ID: {user.id}\n"
-                f"• Masa: {now_str}\n"
-                "━━━━━━━━━━━━━━━━━━\n"
-                "🆕 Pengguna baru!"
-            )
-        else:
-            notif_text = (
-                "👤 PELANGGAN AKTIF!\n"
-                "━━━━━━━━━━━━━━━━━━\n"
-                f"• Nama: {user.first_name}\n"
-                f"• Username: @{user.username or 'tiada'}\n"
-                f"• ID: {user.id}\n"
-                f"• Masa: {now_str}\n"
-                "━━━━━━━━━━━━━━━━━━\n"
-                "🔄 Pengguna lama"
-            )
-        await context.bot.send_message(chat_id=ADMIN_ID, text=notif_text)
-    except Exception as e:
-        log.warning(f"Admin start notify failed: {e}")
+        # Instant reply so user knows bot is alive
+        await update.message.reply_text("Bot hidup ✅")
 
-    # STEP 4: Promo message (always sent, never configurable)
-    try:
+        total_users = total_sold = 0
+        is_new_user = False
+        try:
+            def start_stats():
+                # STEP 1: Check if user is new BEFORE saving to database
+                try:
+                    existing = sb_get("users", f"select=id&id=eq.{user.id}")
+                    is_new = len(existing) == 0
+                except Exception:
+                    is_new = False
+                # STEP 2: Save user to database as usual (existing code)
+                sb_upsert("users", {
+                    "id": user.id,
+                    "username": user.username or "",
+                    "first_name": user.first_name or "",
+                })
+                users = sb_get("users", "select=id")
+                sold  = sb_get("orders", "select=id&status=eq.completed")
+                return len(users), len(sold), is_new
+            total_users, total_sold, is_new_user = await _run_supabase("start.stats", start_stats)
+        except Exception as exc:
+            log.warning(f"Supabase /start: {_safe_error(exc)}")
+
+        now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%A, %d %B %Y %H:%M:%S")
+        _welcome = await _setting('welcome_message', 'Welcome to Berry Store.')
         await update.message.reply_text(
-            "Want an auto-order bot for your own shop? PM @berryrc to rent one 🚀"
+            f"{_welcome}\n"
+            f"Updated: {now}\n\n"
+            f"👋 Hi {user.first_name}!\n\n"
+            f"👤 Account\n"
+            f"• ID: {user.id}\n"
+            f"• Username: @{user.username or 'tiada'}\n\n"
+            f"📊 Store Stats\n"
+            f"• Total Users: {total_users}\n"
+            f"• Total Sold: {total_sold} pcs\n\n"
+            f"Tekan butang di bawah untuk mula!",
+            reply_markup=main_kb(),
         )
-    except Exception as e:
-        log.warning(f"Promo message failed: {e}")
+
+        # STEP 3: Send notification to admin after saving
+        try:
+            now_str = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
+            if is_new_user:
+                notif_text = (
+                    "👤 PELANGGAN BARU MASUK!\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    f"• Nama: {user.first_name}\n"
+                    f"• Username: @{user.username or 'tiada'}\n"
+                    f"• ID: {user.id}\n"
+                    f"• Masa: {now_str}\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "🆕 Pengguna baru!"
+                )
+            else:
+                notif_text = (
+                    "👤 PELANGGAN AKTIF!\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    f"• Nama: {user.first_name}\n"
+                    f"• Username: @{user.username or 'tiada'}\n"
+                    f"• ID: {user.id}\n"
+                    f"• Masa: {now_str}\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "🔄 Pengguna lama"
+                )
+            await context.bot.send_message(chat_id=ADMIN_ID, text=notif_text)
+        except Exception as e:
+            log.warning(f"Admin start notify failed: {e}")
+
+        # STEP 4: Promo message (always sent, never configurable)
+        try:
+            await update.message.reply_text(
+                "Want an auto-order bot for your own shop? PM @berryrc to rent one 🚀"
+            )
+        except Exception as e:
+            log.warning(f"Promo message failed: {e}")
+    except Exception as exc:
+        log.exception(f"[START_ERROR] user_id={user.id} tenant_id={TENANT_ID}: {_safe_error(exc)}")
+        try:
+            await update.message.reply_text("⚠️ Bot is starting up. Please try again in a few seconds.")
+        except Exception:
+            pass
 
 # ─── Shop ─────────────────────────────────────────────────────────────────────
 
@@ -4101,6 +4121,10 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(on_error)
+    # ── Tenant validation (safe to call sb_get now) ──────────────────────────
+    log.info("─" * 35)
+    _log_tenant_info()
+    log.info("─" * 35)
     # ── Background job: auto-cancel expired pending orders every 15 minutes ──
     if app.job_queue is not None:
         app.job_queue.run_repeating(
@@ -4174,11 +4198,13 @@ def main():
             app = build_app()
             _telegram_app = app
             _telegram_loop = asyncio.get_event_loop()
+            log.info("[POLLING] started")
             app.run_polling(
                 drop_pending_updates=True,
                 allowed_updates=Update.ALL_TYPES,
                 close_loop=False,
             )
+            log.info("[POLLING] stopped")
             log.info("Bot berhenti dengan bersih.")
             break
 
@@ -4191,7 +4217,7 @@ def main():
             sys.exit(1)
 
         except Exception as exc:
-            log.error(f"Bot crash: {_safe_error(exc)}", exc_info=True)
+            log.error(f"[POLLING] error: {_safe_error(exc)}", exc_info=True)
             log.info(f"Restart dalam {retry_delay}s...")
             time.sleep(retry_delay)
             retry_delay = min(retry_delay * 2, max_delay)   # exponential backoff
