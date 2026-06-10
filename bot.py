@@ -1544,6 +1544,31 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
 # ─── Payment ──────────────────────────────────────────────────────────────────
 
+async def _refresh_payment_settings():
+    """Force-refresh payment/banner settings from Supabase, bypassing cache."""
+    global _bot_settings
+    keys = ["payment_qr_file_id", "payment_qr_url", "banner_file_id", "banner_url",
+            "payment_title", "payment_instruction"]
+    # Remove stale cached values so _setting() re-fetches from Supabase
+    for k in keys:
+        _bot_settings.pop(k, None)
+    # Fetch fresh values and update cache
+    try:
+        rows = await asyncio.to_thread(
+            lambda: sb_get("bot_settings", "select=key,value")
+        )
+        if rows:
+            for r in rows:
+                rk = r.get("key")
+                if rk in keys:
+                    _bot_settings[rk] = r.get("value", "")
+        log.info(f"[PAYMENT_SETTINGS] refreshed for tenant_id={TENANT_ID}")
+        log.info(f"[PAYMENT_SETTINGS] payment_qr_url present={'yes' if _bot_settings.get('payment_qr_url') else 'no'}")
+        log.info(f"[PAYMENT_SETTINGS] payment_qr_file_id present={'yes' if _bot_settings.get('payment_qr_file_id') else 'no'}")
+    except Exception as exc:
+        log.warning(f"[PAYMENT_SETTINGS] refresh failed: {_safe_error(exc)}")
+
+
 async def _get_tenant_qr() -> tuple[str, str]:
     """Get tenant-specific QR as (file_id, url). Either may be empty."""
     file_id = await _setting('payment_qr_file_id', '')
@@ -1555,6 +1580,8 @@ async def send_payment_page(context, chat_id: int, user_id: int, order: dict, or
     """Shared payment page: sends QR + action buttons.
     Used by both new orders (Proceed to Payment) and active pending orders (Continue Payment).
     Does NOT send admin notification — caller decides."""
+    # Force-fresh settings so QR changes appear immediately (not stale cache)
+    await _refresh_payment_settings()
     qr_sent = False
     _pay_title = await _setting('payment_title', '💳 PAYMENT DETAILS')
     _pay_instruction = await _setting('payment_instruction', 'Scan QR code below to pay 👇')
@@ -3734,6 +3761,15 @@ async def cmd_setbanner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
 
 
+async def cmd_reloadsettings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /reloadsettings — reload bot settings from Supabase."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    await _load_bot_settings()
+    await update.message.reply_text("✅ Settings reloaded.")
+
+
 async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: /setup — guide to configure a new tenant bot."""
     if update.effective_user.id != ADMIN_ID:
@@ -4134,6 +4170,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("setup",      cmd_setup))
     app.add_handler(CommandHandler("setqr",      cmd_setqr))
     app.add_handler(CommandHandler("setbanner",  cmd_setbanner))
+    app.add_handler(CommandHandler("reloadsettings", cmd_reloadsettings))
     app.add_handler(CommandHandler("checksetup", cmd_checksetup))
     app.add_handler(CommandHandler("newtenant",  cmd_newtenant))
     app.add_handler(CommandHandler("tenantlist", cmd_tenantlist))
