@@ -896,11 +896,17 @@ def build_product_keyboard(products: list) -> ReplyKeyboardMarkup:
 # ─── Membership gate ──────────────────────────────────────────────────────────
 
 async def _check_membership(bot, user_id: int) -> bool:
+    """Check if user is a member of REQUIRED_CHANNEL. Returns True if user can proceed."""
+    if not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", ""):
+        return True
     try:
         member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
         return member.status in ("member", "administrator", "creator")
     except Exception as exc:
-        log.warning(f"[MEMBERSHIP] Check failed for user {user_id}: {exc}")
+        if "Member list is inaccessible" in str(exc):
+            log.warning("[MEMBERSHIP] Channel inaccessible. Bot may not be admin/member of REQUIRED_CHANNEL.")
+        else:
+            log.warning(f"[MEMBERSHIP] Check failed for user {user_id}: {exc}")
         return True
 
 async def _send_join_message(update: Update):
@@ -927,10 +933,46 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[START] tenant_id={TENANT_ID}")
     log.info(f"[START] admin_id={ADMIN_ID}")
     log.info(f"[START] required_channel={REQUIRED_CHANNEL}")
+
+    # ── Membership check with detailed outcome logging ─────────────────────
+    membership_ok = True
+    channel_empty = not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", "")
+    if channel_empty:
+        log.info(f"[START] membership_check=skipped")
+    else:
+        try:
+            member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
+            membership_ok = member.status in ("member", "administrator", "creator")
+            log.info(f"[START] membership_check={'passed' if membership_ok else 'failed'}")
+        except Exception as exc:
+            if "Member list is inaccessible" in str(exc):
+                log.warning("[MEMBERSHIP] Channel inaccessible. Bot may not be admin/member of REQUIRED_CHANNEL.")
+                log.info(f"[START] membership_check=inaccessible")
+                try:
+                    await update.message.reply_text("⚠️ Bot setup belum lengkap. Sila hubungi admin kedai.")
+                except Exception:
+                    pass
+                if ADMIN_ID:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=ADMIN_ID,
+                            text="Force join channel cannot be checked. Please add the bot as admin/member in "
+                                 f"{REQUIRED_CHANNEL} or remove REQUIRED_CHANNEL env."
+                        )
+                    except Exception:
+                        pass
+                return
+            else:
+                log.warning(f"[MEMBERSHIP] Check failed for user {user.id}: {exc}")
+                log.info(f"[START] membership_check=failed")
+
+    if not membership_ok:
+        log.info(f"[START] membership_check=failed")
+        await _send_join_message(update)
+        return
+
+    # ── Proceed with /start ────────────────────────────────────────────────
     try:
-        if not await _check_membership(context.bot, user.id):
-            await _send_join_message(update)
-            return
         log.info(f"/start from {user.id} (@{user.username})")
 
         # Clean up old flow messages before sending new ones
@@ -978,6 +1020,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Tekan butang di bawah untuk mula!",
             reply_markup=main_kb(),
         )
+        log.info(f"[START] welcome_sent=true")
 
         # STEP 3: Send notification to admin after saving
         try:
