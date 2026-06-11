@@ -452,26 +452,43 @@ async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int =
                 await asyncio.sleep(min(0.4 * (2 ** (attempt - 1)) + random.uniform(0, 0.3), 3))
     raise last_exc
 
-async def _get_cached_products_and_variants():
-    """Return (products, variants) from in-memory cache, refreshing if stale."""
+async def _get_cached_products_and_variants(force: bool = False):
+    """Return (active_products, variants_with_stock) from cache, refreshing if stale."""
     now = time.time()
-    if _products_cache_data["products"] and (now - _products_cache_data["timestamp"]) < CACHE_TTL:
+    if not force and _products_cache_data["products"] and (now - _products_cache_data["timestamp"]) < CACHE_TTL:
         return _products_cache_data["products"], _products_cache_data["variants"]
 
-    products = await _run_supabase(
+    # Fetch ALL products (including inactive/deleted) for counting
+    all_products = await _run_supabase(
         "products.list",
-        lambda: sb_get("products", "select=id,name,stock,price,duration,description,auto_delivery&order=id"),
+        lambda: sb_get("products", "select=id,name,stock,price,duration,description,auto_delivery,is_active,status&order=id"),
     ) or []
 
+    # Count products by status
+    inactive_count = sum(1 for p in all_products if p.get("is_active") is False)
+    deleted_count = sum(1 for p in all_products if str(p.get("status", "")).lower() == "deleted")
+    active_products = [
+        p for p in all_products
+        if p.get("is_active") is not False
+        and str(p.get("status", "active")).lower() not in ("inactive", "deleted")
+    ]
+
+    # Fetch variants with stock > 0
     all_variants = await _run_supabase(
         "product_variants.all",
-        lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description"),
+        lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description&stock=gt.0"),
     ) or []
 
-    _products_cache_data["products"]  = products
+    log.info(f"[SHOP] tenant_id={TENANT_ID} "
+             f"active_products_count={len(active_products)} "
+             f"inactive_products_count={inactive_count} "
+             f"deleted_products_count={deleted_count} "
+             f"shown_products_count={len(active_products)}")
+
+    _products_cache_data["products"]  = active_products
     _products_cache_data["variants"]  = all_variants
     _products_cache_data["timestamp"] = now
-    return products, all_variants
+    return active_products, all_variants
 
 
 def _cache_products(products):
@@ -1023,7 +1040,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     _t_shop = time.monotonic()
     try:
-        products, all_variants = await _get_cached_products_and_variants()
+        products, all_variants = await _get_cached_products_and_variants(force=True)
         _cache_products(products)
         log.info(f"[SHOP] tenant={TENANT_ID} user={user_id} products={len(products)} variants={len(all_variants)} "
                  f"load_ms={int((time.monotonic()-_t_shop)*1000)} source=cache_or_supabase")
@@ -1276,7 +1293,7 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         try:
             rows = await _run_supabase(
                 f"products.detail id={product_id}",
-                lambda: sb_get("products", f"select=id,name,stock,price,duration,description,auto_delivery,delivery_mode&id=eq.{product_id}&limit=1"),
+                lambda: sb_get("products", f"select=id,name,stock,price,duration,description,auto_delivery,delivery_mode,is_active,status&id=eq.{product_id}&limit=1"),
             )
             p = rows[0] if rows else None
         except Exception as exc:
@@ -1294,6 +1311,17 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                     err_msg_obj = await update.message.reply_text(err_msg, reply_markup=back_shop())
                 track_flow_message(context, err_msg_obj, "error_message")
                 return
+
+    # Reject inactive/deleted products regardless of source
+    if p.get("is_active") is False or str(p.get("status", "active")).lower() in ("inactive", "deleted"):
+        err_msg = "⚠️ Product ini tidak lagi tersedia."
+        if update.callback_query:
+            await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
+            err_msg_obj = await update.callback_query.edit_message_text(err_msg, reply_markup=back_shop())
+        else:
+            err_msg_obj = await update.message.reply_text(err_msg, reply_markup=back_shop())
+        track_flow_message(context, err_msg_obj, "error_message")
+        return
 
     # ── Variant check: use cached variants first, fallback to DB only if needed ──
     db_variants = [v for v in (cached_variants or []) if str(v.get("product_id")) == str(product_id)]
@@ -3913,6 +3941,44 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_shopdebug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: /shopdebug — show product/variant status breakdown."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bukan admin.")
+        return
+    try:
+        all_products = await asyncio.to_thread(
+            lambda: sb_get("products", "select=id,name,stock,is_active,status&order=id")
+        ) or []
+        all_variants = await asyncio.to_thread(
+            lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price&stock=gt.0")
+        ) or []
+        active_products = [
+            p for p in all_products
+            if p.get("is_active") is not False
+            and str(p.get("status", "active")).lower() not in ("inactive", "deleted")
+        ]
+        inactive_count = sum(1 for p in all_products if p.get("is_active") is False)
+        deleted_count = sum(1 for p in all_products if str(p.get("status", "")).lower() == "deleted")
+        lines = [
+            f"Shop Debug — ID: {TENANT_ID}",
+            "─" * 35,
+            f"All products: {len(all_products)}",
+            f"  Active: {len(active_products)}",
+            f"  Inactive (is_active=false): {inactive_count}",
+            f"  Deleted (status=deleted): {deleted_count}",
+            f"Variants with stock>0: {len(all_variants)}",
+            "─" * 35,
+            "Latest 5 shown products:",
+        ]
+        for p in active_products[-5:]:
+            lines.append(f"  • {p.get('id')} {p.get('name','?')} "
+                         f"is_active={p.get('is_active')} status={p.get('status','—')}")
+        await update.message.reply_text("\n".join(lines))
+    except Exception as exc:
+        await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
+
+
 # ─── Master Admin Tenant Management Commands ─────────────────────────────────
 
 DEFAULT_TENANT_SETTINGS = {
@@ -4197,6 +4263,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("setbanner",  cmd_setbanner))
     app.add_handler(CommandHandler("reloadsettings", cmd_reloadsettings))
     app.add_handler(CommandHandler("checksetup", cmd_checksetup))
+    app.add_handler(CommandHandler("shopdebug",  cmd_shopdebug))
     app.add_handler(CommandHandler("newtenant",  cmd_newtenant))
     app.add_handler(CommandHandler("tenantlist", cmd_tenantlist))
     app.add_handler(CommandHandler("tenantinfo", cmd_tenantinfo))
