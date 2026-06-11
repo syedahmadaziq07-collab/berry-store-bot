@@ -946,22 +946,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log.info(f"[START] membership_check={'passed' if membership_ok else 'failed'}")
         except Exception as exc:
             if "Member list is inaccessible" in str(exc):
-                log.warning("[MEMBERSHIP] Channel inaccessible. Bot may not be admin/member of REQUIRED_CHANNEL.")
-                log.info(f"[START] membership_check=inaccessible")
-                try:
-                    await update.message.reply_text("⚠️ Bot setup belum lengkap. Sila hubungi admin kedai.")
-                except Exception:
-                    pass
+                log.warning("[MEMBERSHIP] Channel inaccessible. Skipping force-join check.")
+                log.info(f"[START] membership_check=inaccessible_but_allowed")
                 if ADMIN_ID:
                     try:
                         await context.bot.send_message(
                             chat_id=ADMIN_ID,
-                            text="Force join channel cannot be checked. Please add the bot as admin/member in "
+                            text="⚠️ Force-join channel cannot be checked. Please add bot as admin/member in "
                                  f"{REQUIRED_CHANNEL} or remove REQUIRED_CHANNEL env."
                         )
                     except Exception:
                         pass
-                return
             else:
                 log.warning(f"[MEMBERSHIP] Check failed for user {user.id}: {exc}")
                 log.info(f"[START] membership_check=failed")
