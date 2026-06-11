@@ -3991,25 +3991,37 @@ async def cmd_shopdebug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         all_variants = await asyncio.to_thread(
             lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price&stock=gt.0")
         ) or []
-        active_products = [
+        shown_products = [
             p for p in all_products
             if p.get("is_active") is not False
             and str(p.get("status", "active")).lower() not in ("inactive", "deleted")
         ]
-        inactive_count = sum(1 for p in all_products if p.get("is_active") is False)
-        deleted_count = sum(1 for p in all_products if str(p.get("status", "")).lower() == "deleted")
+        active_count = sum(1 for p in all_products
+                           if p.get("is_active") is True
+                           and str(p.get("status", "")).lower() == "active")
+        inactive_count = sum(1 for p in all_products
+                             if p.get("is_active") is False
+                             and str(p.get("status", "")).lower() == "inactive")
+        deleted_count = sum(1 for p in all_products
+                            if str(p.get("status", "")).lower() == "deleted")
+        other_count = len(all_products) - active_count - inactive_count - deleted_count
+        shown_product_ids = {p["id"] for p in shown_products}
+        shown_variants = [v for v in all_variants if v.get("product_id") in shown_product_ids]
         lines = [
             f"Shop Debug — ID: {TENANT_ID}",
             "─" * 35,
             f"All products: {len(all_products)}",
-            f"  Active: {len(active_products)}",
-            f"  Inactive (is_active=false): {inactive_count}",
-            f"  Deleted (status=deleted): {deleted_count}",
-            f"Variants with stock>0: {len(all_variants)}",
+            f"Active shown: {len(shown_products)}",
+            f"Inactive hidden: {inactive_count}",
+            f"Deleted hidden: {deleted_count}",
+            f"Other/unknown: {other_count}",
+            "Variants with stock>0:",
+            f"  All variants: {len(all_variants)}",
+            f"  Shown variants: {len(shown_variants)}",
             "─" * 35,
             "Latest 5 shown products:",
         ]
-        for p in active_products[-5:]:
+        for p in shown_products[-5:]:
             lines.append(f"  • {p.get('id')} {p.get('name','?')} "
                          f"is_active={p.get('is_active')} status={p.get('status','—')}")
         await update.message.reply_text("\n".join(lines))
