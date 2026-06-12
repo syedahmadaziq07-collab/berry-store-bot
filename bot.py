@@ -934,35 +934,40 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[START] admin_id={ADMIN_ID}")
     log.info(f"[START] required_channel={REQUIRED_CHANNEL}")
 
-    # ── Membership check with detailed outcome logging ─────────────────────
+    # ── Force-join membership check ────────────────────────────────────────
+    enable_fj = (await _setting("enable_force_join", "false")).lower() == "true"
+    notify_fj_err = (await _setting("notify_admin_force_join_errors", "false")).lower() == "true"
+    log.info(f"[FORCE_JOIN] tenant_id={TENANT_ID} enable_force_join={enable_fj} "
+             f"notify_admin_force_join_errors={notify_fj_err} channel={REQUIRED_CHANNEL}")
+
     membership_ok = True
-    channel_empty = not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", "")
-    if channel_empty:
-        log.info(f"[START] membership_check=skipped")
+    if not enable_fj:
+        log.info(f"[FORCE_JOIN] action=skipped")
     else:
-        try:
-            member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
-            membership_ok = member.status in ("member", "administrator", "creator")
-            log.info(f"[START] membership_check={'passed' if membership_ok else 'failed'}")
-        except Exception as exc:
-            if "Member list is inaccessible" in str(exc):
-                log.warning("[MEMBERSHIP] Channel inaccessible. Skipping force-join check.")
-                log.info(f"[START] membership_check=inaccessible_but_allowed")
-                if ADMIN_ID:
-                    try:
-                        await context.bot.send_message(
-                            chat_id=ADMIN_ID,
-                            text="⚠️ Force-join channel cannot be checked. Please add bot as admin/member in "
-                                 f"{REQUIRED_CHANNEL} or remove REQUIRED_CHANNEL env."
-                        )
-                    except Exception:
-                        pass
-            else:
-                log.warning(f"[MEMBERSHIP] Check failed for user {user.id}: {exc}")
-                log.info(f"[START] membership_check=failed")
+        channel_empty = not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", "")
+        if channel_empty:
+            log.info(f"[FORCE_JOIN] action=skipped channel_empty")
+        else:
+            try:
+                member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
+                membership_ok = member.status in ("member", "administrator", "creator")
+                log.info(f"[FORCE_JOIN] action={'checked_passed' if membership_ok else 'checked_failed'}")
+            except Exception as exc:
+                if "Member list is inaccessible" in str(exc):
+                    log.warning(f"[FORCE_JOIN] action=inaccessible_log_only")
+                    if notify_fj_err and ADMIN_ID:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=ADMIN_ID,
+                                text="⚠️ Force-join channel cannot be checked. Please add bot as admin/member in "
+                                     f"{REQUIRED_CHANNEL} or remove REQUIRED_CHANNEL env."
+                            )
+                        except Exception:
+                            pass
+                else:
+                    log.warning(f"[FORCE_JOIN] action=failed error={_safe_error(exc)}")
 
     if not membership_ok:
-        log.info(f"[START] membership_check=failed")
         await _send_join_message(update)
         return
 
@@ -3982,8 +3987,13 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"Banner File present: {'true' if banner_file_id else 'false'}")
 
     # Feature flags
+    enable_fj = (await _setting("enable_force_join", "false")).lower() == "true"
+    notify_fj_err = (await _setting("notify_admin_force_join_errors", "false")).lower() == "true"
     send_approved_msg = (await _setting("send_payment_approved_message", "true")).lower() == "true"
     enable_pts_msg = (await _setting("enable_points_message", "true")).lower() == "true"
+    lines.append(f"REQUIRED_CHANNEL: {REQUIRED_CHANNEL or '(not set)'}")
+    lines.append(f"enable_force_join: {enable_fj}")
+    lines.append(f"notify_admin_force_join_errors: {notify_fj_err}")
     lines.append(f"send_payment_approved_message: {send_approved_msg}")
     lines.append(f"enable_points_message: {enable_pts_msg}")
 
