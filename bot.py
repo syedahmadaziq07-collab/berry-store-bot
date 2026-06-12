@@ -2082,6 +2082,12 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
     except Exception as exc:
         log.warning(f"[POINTS] Award failed (non-fatal): {_safe_error(exc)}")
 
+    # ── Tenant-level feature flags ──────────────────────────────────────────────
+    send_approved_msg = (await _setting("send_payment_approved_message", "true")).lower() == "true"
+    enable_pts_msg = (await _setting("enable_points_message", "true")).lower() == "true"
+    log.info(f"[APPROVAL_MESSAGE] tenant_id={TENANT_ID} send_payment_approved_message={send_approved_msg}")
+    log.info(f"[POINTS_MESSAGE] tenant_id={TENANT_ID} enable_points_message={enable_pts_msg}")
+
     # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
     if _delivery_mode == "auto":
         cred_sent = False
@@ -2126,7 +2132,8 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         if cred_sent:
             # Credential delivered — skip manual message
             log.info(f"[AUTO DELIVERY] manual fallback sent=False")
-            await _send_points_notification(context, order["user_id"])
+            if enable_pts_msg:
+                await _send_points_notification(context, order["user_id"])
             try:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
@@ -2149,19 +2156,21 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
             log.warning(f"[CREDENTIAL_DELIVERY] No credentials assigned for variant_id={fallback_variant_id}")
         else:
             log.warning(f"[CREDENTIAL_DELIVERY] No credentials assigned for product_id={order.get('product_id')} with variant_id=null")
-        try:
-            await context.bot.send_message(
-                chat_id=order["user_id"],
-                text=(
-                    "✅ Pembayaran anda telah disahkan!\n\n"
-                    "Akaun akan dihantar secepat mungkin 🚀\n"
-                    "(biasanya dalam masa 1 jam)\n\n"
-                    "Ada masalah? DM admin: @berryrc 🙌"
-                ),
-            )
-        except Exception as exc:
-            log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
-        await _send_points_notification(context, order["user_id"])
+        if send_approved_msg:
+            try:
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=(
+                        "✅ Pembayaran anda telah disahkan!\n\n"
+                        "Akaun akan dihantar secepat mungkin 🚀\n"
+                        "(biasanya dalam masa 1 jam)\n\n"
+                        "Ada masalah? DM admin: @berryrc 🙌"
+                    ),
+                )
+            except Exception as exc:
+                log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
+        if enable_pts_msg:
+            await _send_points_notification(context, order["user_id"])
         # Extra message for private/semi/crumbs slot products
         try:
             _pname = (order.get("product_name") or "").lower()
@@ -2196,21 +2205,22 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         return
 
     # ── MANUAL DELIVERY path (existing flow, unchanged) ────────────────────────
-    # Message 1 → Customer
-    try:
-        await context.bot.send_message(
-            chat_id=order["user_id"],
-            text=await _setting(
-                "delivery_msg",
-                "✅ Pembayaran anda telah disahkan!\n\n"
-                "✅ Payment dah confirm!\n\n"
-                "Akaun akan dihantar secepat mungkin 🚀\n"
-                "(biasanya laju je, tak lebih dari 1 jam 😉)\n\n"
-                "Kalau lebih 1 jam tak dapat apa-apa, jangan segan terus DM admin: @berryrc ya 🙌"
-            ),
-        )
-    except Exception as exc:
-        log.warning(f"Notify user approve: {_safe_error(exc)}")
+    if send_approved_msg:
+        # Message 1 → Customer
+        try:
+            await context.bot.send_message(
+                chat_id=order["user_id"],
+                text=await _setting(
+                    "delivery_msg",
+                    "✅ Pembayaran anda telah disahkan!\n\n"
+                    "✅ Payment dah confirm!\n\n"
+                    "Akaun akan dihantar secepat mungkin 🚀\n"
+                    "(biasanya laju je, tak lebih dari 1 jam 😉)\n\n"
+                    "Kalau lebih 1 jam tak dapat apa-apa, jangan segan terus DM admin: @berryrc ya 🙌"
+                ),
+            )
+        except Exception as exc:
+            log.warning(f"Notify user approve: {_safe_error(exc)}")
 
     # Message 2 → Admin (copy-paste /send command)
     try:
@@ -3970,6 +3980,12 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"Payment QR File present: {'true' if qr_file_id else 'false'}")
         lines.append(f"Banner URL present: {'true' if banner_url else 'false'}")
         lines.append(f"Banner File present: {'true' if banner_file_id else 'false'}")
+
+    # Feature flags
+    send_approved_msg = (await _setting("send_payment_approved_message", "true")).lower() == "true"
+    enable_pts_msg = (await _setting("enable_points_message", "true")).lower() == "true"
+    lines.append(f"send_payment_approved_message: {send_approved_msg}")
+    lines.append(f"enable_points_message: {enable_pts_msg}")
 
     # Overall readiness
     shop_ready = p_count > 0
