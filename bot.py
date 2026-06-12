@@ -2458,6 +2458,13 @@ def _award_points_sync(user_id: int, username: str):
 async def _send_points_notification(context, user_id: int):
     """Send a loyalty points summary to the customer right after delivery."""
     try:
+        enable_pts = (await _setting("enable_points_message", "true")).lower() == "true"
+    except Exception:
+        enable_pts = True
+    if not enable_pts:
+        log.info(f"[POINTS_MESSAGE] tenant_id={TENANT_ID} enable_points_message=false sent=false")
+        return
+    try:
         rows = await asyncio.wait_for(
             asyncio.to_thread(
                 lambda: sb_get("points", f"select=points&user_id=eq.{user_id}&limit=1")
@@ -2487,7 +2494,7 @@ async def _send_points_notification(context, user_id: int):
                 f"Progress: [{bar}] {pts}/50 pts"
             )
         await context.bot.send_message(chat_id=user_id, text=text)
-        log.info(f"[POINTS] Notification sent to user {user_id} ({pts} pts)")
+        log.info(f"[POINTS_MESSAGE] tenant_id={TENANT_ID} enable_points_message=true sent=true")
     except Exception as exc:
         log.warning(f"[POINTS] Notification send failed for user {user_id}: {_safe_error(exc)}")
 
