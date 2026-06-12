@@ -2064,23 +2064,9 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
     # ── Testimonial channel post ───────────────────────────────────────────────
     await _post_testimonial(context, order)
 
-    # ── Loyalty points award ───────────────────────────────────────────────────
-    try:
-        _user_id   = order.get("user_id")
-        _username  = order.get("username") or ""
-        await _run_supabase(
-            f"points.award user={_user_id}",
-            lambda uid=_user_id, uname=_username: _award_points_sync(uid, uname),
-        )
-        log.info(f"[POINTS] 10 points awarded to user {_user_id} for order {order_id}")
-    except Exception as exc:
-        log.warning(f"[POINTS] Award failed (non-fatal): {_safe_error(exc)}")
-
     # ── Tenant-level feature flags ──────────────────────────────────────────────
     send_approved_msg = (await _setting("send_payment_approved_message", "true")).lower() == "true"
-    enable_pts_msg = (await _setting("enable_points_message", "true")).lower() == "true"
     log.info(f"[APPROVAL_MESSAGE] tenant_id={TENANT_ID} send_payment_approved_message={send_approved_msg}")
-    log.info(f"[POINTS_MESSAGE] tenant_id={TENANT_ID} enable_points_message={enable_pts_msg}")
 
     # ── AUTO DELIVERY path ─────────────────────────────────────────────────────
     if _delivery_mode == "auto":
@@ -2126,8 +2112,6 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         if cred_sent:
             # Credential delivered — skip manual message
             log.info(f"[AUTO DELIVERY] manual fallback sent=False")
-            if enable_pts_msg:
-                await _send_points_notification(context, order["user_id"])
             try:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
@@ -2163,8 +2147,6 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery fallback user notify: {_safe_error(exc)}")
-        if enable_pts_msg:
-            await _send_points_notification(context, order["user_id"])
         # Extra message for private/semi/crumbs slot products
         try:
             _pname = (order.get("product_name") or "").lower()
@@ -2430,104 +2412,13 @@ async def _post_testimonial(context, order: dict):
 
 # ─── Loyalty Points ───────────────────────────────────────────────────────────
 
-def _award_points_sync(user_id: int, username: str):
-    """Add 10 points to user in the 'points' table (read-then-write)."""
-    now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat()
-    rows = sb_admin_get("points", f"select=*&user_id=eq.{user_id}&limit=1")
-    if rows:
-        current = rows[0]
-        new_points = (current.get("points") or 0) + 10
-        if new_points >= 50:
-            new_points = 0  # reset after redeem threshold reached
-        sb_admin_patch("points", f"user_id=eq.{user_id}", {
-            "username":     username or current.get("username", ""),
-            "points":       new_points,
-            "total_orders": (current.get("total_orders") or 0) + 1,
-            "updated_at":   now,
-        })
-    else:
-        sb_admin_post("points", {
-            "user_id":      user_id,
-            "username":     username or "",
-            "points":       10,
-            "total_orders": 1,
-            "updated_at":   now,
-        })
 
 
 async def _send_points_notification(context, user_id: int):
-    """Send a loyalty points summary to the customer right after delivery."""
-    try:
-        enable_pts = (await _setting("enable_points_message", "true")).lower() == "true"
-    except Exception:
-        enable_pts = True
-    if not enable_pts:
-        log.info(f"[POINTS_MESSAGE] tenant_id={TENANT_ID} enable_points_message=false sent=false")
-        return
-    try:
-        rows = await asyncio.wait_for(
-            asyncio.to_thread(
-                lambda: sb_get("points", f"select=points&user_id=eq.{user_id}&limit=1")
-            ),
-            timeout=10,
-        )
-        pts = (rows[0].get("points") or 0) if rows else 0
-    except Exception as exc:
-        log.warning(f"[POINTS] Notification fetch failed for user {user_id}: {_safe_error(exc)}")
-        return
+    """Disabled — points reward system removed."""
+    log.info("[POINTS_MESSAGE] disabled permanently")
+    return False
 
-    try:
-        if pts >= 50:
-            text = (
-                f"⭐ You earned 10 points!\n"
-                f"🎉 You have {pts} pts — enough for a FREE product!\n"
-                f"💬 Contact admin to redeem your free product!"
-            )
-        else:
-            filled = round(pts / 50 * 10)
-            empty  = 10 - filled
-            bar    = "█" * filled + "░" * empty
-            text   = (
-                f"⭐ You earned 10 points for this purchase!\n"
-                f"📊 Total points: {pts} pts\n"
-                f"🎁 Collect 50 points to redeem a FREE product!\n"
-                f"Progress: [{bar}] {pts}/50 pts"
-            )
-        await context.bot.send_message(chat_id=user_id, text=text)
-        log.info(f"[POINTS_MESSAGE] tenant_id={TENANT_ID} enable_points_message=true sent=true")
-    except Exception as exc:
-        log.warning(f"[POINTS] Notification send failed for user {user_id}: {_safe_error(exc)}")
-
-
-async def cmd_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Customer checks their loyalty points balance."""
-    user = update.effective_user
-    try:
-        rows = await _run_supabase(
-            f"points.check user={user.id}",
-            lambda: sb_get("points", f"select=*&user_id=eq.{user.id}&limit=1"),
-        )
-        if rows:
-            pts   = rows[0].get("points") or 0
-            total = rows[0].get("total_orders") or 0
-        else:
-            pts   = 0
-            total = 0
-    except Exception as exc:
-        log.warning(f"[POINTS] Check failed for user {user.id}: {_safe_error(exc)}")
-        await update.message.reply_text("⚠️ Could not fetch points. Try again later.")
-        return
-
-    free        = pts // 50
-    remainder   = pts % 50
-    next_reward = 50 - remainder if remainder else 0
-
-    await update.message.reply_text(
-        f"⭐ Your Points: {pts} pts\n"
-        f"🛒 Total Orders: {total}\n"
-        f"🎁 Free products available: {free} (every 50pts)\n"
-        f"📊 Next reward in: {next_reward} pts"
-    )
 
 # ─── Rate Limiter ─────────────────────────────────────────────────────────────
 # Max 5 button presses per 3 seconds per user.
@@ -3054,8 +2945,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as exc:
             log.warning(f"[UNSENT] mark sent failed: {_safe_error(exc)}")
         log.info(f"Account details sent for order {order_id} → buyer {buyer_id}")
-        # Points notification → customer
-        await _send_points_notification(context, buyer_id)
     except Exception as exc:
         log.warning(f"Send account details error: {_safe_error(exc)}")
         await update.message.reply_text(f"⚠️ Gagal hantar kepada pembeli: {_safe_error(exc)}")
@@ -3986,12 +3875,11 @@ async def cmd_checksetup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     enable_fj = (await _setting("enable_force_join", "false")).lower() == "true"
     notify_fj_err = (await _setting("notify_admin_force_join_errors", "false")).lower() == "true"
     send_approved_msg = (await _setting("send_payment_approved_message", "true")).lower() == "true"
-    enable_pts_msg = (await _setting("enable_points_message", "true")).lower() == "true"
     lines.append(f"REQUIRED_CHANNEL: {REQUIRED_CHANNEL or '(not set)'}")
     lines.append(f"enable_force_join: {enable_fj}")
     lines.append(f"notify_admin_force_join_errors: {notify_fj_err}")
     lines.append(f"send_payment_approved_message: {send_approved_msg}")
-    lines.append(f"enable_points_message: {enable_pts_msg}")
+    lines.append(f"points_message_system: disabled")
 
     # Overall readiness
     shop_ready = p_count > 0
@@ -4356,7 +4244,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("addcred",   cmd_addcred))
     app.add_handler(CommandHandler("credstock", cmd_credstock))
     app.add_handler(CommandHandler("credcheck", cmd_credcheck))
-    app.add_handler(CommandHandler("points",    cmd_points))
     app.add_handler(CommandHandler("salesreport", cmd_salesreport))
     app.add_handler(CommandHandler("clearpending", cmd_clearpending))
     app.add_handler(CommandHandler("checkrent",  cmd_checkrent))
