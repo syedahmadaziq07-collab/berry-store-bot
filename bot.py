@@ -936,9 +936,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Force-join membership check ────────────────────────────────────────
     enable_fj = (await _setting("enable_force_join", "false")).lower() == "true"
-    notify_fj_err = (await _setting("notify_admin_force_join_errors", "false")).lower() == "true"
-    log.info(f"[FORCE_JOIN] tenant_id={TENANT_ID} enable_force_join={enable_fj} "
-             f"notify_admin_force_join_errors={notify_fj_err} channel={REQUIRED_CHANNEL}")
+    log.info(f"[FORCE_JOIN] tenant_id={TENANT_ID} enable_force_join={enable_fj} channel={REQUIRED_CHANNEL}")
 
     membership_ok = True
     if not enable_fj:
@@ -955,15 +953,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as exc:
                 if "Member list is inaccessible" in str(exc):
                     log.warning(f"[FORCE_JOIN] action=inaccessible_log_only")
-                    if notify_fj_err and ADMIN_ID:
-                        try:
-                            await context.bot.send_message(
-                                chat_id=ADMIN_ID,
-                                text="⚠️ Force-join channel cannot be checked. Please add bot as admin/member in "
-                                     f"{REQUIRED_CHANNEL} or remove REQUIRED_CHANNEL env."
-                            )
-                        except Exception:
-                            pass
                 else:
                     log.warning(f"[FORCE_JOIN] action=failed error={_safe_error(exc)}")
 
