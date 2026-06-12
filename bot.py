@@ -2041,7 +2041,6 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                     log.info(f"[AUTO DELIVERY] variant_id={variant_id}")
                     if delivery_mode == "auto":
                         log.info(f"[AUTO DELIVERY] using column is_used")
-                        # Try fetch by variant_id first, fallback to product_id
                         if variant_id:
                             cred_rows = sb_admin_get(
                                 "credentials",
@@ -2050,12 +2049,11 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                         else:
                             cred_rows = sb_admin_get(
                                 "credentials",
-                                f"select=id,email,password&product_id=eq.{order_data['product_id']}&is_used=eq.false&order=id&limit=1",
+                                f"select=id,email,password&product_id=eq.{order_data['product_id']}&variant_id=is.null&is_used=eq.false&order=id&limit=1",
                             )
-                        log.info(f"[AUTO DELIVERY] credential found={bool(cred_rows)}")
+                        log.info(f"[CREDENTIAL_DELIVERY] tenant_id={TENANT_ID} order_id={order_id} product_id={order_data.get('product_id')} variant_id={variant_id} credential_found={bool(cred_rows)}")
                         if cred_rows:
                             cred = cred_rows[0]
-                            # NOTE: do NOT mark is_used here — mark only after send_message succeeds
                         else:
                             log.warning(f"[AUTO DELIVERY] no unused credential found — falling back to manual delivery message")
             return order_data, product_data, cred
@@ -2146,6 +2144,11 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
 
         # Fallback: no cred found OR send failed
         log.info(f"[AUTO DELIVERY] manual fallback sent=True")
+        fallback_variant_id = order.get("variant_id")
+        if fallback_variant_id:
+            log.warning(f"[CREDENTIAL_DELIVERY] No credentials assigned for variant_id={fallback_variant_id}")
+        else:
+            log.warning(f"[CREDENTIAL_DELIVERY] No credentials assigned for product_id={order.get('product_id')} with variant_id=null")
         try:
             await context.bot.send_message(
                 chat_id=order["user_id"],
@@ -2176,11 +2179,13 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         except Exception as exc:
             log.warning(f"Extra slot message failed: {_safe_error(exc)}")
         try:
+            variant_info = f"Variant: {fallback_variant_id} | " if fallback_variant_id else ""
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
                 text=(
                     f"⚠️ STOK CREDENTIALS HABIS!\n"
-                    f"Produk: {order.get('product_name', '-')}\n"
+                    f"Produk: {order.get('product_name', '-')} (ID: {order.get('product_id', '')})\n"
+                    f"{variant_info}"
                     f"Tiada credentials tersedia.\n"
                     f"Tambah: /addcred {product.get('id', '')}\n"
                     f"Atau hantar manual: /send {order_id}"
@@ -4024,6 +4029,31 @@ async def cmd_shopdebug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for p in shown_products[-5:]:
             lines.append(f"  • {p.get('id')} {p.get('name','?')} "
                          f"is_active={p.get('is_active')} status={p.get('status','—')}")
+        # ── Credential counts by product + variant ─────────────────────────
+        try:
+            all_creds = await asyncio.to_thread(
+                lambda: sb_get("credentials", "select=id,product_id,variant_id,is_used")
+            ) or []
+            if all_creds:
+                lines.append("─" * 35)
+                lines.append("Credentials by product+variant:")
+                cred_groups: dict[str, dict] = {}
+                for c in all_creds:
+                    pid = c.get("product_id")
+                    vid = c.get("variant_id") or "null"
+                    key = f"p{pid}_v{vid}"
+                    if key not in cred_groups:
+                        cred_groups[key] = {"product_id": pid, "variant_id": vid, "total": 0, "unused": 0}
+                    cred_groups[key]["total"] += 1
+                    if not c.get("is_used"):
+                        cred_groups[key]["unused"] += 1
+                for key in sorted(cred_groups.keys()):
+                    g = cred_groups[key]
+                    delivered = g["total"] - g["unused"]
+                    lines.append(f"  Product {g['product_id']} | Variant {g['variant_id']}: "
+                                 f"{g['total']} total ({g['unused']} unused, {delivered} delivered)")
+        except Exception:
+            pass
         await update.message.reply_text("\n".join(lines))
     except Exception as exc:
         await update.message.reply_text(f"⚠️ Error: {_safe_error(exc)}")
