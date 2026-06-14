@@ -2074,7 +2074,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         if cred:
             log.info(f"[AUTO DELIVERY] credential selected id={cred['id']}")
             log.info(f"[AUTO DELIVERY] sending credential to user_id={order['user_id']}")
-            # ── Fetch delivery note from variant/product description ───────
+            # ── Fetch delivery note from variant/product delivery_note ──────
             delivery_note = None
             delivery_source = "none"
             order_variant_id = order.get("variant_id")
@@ -2085,27 +2085,27 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                         f"delivery_note.variant id={order_variant_id}",
                         lambda: sb_get(
                             "product_variants",
-                            f"select=description&id=eq.{order_variant_id}&limit=1",
+                            f"select=delivery_note&id=eq.{order_variant_id}&limit=1",
                         ),
                     )
                     if var_rows:
-                        desc = (var_rows[0].get("description") or "").strip()
-                        if desc:
-                            delivery_note = desc
-                            delivery_source = "variant_description"
+                        note = (var_rows[0].get("delivery_note") or "").strip()
+                        if note:
+                            delivery_note = note
+                            delivery_source = "variant_delivery_note"
                 else:
                     prod_rows = await _run_supabase(
                         f"delivery_note.product id={order_product_id}",
                         lambda: sb_get(
                             "products",
-                            f"select=description&id=eq.{order_product_id}&limit=1",
+                            f"select=delivery_note&id=eq.{order_product_id}&limit=1",
                         ),
                     )
                     if prod_rows:
-                        desc = (prod_rows[0].get("description") or "").strip()
-                        if desc:
-                            delivery_note = desc
-                            delivery_source = "product_description"
+                        note = (prod_rows[0].get("delivery_note") or "").strip()
+                        if note:
+                            delivery_note = note
+                            delivery_source = "product_delivery_note"
             except Exception as exc:
                 log.warning(f"[DELIVERY_NOTE] fetch failed: {_safe_error(exc)}")
             log.info(f"[DELIVERY_NOTE] tenant_id={TENANT_ID} order_id={order_id} "
