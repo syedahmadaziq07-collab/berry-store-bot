@@ -2074,20 +2074,93 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         if cred:
             log.info(f"[AUTO DELIVERY] credential selected id={cred['id']}")
             log.info(f"[AUTO DELIVERY] sending credential to user_id={order['user_id']}")
+            # ── Fetch delivery note from variant/product description ───────
+            delivery_note = None
+            delivery_source = "none"
+            order_variant_id = order.get("variant_id")
+            order_product_id = order.get("product_id")
             try:
-                await context.bot.send_message(
-                    chat_id=order["user_id"],
-                    text=(
-                        "✅ Pembayaran anda telah disahkan!\n\n"
-                        "🎉 Berikut adalah maklumat akaun anda:\n\n"
-                        f"📦 Produk: {order.get('product_name', '-')}\n"
-                        f"📧 Email: {cred['email']}\n"
-                        f"🔑 Password: {cred['password']}\n\n"
-                        "⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
-                        "💬 Ada masalah? Hubungi admin: @berryrc"
-                    ),
+                if order_variant_id:
+                    var_rows = await _run_supabase(
+                        f"delivery_note.variant id={order_variant_id}",
+                        lambda: sb_get(
+                            "product_variants",
+                            f"select=description&id=eq.{order_variant_id}&limit=1",
+                        ),
+                    )
+                    if var_rows:
+                        desc = (var_rows[0].get("description") or "").strip()
+                        if desc:
+                            delivery_note = desc
+                            delivery_source = "variant_description"
+                else:
+                    prod_rows = await _run_supabase(
+                        f"delivery_note.product id={order_product_id}",
+                        lambda: sb_get(
+                            "products",
+                            f"select=description&id=eq.{order_product_id}&limit=1",
+                        ),
+                    )
+                    if prod_rows:
+                        desc = (prod_rows[0].get("description") or "").strip()
+                        if desc:
+                            delivery_note = desc
+                            delivery_source = "product_description"
+            except Exception as exc:
+                log.warning(f"[DELIVERY_NOTE] fetch failed: {_safe_error(exc)}")
+            log.info(f"[DELIVERY_NOTE] tenant_id={TENANT_ID} order_id={order_id} "
+                     f"product_id={order_product_id} variant_id={order_variant_id} "
+                     f"source={delivery_source} note_present={delivery_note is not None}")
+
+            # ── Build and send credential message ──────────────────────────
+            cred_email = cred["email"]
+            cred_password = cred.get("password") or ""
+            if cred_password:
+                cred_lines = [
+                    f"📦 Produk: {order.get('product_name', '-')}",
+                    f"📧 Email: {cred_email}",
+                    f"🔑 Password: {cred_password}",
+                ]
+            else:
+                cred_lines = [
+                    f"📦 Produk: {order.get('product_name', '-')}",
+                    f"🔑 Code: {cred_email}",
+                ]
+            msg_parts = [
+                "✅ Pembayaran anda telah disahkan!\n",
+                "🎉 Berikut adalah maklumat akaun anda:\n",
+                "\n".join(cred_lines),
+            ]
+            if delivery_note:
+                note_block = (
+                    f"\n━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📌 MAKLUMAT PENTING / RULES\n\n"
+                    f"{delivery_note}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━"
                 )
-                cred_sent = True
+                msg_parts.append(note_block)
+            full_msg = "\n\n".join(msg_parts)
+
+            try:
+                if len(full_msg) > 4000:
+                    await context.bot.send_message(
+                        chat_id=order["user_id"],
+                        text="\n\n".join(msg_parts[:-1]),
+                    )
+                    await context.bot.send_message(
+                        chat_id=order["user_id"],
+                        text=msg_parts[-1],
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=order["user_id"],
+                        text=full_msg,
+                    )
+            except Exception as exc:
+                log.warning(f"[AUTO DELIVERY] credential send failed — {_safe_error(exc)}", exc_info=True)
+                cred_sent = False
+
+            if cred_sent:
                 log.info(f"[AUTO DELIVERY] credential send success=True")
                 # Mark is_used ONLY after successful send
                 try:
@@ -2106,8 +2179,6 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                     )
                 except Exception as exc:
                     log.warning(f"[UNSENT] auto mark sent failed: {_safe_error(exc)}")
-            except Exception as exc:
-                log.warning(f"[AUTO DELIVERY] credential send success=False — {_safe_error(exc)}", exc_info=True)
 
         if cred_sent:
             # Credential delivered — skip manual message
