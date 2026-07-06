@@ -473,6 +473,9 @@ async def _get_cached_products_and_variants(force: bool = False):
         and str(p.get("status", "active")).lower() not in ("inactive", "deleted")
     ]
 
+    # Sort products alphabetically A-Z by name
+    active_products.sort(key=lambda p: p.get('name', '').lower())
+
     # Fetch variants with stock > 0
     all_variants = await _run_supabase(
         "product_variants.all",
@@ -508,6 +511,7 @@ def _load_products_cache_from_disk():
             cached = json.load(cache_file)
         if isinstance(cached, dict) and isinstance(cached.get("data"), list):
             _products_cache["data"] = cached.get("data") or []
+            _products_cache["data"].sort(key=lambda p: p.get('name', '').lower())
             _products_cache["updated_at"] = float(cached.get("updated_at") or 0)
             log.info(f"Product cache loaded from disk count={len(_products_cache['data'])}")
     except Exception as exc:
