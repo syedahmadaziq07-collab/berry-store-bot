@@ -1099,6 +1099,9 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(text, reply_markup=back_home())
         return
 
+    # Sort products alphabetically A-Z by name
+    products.sort(key=lambda p: p.get('name', '').lower())
+
     # Save product list so handle_message can resolve number → product
     context.user_data["shop_products"] = products
 
