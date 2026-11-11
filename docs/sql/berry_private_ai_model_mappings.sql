@@ -59,7 +59,7 @@ BEGIN
         RAISE EXCEPTION 'service_role required' USING ERRCODE = '42501';
     END IF;
     IF p_tenant IS NULL OR p_key IS NULL OR p_expected_revision IS NULL
-       OR p_expected_revision < 0 OR jsonb_typeof(p_payload) <> 'array'
+       OR p_expected_revision < 0 OR p_payload IS NULL OR jsonb_typeof(p_payload) <> 'array'
        OR jsonb_array_length(p_payload) > 6 THEN
         RAISE EXCEPTION 'invalid mapping request' USING ERRCODE = '22023';
     END IF;
@@ -83,7 +83,7 @@ BEGIN
     SELECT revision INTO v_current
       FROM berry_private.ai_model_mappings WHERE tenant_id=p_tenant FOR UPDATE;
     IF coalesce(v_current, 0) <> p_expected_revision THEN
-        RAISE EXCEPTION 'stale mapping revision' USING ERRCODE = '40001';
+        RAISE EXCEPTION 'stale mapping revision' USING ERRCODE = '23505';
     END IF;
     INSERT INTO berry_private.ai_model_mappings(tenant_id,payload,revision)
       VALUES(p_tenant,p_payload,p_expected_revision + 1)
