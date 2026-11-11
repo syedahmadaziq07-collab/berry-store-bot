@@ -1,0 +1,6 @@
+{
+  "name": "Berry Store Admin Control Center",
+  "description": "Centralized management dashboard for Berry Store Telegram bot - products, orders, inventory, AI studio, wallets, and bot settings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
