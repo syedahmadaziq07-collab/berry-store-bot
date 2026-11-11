@@ -16,6 +16,8 @@ export function AIModelMappingPanel() {
   const [items, setItems] = useState<Mapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<'staging-draft-only' | 'private-persistent-staging'>('staging-draft-only');
+  const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -26,6 +28,8 @@ export function AIModelMappingPanel() {
       if (active) {
         if (!Array.isArray(data)) throw new Error('Format mapping tidak sah');
         setItems(data);
+        setMode(response.headers.get('X-Berry-Mapping-Mode') === 'private-persistent-staging' ? 'private-persistent-staging' : 'staging-draft-only');
+        setRevision(Number(response.headers.get('X-Berry-Mapping-Revision') || 0));
       }
     }).catch(e => { if (active) setError(String(e.message)); })
       .finally(() => { if (active) setLoading(false); });
@@ -50,13 +54,18 @@ export function AIModelMappingPanel() {
     try {
       const result = await apiFetch(BASE, {
         method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-Berry-Mapping-Revision': String(revision)},
         body: JSON.stringify(items),
       });
       const payload = await result.json();
       if (!Array.isArray(payload)) throw new Error('Respons simpanan tidak sah');
       setItems(payload);
-      setNotice('Draft berjaya disimpan pada storan sementara staging (boleh hilang selepas restart). Ia belum digunakan oleh Telegram bot atau fal.ai.');
+      const nextMode = result.headers.get('X-Berry-Mapping-Mode') === 'private-persistent-staging' ? 'private-persistent-staging' : 'staging-draft-only';
+      setMode(nextMode);
+      setRevision(Number(result.headers.get('X-Berry-Mapping-Revision') || 0));
+      setNotice(nextMode === 'private-persistent-staging'
+        ? 'Mapping disimpan dalam private staging database. Telegram bot dan fal.ai belum diaktifkan.'
+        : 'Draft disimpan pada SQLite staging sementara; boleh hilang selepas restart.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Simpanan gagal');
     } finally {
@@ -70,8 +79,9 @@ export function AIModelMappingPanel() {
         <div>
           <h2 className="font-bold text-white">Nama Telegram ≠ Model Sebenar</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Preview staging sahaja: nama paparan berasingan daripada Provider Model ID fal.ai.
-            Ini draft sementara, bukan konfigurasi bot live; tiada generation atau caj Berry Credits.
+            Staging sahaja: nama paparan berasingan daripada Provider Model ID fal.ai.
+            {mode === 'private-persistent-staging' ? ' Mapping disimpan dalam database ujian private.' : ' Draft SQLite sementara boleh hilang selepas redeploy.'}
+            {' '}Belum mengaktifkan bot, AI generation atau caj Berry Credits.
           </p>
         </div>
         <button type="button" onClick={add} disabled={loading}
@@ -121,7 +131,7 @@ export function AIModelMappingPanel() {
         className="px-4 py-2 bg-pink-600 hover:bg-pink-500 rounded-lg text-white text-xs disabled:opacity-50">
         {saving ? 'Menyimpan...' : 'Simpan Mapping'}
       </button>
-      <p className="text-[11px] text-amber-300">Simpanan draft hanya pada SQLite staging dan mungkin hilang semasa redeploy. Tidak dikongsi dengan bot Telegram. Database production tidak disentuh.</p>
+      <p className="text-[11px] text-amber-300">{mode === "private-persistent-staging" ? "Mapping disimpan pada private database staging berasingan." : "Simpanan hanya pada SQLite staging dan mungkin hilang semasa redeploy."} Tidak dikongsi dengan Telegram bot. Database production tidak disentuh.</p>
     </section>
   );
 }
