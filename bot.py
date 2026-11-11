@@ -2513,6 +2513,67 @@ def _ai_video_is_admin(update: Update) -> bool:
     return bool(ADMIN_ID and update.effective_user and update.effective_user.id == ADMIN_ID)
 
 
+async def _ai_video_channel_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Fail closed for AI Video membership. Bot must be channel admin to verify."""
+    user = update.effective_user
+    if not user:
+        return False
+    try:
+        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
+        if member.status in ("member", "administrator", "creator") or (
+            member.status == "restricted" and getattr(member, "is_member", False)
+        ):
+            return True
+    except Exception as exc:
+        log.warning("[AI_VIDEO] Channel membership verification unavailable: %s", type(exc).__name__)
+        await _safe_edit_or_send(
+            update.callback_query,
+            "⚠️ Tak dapat sahkan membership channel buat masa ini. "
+            "Sila cuba lagi selepas bot mendapat akses admin channel.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Semak Semula", callback_data="ai_video_join_check")],
+                [InlineKeyboardButton("📢 Buka Channel", url=REQUIRED_CHANNEL_URL)],
+            ]),
+        )
+        return False
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🔒 Untuk guna AI Video, sila join channel Berry Store dahulu. "
+        "Selepas join, tekan Semak Membership.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 Join @berrystorrel", url=REQUIRED_CHANNEL_URL)],
+            [InlineKeyboardButton("✅ Saya Dah Join — Semak", callback_data="ai_video_join_check")],
+        ]),
+    )
+    return False
+
+
+async def _announce_ai_video_generation(context: ContextTypes.DEFAULT_TYPE, state: dict) -> None:
+    """Announce an admin test only after an explicit paid generation request."""
+    try:
+        me = await context.bot.get_me()
+        if not me.username:
+            return
+        deep_link = "https://t.me/" + me.username + "?start=ai_video"
+        duration = state.get("duration", "5")
+        await context.bot.send_message(
+            chat_id=REQUIRED_CHANNEL,
+            text=(
+                "🍓 BERRY AI STUDIO\\n\\n"
+                "🎬 Ada pengguna sedang cuba generate AI Video!\\n"
+                "🤖 Model: PixVerse V3.5\\n"
+                f"⏱ Durasi: {duration} saat\\n"
+                "⚡ Status: Request sedang diproses\\n\\n"
+                "Nak cuba AI Video sendiri? Buka Berry Store Bot."
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Buka Berry Store Bot", url=deep_link)]
+            ]),
+        )
+    except Exception as exc:
+        log.warning("[AI_VIDEO] Announcement skipped: %s", type(exc).__name__)
+
+
 def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("⬅️ Kembali", callback_data=callback),
@@ -2913,7 +2974,7 @@ async def generate_ai_video_confirmed(update: Update, context: ContextTypes.DEFA
         return
     # Pop before any await to prevent duplicate clicks/charges.
     context.user_data.pop("ai_video_flow", None)
-    await query.message.reply_text("⏳ Request dihantar ke fal.ai. Video mungkin ambil beberapa minit.")
+    await query.message.reply_text("⏳ Menyediakan request fal.ai. Video mungkin ambil beberapa minit.")
     import tempfile
     from pathlib import Path
     try:
@@ -2937,6 +2998,7 @@ async def generate_ai_video_confirmed(update: Update, context: ContextTypes.DEFA
                         "resolution": "720p",
                     },
                 )
+        await _announce_ai_video_generation(context, state)
         result = await asyncio.wait_for(asyncio.to_thread(_generate), timeout=600)
         url = ((result or {}).get("video") or {}).get("url")
         if not url or not url.startswith("https://"):
@@ -3188,6 +3250,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
+        elif data == "ai_video_join_check":
+            if await _ai_video_channel_gate(update, context):
+                await show_ai_video(update, context)
+        elif (data == "ai_video" or data.startswith("ai_studio:video")
+              or data.startswith("ai_video_") or data.startswith("ai_pixverse_")) and not await _ai_video_channel_gate(update, context):
+            return
         elif data == "ai_video":           await show_ai_video(update, context)
         elif data.startswith("ai_studio:"):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
