@@ -24,8 +24,7 @@ import httpx
 from flask import Flask, jsonify, request, send_from_directory, g
 from werkzeug.security import check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
-from ai_model_mapping import (SETTING_KEY, MappingValidationError,
-                              validate_mappings, encode_mappings, decode_mappings)
+from ai_model_mapping import MappingValidationError, validate_mappings, encode_mappings, decode_mappings
 
 log = logging.getLogger("berry.admin")
 COOKIE = "__Host-berry_admin"
@@ -97,37 +96,6 @@ class DataStore:
                     raise BackendUnavailable("Dataset melebihi had selamat; aggregation database diperlukan")
         except (httpx.HTTPError, ValueError) as from_exc:
             raise BackendUnavailable("Sambungan database gagal") from from_exc
-
-    def get_ai_model_mappings(self):
-        """Read current tenant mapping without exposing service credentials."""
-        rows = self.read("bot_settings")
-        match = next((row.get("value") for row in rows if row.get("key") == SETTING_KEY), None)
-        try:
-            return decode_mappings(match)
-        except MappingValidationError as exc:
-            raise BackendUnavailable(str(exc)) from exc
-
-    def save_ai_model_mappings(self, mappings):
-        """Write only to an isolated database; route gate enforces this."""
-        if not self.configured():
-            raise BackendUnavailable("Sambungan database belum tersedia")
-        raw = encode_mappings(mappings)
-        try:
-            response = self.client.post(
-                f"{self.url}/rest/v1/bot_settings",
-                headers={**self.headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
-                params={"on_conflict": "tenant_id,key"},
-                json={"tenant_id": self.tenant, "key": SETTING_KEY, "value": raw,
-                      "description": "Private provider model mapping for Berry AI Studio"},
-            )
-            if response.status_code not in (200, 201):
-                raise BackendUnavailable("Database menolak perubahan model mapping")
-            rows = response.json()
-            if not isinstance(rows, list) or len(rows) != 1 or rows[0].get("value") != raw:
-                raise BackendUnavailable("Pengesahan model mapping gagal")
-            return validate_mappings(mappings)
-        except (httpx.HTTPError, ValueError) as exc:
-            raise BackendUnavailable("Simpanan model mapping gagal; semak database sebelum cuba lagi") from exc
 
     def mutate(self, operation, resource_id, payload, actor, key):
         if not self.configured():
@@ -208,6 +176,7 @@ def create_app(config=None, store=None):
         TENANT_ID=os.getenv("TENANT_ID", ""),
         ADMIN_STATE_PATH=os.getenv("ADMIN_STATE_PATH", "/tmp/berry-admin-state.sqlite3"),
         ADMIN_MODE=os.getenv("ADMIN_MODE", "staging"),
+        ADMIN_MODEL_MAPPING_DRAFT_ENABLED=os.getenv("ADMIN_MODEL_MAPPING_DRAFT_ENABLED", "false").lower() == "true",
         ADMIN_WRITES_ENABLED=os.getenv("ADMIN_WRITES_ENABLED", "false").lower() == "true",
         ADMIN_ISOLATED_DATABASE=os.getenv("ADMIN_ISOLATED_DATABASE", "false").lower() == "true",
         MAX_CONTENT_LENGTH=256 * 1024,
@@ -225,6 +194,7 @@ def create_app(config=None, store=None):
             CREATE TABLE IF NOT EXISTS attempts (ip TEXT NOT NULL, happened REAL NOT NULL);
             CREATE INDEX IF NOT EXISTS attempts_ip_time ON attempts(ip,happened);
             CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, action TEXT NOT NULL, details TEXT NOT NULL, timestamp TEXT NOT NULL, ip TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS ai_model_mapping_drafts (tenant_id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at TEXT NOT NULL);
         """)
     state.chmod(0o600)
 
@@ -261,7 +231,13 @@ def create_app(config=None, store=None):
                 return jsonify(error="CSRF validation failed"), 403
         g.csrf = session[0]
         if request.method not in {"GET", "HEAD", "OPTIONS"} and request.path != PREFIX + "/auth/logout":
-            if not (app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]):
+            # Narrow exception: edit an ephemeral staging-only SQLite draft.
+            # No Supabase write, no provider job, no customer data mutation.
+            draft_write = (request.method == "PUT"
+                           and request.path == PREFIX + "/ai/model-mappings"
+                           and app.config["ADMIN_MODE"] == "staging"
+                           and app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"])
+            if not draft_write and not (app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]):
                 audit("mutation_blocked", request.method + " " + request.path)
                 return jsonify(error="Tindakan dikunci: staging menggunakan data kedai sebenar. Database ujian berasingan dan RPC audit diperlukan."), 423
             key = request.headers.get("Idempotency-Key", "")
@@ -416,20 +392,41 @@ def create_app(config=None, store=None):
 
     @app.get(PREFIX + "/ai/model-mappings")
     def model_mapping_list():
-        return jsonify(database.get_ai_model_mappings())
+        """Staging-only preview; never read public bot_settings for private IDs."""
+        if not (app.config["ADMIN_MODE"] == "staging" and app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"]):
+            return jsonify(error="Model mapping draft tidak diaktifkan pada servis ini"), 423
+        with sqlite3.connect(state) as conn:
+            row = conn.execute(
+                "SELECT payload FROM ai_model_mapping_drafts WHERE tenant_id=?",
+                (app.config["TENANT_ID"],)
+            ).fetchone()
+        try:
+            return jsonify(decode_mappings(row[0] if row else None))
+        except MappingValidationError:
+            return jsonify(error="Staging draft corrupt; semak storan tempatan"), 503
 
     @app.put(PREFIX + "/ai/model-mappings")
     def model_mapping_save():
-        # /protect enforces admin session, CSRF, idempotency key and an
-        # isolated database. Writes to the production tenant are never allowed.
+        """Store safe preview mapping locally, NOT in production Supabase."""
+        if not (app.config["ADMIN_MODE"] == "staging" and app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"]):
+            return jsonify(error="Penyimpanan staging draft tidak dibenarkan"), 423
         payload = request.get_json(silent=True)
         try:
             models = validate_mappings(payload)
         except MappingValidationError as exc:
             return jsonify(error=str(exc)), 400
-        result = database.save_ai_model_mappings(models)
-        audit("ai_model_mapping_updated", "count=" + str(len(result)))
-        return jsonify(result)
+        with sqlite3.connect(state, timeout=10) as conn:
+            conn.execute(
+                """INSERT INTO ai_model_mapping_drafts(tenant_id, payload, updated_at)
+                   VALUES(?, ?, ?) ON CONFLICT(tenant_id) DO UPDATE
+                   SET payload=excluded.payload, updated_at=excluded.updated_at""",
+                (app.config["TENANT_ID"], encode_mappings(models),
+                 datetime.now(timezone.utc).isoformat())
+            )
+        audit("ai_model_mapping_staging_draft_saved", "count=" + str(len(models)))
+        response = jsonify(models)
+        response.headers["X-Berry-Mapping-Mode"] = "staging-draft-only"
+        return response
 
     @app.get(PREFIX + "/broadcast")
     def broadcasts():
