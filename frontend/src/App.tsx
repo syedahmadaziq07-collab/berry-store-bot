@@ -67,20 +67,20 @@ export default function App() {
   const [walletTotalBalance, setWalletTotalBalance] = useState(0);
   const [botSettings, setBotSettings] = useState<BotSettings>({
     welcome_message: '',
-    browse_shop_enabled: 'true',
-    ai_studio_enabled: 'true',
-    referral_enabled: 'true',
-    maintenance_mode: 'false',
+    browse_shop_enabled: '',
+    ai_studio_enabled: '',
+    referral_enabled: '',
+    maintenance_mode: '',
     banner_url: '',
     banner_file_id: '',
     payment_qr_url: '',
     payment_qr_file_id: '',
-    support_username: '@berrystoresupport',
+    support_username: '',
     announcement: '',
-    required_channel: '@berrystorrel',
-    required_channel_url: 'https://t.me/berrystorrel',
-    min_topup_amount: '5.00',
-    referral_reward_rm: '2.00',
+    required_channel: '',
+    required_channel_url: '',
+    min_topup_amount: '',
+    referral_reward_rm: '',
   });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
@@ -595,7 +595,7 @@ export default function App() {
           {currentPage === 'referrals' && (
             <ReferralSystem
               customers={customers}
-              referralRewardRM={botSettings.referral_reward_rm || '2.00'}
+              referralRewardRM={botSettings.referral_reward_rm || ''}
               onUpdateReward={handleUpdateReward}
             />
           )}

@@ -88,7 +88,7 @@ export const BroadcastMarketing: React.FC<BroadcastMarketingProps> = ({
               onChange={e => setAudience(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-pink-500"
             >
-              <option value="All Active Users">Semua Pengguna Aktif Telegram ({customerCount || 1480} orang)</option>
+              <option value="All Active Users">Semua Pengguna Aktif Telegram ({customerCount} orang)</option>
               <option value="Paying Customers Only">Pelanggan Yang Pernah Membeli Sahaja</option>
               <option value="AI Studio Users">Pengguna Berry AI Studio Sahaja</option>
             </select>
