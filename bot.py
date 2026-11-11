@@ -1893,6 +1893,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user    = update.effective_user
     file_id = update.message.photo[-1].file_id
+    if str(order_id).startswith("BT"):
+        if not _topup_enabled():
+            await update.message.reply_text("⚠️ Top Up belum aktif.")
+            return
+        rows = await _run_supabase("topup.photo.lookup", lambda: sb_admin_get(
+            "orders", f"select=*&id=eq.{order_id}&user_id=eq.{user.id}&limit=1"), attempts=1)
+        if not rows or not _topup_plan_for_order(rows[0]):
+            await update.message.reply_text("⚠️ Order top-up tidak sah.")
+            return
+        await _store_topup_receipt(update, context, order_id, file_id)
+        return
     try:
         rows = await _run_supabase(
             f"orders.receipt_validate id={order_id}",
@@ -2064,6 +2075,18 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Admin: Approve / Reject ──────────────────────────────────────────────────
 
 async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    if str(order_id).startswith("BT"):
+        result = await _run_supabase("topup.approve.atomic",
+            lambda: _topup_approve_atomic(order_id, ADMIN_ID), attempts=1, timeout=25)
+        if not result.get("already_completed"):
+            try:
+                await context.bot.send_message(
+                    chat_id=int(result["user_id"]),
+                    text=f"🍓 Top Up diluluskan! +{int(Decimal(str(result['amount']))*1250):,} Berry Credits."
+                         f"\\nOrder: {order_id}\\nSemak baki dalam My Wallet.")
+            except Exception as exc:
+                log.warning("[TOPUP] Approval notification failed: %s", type(exc).__name__)
+        return {"order": result}
     try:
         def approve_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
@@ -2362,6 +2385,20 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
 
 
 async def _reject_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
+    if str(order_id).startswith("BT"):
+        if not _topup_enabled():
+            raise RuntimeError("Topup disabled")
+        def reject_topup():
+            updated = sb_admin_patch("orders",
+                f"id=eq.{order_id}&status=eq.waiting_approval",
+                {"status": "rejected"})
+            if not updated:
+                raise RuntimeError("Order not awaiting approval")
+            return updated[0]
+        order = await _run_supabase("topup.reject", reject_topup, attempts=1)
+        await context.bot.send_message(chat_id=order["user_id"],
+            text=f"⚠️ Resit top-up {order_id} ditolak. Hubungi support jika perlu.")
+        return {"order": order}
     try:
         def reject_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
@@ -2606,7 +2643,14 @@ async def show_ai_studio_section(
         ]
     elif section == "wallet":
         balance = await _wallet_balance(update.effective_user.id)
+        # The underlying wallet RPC stores MYR, not credits.
+        # Convert only for display; do not change wallet accounting units.
         balance_label = balance if balance is not None else "Belum tersedia"
+        if balance is not None:
+            try:
+                balance_label = f"{int(Decimal(balance.replace('RM','').replace(',',''))*1250):,} Berry Credits ({balance})"
+            except (ValueError, InvalidOperation):
+                pass
         status = (
             "✅ Baki dipaparkan dari Supabase.\n"
             "Top Up dan pembayaran masih belum aktif."
@@ -2758,10 +2802,136 @@ async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE,
         "Selepas integrasi pembayaran dan auto-credit diuji, "
         "butang Confirm akan memaparkan QR yang sama seperti Browse Shop.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔒 Confirm & Pay (belum aktif)", callback_data="ai_topup_checkout_locked")],
+            [InlineKeyboardButton("💳 Confirm & Pay", callback_data=f"ai_topup_checkout:{plan_key}")],
             [InlineKeyboardButton("⬅️ Pilih Plan Lain", callback_data="ai_studio:topup")],
         ]),
     )
+
+
+# Feature is OFF by default until the DB RPC migration is reviewed and applied.
+def _topup_enabled() -> bool:
+    return bool(_get_env("BERRY_TOPUP_CHECKOUT_ENABLED") == "true"
+                and TENANT_ID and SUPABASE_SERVICE_KEY)
+
+
+def _topup_plan_for_order(order: dict):
+    # Server-side price + credits are derived from an immutable plan code,
+    # never from client-supplied amounts.
+    if not str(order.get("id", "")).startswith("BT"):
+        return None
+    name = str(order.get("product_name") or "")
+    for key, plan in BERRY_TOPUP_PLANS.items():
+        if name == f"Berry Credits Top Up: {key}" and Decimal(str(order.get("amount"))) == Decimal(plan[1]):
+            return key, plan
+    return None
+
+
+async def checkout_ai_topup(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str):
+    if not _topup_enabled():
+        await update.callback_query.message.reply_text(
+            "🚧 Checkout belum diaktifkan. Sila cuba lagi selepas pengumuman rasmi.")
+        return
+    plan = BERRY_TOPUP_PLANS.get(key)
+    if not plan:
+        return
+    user = update.effective_user
+    # One active order per user, matching existing Browse Shop policy.
+    try:
+        def create():
+            active = sb_admin_get("orders",
+                f"select=id,product_name,status&user_id=eq.{user.id}"
+                "&status=in.(pending,waiting,waiting_approval)&limit=1")
+            if active:
+                return active[0], False
+            import secrets
+            oid = "BT" + secrets.token_hex(12).upper()
+            rows = sb_admin_post("orders", {
+                "id": oid, "user_id": user.id, "username": user.username or "",
+                "product_id": None, "product_name": f"Berry Credits Top Up: {key}",
+                "quantity": 1, "amount": plan[1], "status": "pending",
+            })
+            if not rows:
+                raise RuntimeError("Order insert returned no rows")
+            return rows[0], True
+        order, created = await _run_supabase("ai_topup.checkout", create, attempts=1)
+    except Exception as exc:
+        log.warning("[TOPUP] checkout unavailable: %s", type(exc).__name__)
+        await update.callback_query.message.reply_text("⚠️ Gagal buat order. Cuba lagi.")
+        return
+    if not created and not _topup_plan_for_order(order):
+        await update.callback_query.message.reply_text(
+            "⚠️ Anda ada order Browse Shop yang belum selesai. "
+            "Selesaikan atau batalkan dahulu.")
+        return
+    if not created:
+        rows = await _run_supabase("ai_topup.order", lambda: sb_admin_get(
+            "orders", f"select=*&id=eq.{order['id']}&limit=1"), attempts=1)
+        order = rows[0]
+    await send_payment_page(context, update.effective_chat.id, user.id, order, order["id"])
+
+
+def _topup_approve_atomic(order_id: str, admin_id: int):
+    """One DB transaction updates order and credits MYR wallet idempotently."""
+    if not _topup_enabled():
+        raise RuntimeError("Topup checkout disabled")
+    resp = _httpx.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/berry_approve_topup_order",
+        headers=_sb_admin_headers(),
+        json={"p_tenant_id": TENANT_ID, "p_order_id": order_id,
+              "p_admin_id": admin_id},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    result = resp.json()
+    if not isinstance(result, dict) or not result.get("order_id"):
+        raise RuntimeError("Unexpected approval RPC response")
+    return result
+
+
+async def handle_topup_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """PDF/image document receipts, only for an active Berry Credits order."""
+    oid = context.user_data.get("pending_receipt")
+    doc = update.message.document if update.message else None
+    if not oid or not doc or not _topup_enabled():
+        return
+    rows = await _run_supabase("topup.document.lookup", lambda: sb_admin_get(
+        "orders", f"select=*&id=eq.{oid}&user_id=eq.{update.effective_user.id}&limit=1"), attempts=1)
+    order = rows[0] if rows else {}
+    if not _topup_plan_for_order(order) or order.get("status") != "pending":
+        await update.message.reply_text("⚠️ Resit hanya boleh dihantar untuk top-up yang masih pending.")
+        return
+    if doc.mime_type not in ("application/pdf", "image/jpeg", "image/png") or doc.file_size > 10*1024*1024:
+        await update.message.reply_text("⚠️ Hantar resit PDF/JPG/PNG maksimum 10MB.")
+        return
+    await _store_topup_receipt(update, context, oid, doc.file_id, as_document=True)
+
+
+async def _store_topup_receipt(update, context, oid: str, file_id: str, as_document=False):
+    user = update.effective_user
+    def save():
+        updated = sb_admin_patch("orders",
+            f"id=eq.{oid}&user_id=eq.{user.id}&status=eq.pending",
+            {"receipt_file_id": file_id, "status": "waiting_approval"})
+        if len(updated) != 1:
+            raise RuntimeError("Receipt order is not pending")
+        return updated[0]
+    order = await _run_supabase("topup.receipt.save", save, attempts=1)
+    context.user_data.pop("pending_receipt", None)
+    await update.message.reply_text(
+        f"✅ Resit diterima untuk {oid}. Admin akan semak pembayaran dahulu.")
+    buttons = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Approve", callback_data=f"approve_{oid}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"reject_{oid}"),
+    ]])
+    caption = (f"🍓 BERRY CREDITS TOP UP\nOrder: {oid}\n"
+               f"User: {user.id}\nPlan: {order['product_name']}\n"
+               f"Amount: RM{order['amount']}")
+    if as_document:
+        await context.bot.send_document(chat_id=ADMIN_ID, document=file_id,
+                                        caption=caption, reply_markup=buttons)
+    else:
+        await context.bot.send_photo(chat_id=ADMIN_ID, photo=file_id,
+                                     caption=caption, reply_markup=buttons)
 
 
 async def show_ai_video_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3177,6 +3347,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
         elif data == "ai_video":           await show_ai_video(update, context)
+        elif data.startswith("ai_topup_checkout:"):
+            await checkout_ai_topup(update, context, data.split(":", 1)[1])
         elif data.startswith("ai_topup_plan:"):
             await show_ai_topup_plan(update, context, data.split(":", 1)[1])
         elif data == "ai_topup_checkout_locked":
@@ -4908,6 +5080,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("activatetenant", cmd_activatetenant))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_topup_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)); log.info("[HANDLERS] message handler registered")
     app.add_error_handler(on_error)
     # ── Tenant validation (safe to call sb_get now) ──────────────────────────
