@@ -22,7 +22,13 @@ BEGIN
  IF r->>'claimed'<>'true' THEN RAISE EXCEPTION 'first claim failed'; END IF;
  r:=public.berry_staging_job(t,j,'claim_submit');
  IF r->>'claimed'<>'false' THEN RAISE EXCEPTION 'duplicate submit claim'; END IF;
- PERFORM public.berry_staging_job(t,j,'queued','{"provider_request_id":"fixture-1"}');
+ rejected:=false;
+ BEGIN PERFORM public.berry_staging_job(t,j,'queued','{"provider_request_id":"fixture-1","queue_status_url":"https://queue.fal.run/other/model/requests/fixture-1/status","queue_result_url":"https://queue.fal.run/other/model/requests/fixture-1"}');
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM='invalid queue recovery URLs' THEN rejected:=true; ELSE RAISE; END IF; END;
+ IF NOT rejected THEN RAISE EXCEPTION 'queue URLs not bound to model'; END IF;
+ PERFORM public.berry_staging_job(t,j,'queued','{"provider_request_id":"fixture-1","queue_status_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-1/status","queue_result_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-1"}');
+ r:=public.berry_staging_job(t,j,'get');
+ IF r->>'queue_status_url'<>'https://queue.fal.run/fal-ai/flux/requests/fixture-1/status' THEN RAISE EXCEPTION 'queue recovery URL not persisted'; END IF;
  rejected:=false;
  BEGIN PERFORM public.berry_staging_job(t,j,'succeed','{"provider_request_id":"wrong-job","result_url":"https://fal.media/fixture.png"}');
  EXCEPTION WHEN raise_exception THEN IF SQLERRM='provider request mismatch' THEN rejected:=true; ELSE RAISE; END IF; END;
@@ -35,15 +41,15 @@ BEGIN
  PERFORM public.berry_staging_job(t,j,'delivered','{"delivery_id":"123"}');
  PERFORM public.berry_staging_job(t,j,'delivered','{"delivery_id":"123"}');
  rejected:=false;
- BEGIN PERFORM public.berry_staging_job(t,j,'provider_failed','{"provider_request_id":"fixture-1"}');
+ BEGIN PERFORM public.berry_staging_job(t,j,'provider_failed','{"provider_request_id":"fixture-1","queue_status_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-1/status","queue_result_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-1"}');
  EXCEPTION WHEN raise_exception THEN IF SQLERRM='refund forbidden for ambiguous or completed job' THEN rejected:=true; ELSE RAISE; END IF; END;
  IF NOT rejected THEN RAISE EXCEPTION 'delivered job refunded'; END IF;
  -- Definitive failure refunds exactly once.
  PERFORM public.berry_staging_job(t,j2,'reserve',p);
  PERFORM public.berry_staging_job(t,j2,'claim_submit');
- PERFORM public.berry_staging_job(t,j2,'queued','{"provider_request_id":"fixture-2"}');
- PERFORM public.berry_staging_job(t,j2,'provider_failed','{"provider_request_id":"fixture-2"}');
- PERFORM public.berry_staging_job(t,j2,'provider_failed','{"provider_request_id":"fixture-2"}');
+ PERFORM public.berry_staging_job(t,j2,'queued','{"provider_request_id":"fixture-2","queue_status_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-2/status","queue_result_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-2"}');
+ PERFORM public.berry_staging_job(t,j2,'provider_failed','{"provider_request_id":"fixture-2","queue_status_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-2/status","queue_result_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-2"}');
+ PERFORM public.berry_staging_job(t,j2,'provider_failed','{"provider_request_id":"fixture-2","queue_status_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-2/status","queue_result_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-2"}');
  -- Cancellation only before submission.
  PERFORM public.berry_staging_job(t,j3,'reserve',p);
  PERFORM public.berry_staging_job(t,j3,'refund_before_submit');
@@ -61,7 +67,7 @@ BEGIN
  -- Unknown Telegram delivery cannot automatically resend.
  PERFORM public.berry_staging_job(t,j5,'reserve',p);
  PERFORM public.berry_staging_job(t,j5,'claim_submit');
- PERFORM public.berry_staging_job(t,j5,'queued','{"provider_request_id":"fixture-5"}');
+ PERFORM public.berry_staging_job(t,j5,'queued','{"provider_request_id":"fixture-5","queue_status_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-5/status","queue_result_url":"https://queue.fal.run/fal-ai/flux/requests/fixture-5"}');
  PERFORM public.berry_staging_job(t,j5,'succeed','{"provider_request_id":"fixture-5","result_url":"https://fal.media/fixture.png"}');
  PERFORM public.berry_staging_job(t,j5,'claim_delivery');
  PERFORM public.berry_staging_job(t,j5,'delivery_unknown');

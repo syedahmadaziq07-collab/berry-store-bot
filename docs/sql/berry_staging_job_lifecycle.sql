@@ -11,7 +11,7 @@ CREATE TABLE berry_private.staging_ai_jobs (
  debit_cents bigint NOT NULL CHECK(debit_cents>0),
  state text NOT NULL CHECK(state IN ('reserved','submitting','submission_unknown','queued',
   'succeeded','delivering','delivery_unknown','delivered','refunded')),
- provider_request_id text, result_url text, delivery_id text,
+ provider_request_id text, queue_status_url text, queue_result_url text, result_url text, delivery_id text,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(tenant_id,job_id),
  FOREIGN KEY(tenant_id,user_id) REFERENCES berry_private.staging_job_wallets(tenant_id,user_id)
@@ -86,8 +86,17 @@ BEGIN
    WHEN 'queued' THEN
     v:=p_payload->>'provider_request_id';
     IF v IS NULL OR char_length(v) NOT BETWEEN 1 AND 256 OR v !~ '^[A-Za-z0-9_-]+$' THEN RAISE EXCEPTION 'invalid provider request'; END IF;
-    IF j.state IN ('queued','succeeded','delivering','delivery_unknown','delivered') AND j.provider_request_id=v THEN NULL;
-    ELSIF j.state='submitting' THEN j.state:='queued'; j.provider_request_id:=v;
+    IF p_payload->>'queue_status_url' IS NULL OR p_payload->>'queue_result_url' IS NULL
+      OR p_payload->>'queue_status_url' !~ '^https://queue[.]fal[.]run/[A-Za-z0-9_./-]+$'
+      OR p_payload->>'queue_result_url' !~ '^https://queue[.]fal[.]run/[A-Za-z0-9_./-]+$'
+      OR p_payload->>'queue_result_url'<>'https://queue.fal.run/'||split_part(j.quote->>'provider_model_id','/',1)||'/'||split_part(j.quote->>'provider_model_id','/',2)||'/requests/'||v
+      OR p_payload->>'queue_status_url'<>(p_payload->>'queue_result_url')||'/status'
+      THEN RAISE EXCEPTION 'invalid queue recovery URLs'; END IF;
+    IF j.state IN ('queued','succeeded','delivering','delivery_unknown','delivered') AND j.provider_request_id=v
+      AND j.queue_status_url=p_payload->>'queue_status_url' AND j.queue_result_url=p_payload->>'queue_result_url' THEN NULL;
+    ELSIF j.state='submitting' THEN
+      j.state:='queued'; j.provider_request_id:=v;
+      j.queue_status_url:=p_payload->>'queue_status_url'; j.queue_result_url:=p_payload->>'queue_result_url';
     ELSE RAISE EXCEPTION 'invalid queued transition'; END IF;
    WHEN 'submission_unknown' THEN
     IF j.state='submitting' THEN j.state:='submission_unknown';
@@ -127,12 +136,14 @@ BEGIN
   END CASE;
   IF p_action<>'get' AND (p_action NOT IN ('claim_submit','claim_delivery') OR did_claim) THEN
    UPDATE berry_private.staging_ai_jobs SET state=j.state,provider_request_id=j.provider_request_id,
+   queue_status_url=j.queue_status_url,queue_result_url=j.queue_result_url,
    result_url=j.result_url,delivery_id=j.delivery_id,updated_at=now()
    WHERE tenant_id=p_tenant AND job_id=p_job;
   END IF;
  END IF;
  RETURN jsonb_build_object('job_id',j.job_id,'user_id',j.user_id,'state',j.state,'quote',j.quote,
   'request_hash',j.request_hash,'provider_request_id',j.provider_request_id,
+  'queue_status_url',j.queue_status_url,'queue_result_url',j.queue_result_url,
   'result_url',j.result_url,'delivery_id',j.delivery_id,'claimed',did_claim);
 END $$;
 REVOKE ALL ON FUNCTION public.berry_staging_job(uuid,uuid,text,jsonb) FROM PUBLIC,anon,authenticated;

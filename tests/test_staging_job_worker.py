@@ -11,7 +11,7 @@ from uuid import uuid4
 import httpx
 
 from staging_job_worker import (JobError, JobQuote, STAGING_ORIGIN, StagingJobStore,
-    StagingJobWorker, request_hash, telegram_job_id, trusted_result_url)
+    StagingJobWorker, request_hash, telegram_job_id, trusted_result_url, queue_urls)
 
 QUOTE = JobQuote("image", "fal-ai/flux/schnell", 4, 1325, 106, 6, "fixture-cost-only")
 ARGS = {"prompt": "synthetic fixture"}
@@ -51,7 +51,9 @@ class WorkerTests(unittest.TestCase):
     def setUp(self):
         self.store = MemoryStore()
         self.provider = Mock()
-        self.provider.submit.return_value = {"request_id": "fixture-request-1"}
+        self.provider.submit.return_value = {"request_id": "fixture-request-1",
+            "status_url": "https://queue.fal.run/fal-ai/flux/requests/fixture-request-1/status",
+            "response_url": "https://queue.fal.run/fal-ai/flux/requests/fixture-request-1"}
         self.delivery = Mock()
         self.delivery.send.return_value = 123
         self.worker = StagingJobWorker(self.store, self.provider, self.delivery, allow_external=True)
@@ -130,8 +132,73 @@ class WorkerTests(unittest.TestCase):
                 self.worker.provider_succeeded(JOB, "fixture-request-1", url)
         self.delivery.send.assert_not_called()
 
+    def test_restart_resumes_status_and_result_without_second_submit(self):
+        self.worker.submit(JOB, ARGS)
+        self.provider.status.return_value={"request_id":"fixture-request-1","status":"COMPLETED"}
+        self.provider.result.return_value={"images":[{"url":"https://fal.media/fixture.png"}]}
+        restarted=StagingJobWorker(self.store,self.provider,self.delivery,allow_external=True)
+        self.assertEqual(restarted.poll(JOB)["state"],"succeeded")
+        self.provider.submit.assert_called_once()
+        self.provider.status.assert_called_once_with(self.store.job['queue_status_url'])
+        self.provider.result.assert_called_once_with(self.store.job['queue_result_url'])
+
+    def test_running_job_only_checks_status(self):
+        self.worker.submit(JOB, ARGS)
+        self.provider.status.return_value={"request_id":"fixture-request-1","status":"IN_PROGRESS"}
+        self.assertEqual(self.worker.poll(JOB)["state"],"queued")
+        self.provider.result.assert_not_called()
+        self.provider.submit.assert_called_once()
+
+    def test_poll_timeout_holds_debit_and_can_retry_get_only(self):
+        self.worker.submit(JOB, ARGS)
+        self.provider.status.side_effect=httpx.ReadTimeout('fixture')
+        for _ in range(2):
+            with self.assertRaises(JobError):
+                self.worker.poll(JOB)
+        self.assertEqual(self.store.job['state'],'queued')
+        self.provider.submit.assert_called_once()
+
+    def test_wrong_provider_status_request_is_not_attached_to_job(self):
+        self.worker.submit(JOB, ARGS)
+        self.provider.status.return_value={"request_id":"another-job","status":"COMPLETED"}
+        with self.assertRaises(JobError):
+            self.worker.poll(JOB)
+        self.provider.result.assert_not_called()
+        self.assertEqual(self.store.job['state'],'queued')
+
+    def test_tampered_recovery_url_never_receives_api_key(self):
+        self.worker.submit(JOB, ARGS)
+        self.store.job['queue_status_url']='https://queue.fal.run/other/model/requests/fixture-request-1/status'
+        with self.assertRaises(JobError):
+            self.worker.poll(JOB)
+        self.provider.status.assert_not_called()
+
+    def test_malformed_or_extra_output_is_held_for_reconciliation(self):
+        self.worker.submit(JOB, ARGS)
+        self.provider.status.return_value={"request_id":"fixture-request-1","status":"COMPLETED"}
+        for result in ({}, {"images":[]}, {"images":[{"url":"https://fal.media/one"},{"url":"https://fal.media/two"}]}):
+            self.provider.result.return_value=result
+            with self.assertRaises(JobError):
+                self.worker.poll(JOB)
+        self.assertEqual(self.store.job['state'],'queued')
+        self.delivery.send.assert_not_called()
+
+    def test_submit_url_mismatch_is_unknown_and_not_resubmitted(self):
+        self.provider.submit.return_value['status_url']='https://evil.test/status'
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB,ARGS)
+        self.worker.submit(JOB,ARGS)
+        self.provider.submit.assert_called_once()
+        self.assertEqual(self.store.job['state'],'submission_unknown')
+
 
 class QuoteAndStoreTests(unittest.TestCase):
+    def test_queue_urls_use_root_app_for_nested_model_endpoint(self):
+        response='https://queue.fal.run/fal-ai/wan/requests/fixture-id'
+        r=queue_urls('fal-ai/wan/v2.2-a14b/text-to-video','fixture-id',response+'/status',response)
+        self.assertEqual(r['queue_result_url'],response)
+        with self.assertRaises(JobError):
+            queue_urls('fal-ai/wan/v2.2-a14b/text-to-video','different-id',response+'/status',response)
     def test_quote_rejects_underpricing_fractional_cents_bool_and_unknown_costs(self):
         for q in (replace(QUOTE, debit_cents=105), replace(QUOTE, credits=4),
                   replace(QUOTE, all_in_cost_cents=7), replace(QUOTE, mapping_revision=True),

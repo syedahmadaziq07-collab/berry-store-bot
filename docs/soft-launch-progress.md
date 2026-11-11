@@ -5,7 +5,8 @@ Current customer launch decision: **NO-GO**. Production is unchanged.
 
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
-| Backend regression suite | PASS | 121 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
+| Backend regression suite | PASS | 129 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
+| Provider restart recovery | PASS | Queue status/result URLs are durably frozen and bound to model/request. Worker tests resume through GET-only polling; malformed/expired results stay held. Provider traffic mocked; no actual inference or live recovery loop tested. |
 | Durable staging job lifecycle | PASS | Separate synthetic MYR cent wallet and immutable quote/ledger. Actual SQL rollback suite passes claim-once, request binding, definitive-failure refunds, ambiguous-outcome hold and ledger reconciliation. Worker tests cover concurrent submits/deliveries and restart/retry safety. External calls disabled by default. Not wired into customer bot. |
 | Frontend | PASS | 16 tests, TypeScript check and production asset build. |
 | Public staging routes/auth guards | PASS | 12 menu shells and 14 unauthenticated API guards; evidence/soft-launch-public-audit-20261112.json. |
