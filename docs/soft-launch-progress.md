@@ -3,6 +3,8 @@
 Updated 12 November 2026 MYT. Owner target: staging today, 12 November; final report before 08:00 13 November MYT.
 Current customer launch decision: **NO-GO**. Production is unchanged.
 
+Recovery batch follow-up: bounded, deduplicated recovery iterations implemented; one failed job cannot block other completed deliveries. External actions remain disabled by default. No scheduler or live bot started; this is not external E2E. Local suite: 134 tests PASS. Staging PR/CI verification pending.
+
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
 | Backend regression suite | PASS | 129 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
