@@ -965,6 +965,42 @@ def berry_control_center_extra_reads():
         return jsonify(error="Admin data unavailable"), 503
 
 
+@_app.route("/api/admin/v1/wallet", methods=["GET"])
+@_app.route("/api/admin/v1/ai/tools", methods=["GET"])
+@_app.route("/api/admin/v1/ai/models", methods=["GET"])
+@_app.route("/api/admin/v1/broadcast", methods=["GET"])
+@_app.route("/api/admin/v1/system/audit-logs", methods=["GET"])
+def berry_control_center_module_reads():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    path = request.path
+    if path == "/api/admin/v1/broadcast":
+        return jsonify([])  # No durable broadcast history API yet.
+    if path == "/api/admin/v1/system/audit-logs":
+        return jsonify([])  # Do not invent audit history.
+    if path == "/api/admin/v1/wallet":
+        try:
+            wallets = sb_admin_get("ai_wallets", "select=user_id,balance,updated_at&limit=500")
+            tx = sb_admin_get("ai_wallet_transactions", "select=id,user_id,kind,amount,balance_after,created_at&order=created_at.desc&limit=500")
+            from decimal import Decimal
+            total = sum((Decimal(str(w.get("balance") or 0)) for w in wallets), Decimal(0))
+            return jsonify(wallets=wallets, transactions=tx, totalBalance=float(total),
+                           dataLimited=len(wallets)>=500 or len(tx)>=500)
+        except Exception as exc:
+            log.warning("[GEMINI_WALLET_READ] %s", type(exc).__name__)
+            return jsonify(error="Wallet unavailable"), 503
+    # AI catalogue tables are optional. Never return mock catalogue data.
+    table = "ai_tools" if path.endswith("/tools") else "ai_models"
+    try:
+        return jsonify(sb_admin_get(table, "select=*&limit=200"))
+    except Exception as exc:
+        log.warning("[GEMINI_AI_READ] %s %s", table, type(exc).__name__)
+        return jsonify(error="AI catalogue unavailable"), 503
+
+
 @_app.route("/api/dashboard/orders", methods=["GET"])
 def dashboard_orders_read():
     """Server-only, allowlisted read endpoint for dashboard orders."""
