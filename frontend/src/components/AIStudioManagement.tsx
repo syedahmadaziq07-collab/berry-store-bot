@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { AITool, AIModel } from '../types/store';
 import { formatMYR } from '../utils/store-logic';
+import { AIModelMappingPanel } from './AIModelMappingPanel';
 
 interface AIStudioManagementProps {
   initialTab?: 'tools' | 'models';
@@ -82,6 +83,8 @@ export const AIStudioManagement: React.FC<AIStudioManagementProps> = ({
           </button>
         </div>
       </div>
+
+      <AIModelMappingPanel />
 
       {/* AI TOOLS TAB */}
       {activeTab === 'tools' && (
