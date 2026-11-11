@@ -53,5 +53,15 @@ class ControlCenterIntegrationTests(unittest.TestCase):
             self.assertIn(field, handler)
 
 
+    def test_extra_adapters_never_return_credential_passwords(self):
+        start = BOT.index("def berry_control_center_extra_reads():")
+        end = BOT.index('@_app.route("/api/dashboard/orders"', start)
+        handler = BOT[start:end]
+        self.assertIn("_gemini_session_guard()", handler)
+        self.assertIn('("credentials", "id,product_id,variant_id,is_used,created_at")', handler)
+        self.assertNotIn("email,password", handler)
+        self.assertNotIn("sb_admin_patch(", handler)
+        self.assertNotIn("sb_admin_post(", handler)
+
 if __name__ == "__main__":
     unittest.main()
