@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone, time as dt_time
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -109,7 +110,7 @@ BASE_DIR            = os.path.dirname(os.path.abspath(__file__))
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 TENANT_ID           = _get_env("TENANT_ID")
 
-TENANT_TABLES = {"products", "product_variants", "orders", "credentials", "users", "bot_settings", "push_subscriptions", "rental_payments", "points"}
+TENANT_TABLES = {"products", "product_variants", "orders", "credentials", "users", "bot_settings", "push_subscriptions", "rental_payments", "points", "ai_wallets", "ai_wallet_transactions"}
 
 def _ensure_tenant_filter(table: str, params: str = "") -> str:
     if TENANT_ID and table in TENANT_TABLES:
@@ -691,6 +692,37 @@ def dashboard_order_receipt(order_id: str):
         return Response(data, mimetype="image/jpeg")
     except Exception as exc:
         return jsonify(error=_safe_error(exc)), 500
+
+
+@_app.route("/api/dashboard/ai-wallets", methods=["GET"])
+def dashboard_ai_wallets():
+    """Read-only admin view; never expose service role tokens or write funds."""
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    if not _wallet_enabled():
+        return jsonify(error="Wallet requires TENANT_ID and SUPABASE_SERVICE_KEY"), 503
+    try:
+        wallets = sb_admin_get(
+            "ai_wallets",
+            "select=user_id,balance,updated_at&order=updated_at.desc&limit=200",
+        )
+        transactions = sb_admin_get(
+            "ai_wallet_transactions",
+            "select=id,user_id,kind,amount,balance_after,created_at"
+            "&order=created_at.desc,id.desc&limit=100",
+        )
+        # Both reads are tenant-filtered in sb_admin_get.
+        total = sum((Decimal(str(w.get("balance") or "0")) for w in wallets), Decimal("0"))
+        return jsonify(
+            ok=True, wallets=wallets, transactions=transactions,
+            total_balance=f"{total:.2f}",
+            wallet_count=len(wallets),
+            records_limited=len(wallets) >= 200 or len(transactions) >= 100,
+        ), 200
+    except Exception as exc:
+        log.warning(f"[AI_WALLET_DASHBOARD] {_safe_error(exc)}")
+        return jsonify(error="Wallet schema not ready or database unavailable"), 503
 
 
 @_app.route("/api/dashboard/admins", methods=["GET"])
@@ -2411,6 +2443,58 @@ async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=back_home())
 
 
+# ─── Berry AI Studio wallet (read-only until payment integration) ──────────────
+
+def _wallet_enabled() -> bool:
+    # Never query a money balance with the public/anon key.
+    return bool(TENANT_ID and SUPABASE_SERVICE_KEY)
+
+
+async def _wallet_balance(user_id: int) -> str | None:
+    """Return verified formatted MYR balance, or None if wallet unavailable."""
+    if not _wallet_enabled():
+        return None
+    try:
+        rows = await _run_supabase(
+            "ai_wallets.read",
+            lambda: sb_admin_get(
+                "ai_wallets",
+                f"select=balance&user_id=eq.{int(user_id)}&limit=1",
+            ),
+            attempts=1,
+            timeout=9,
+        )
+        raw = rows[0]["balance"] if rows else "0"
+        balance = Decimal(str(raw))
+        if not balance.is_finite() or balance < 0:
+            raise ValueError("Invalid stored wallet amount")
+        return f"RM{balance:,.2f}"
+    except (ValueError, InvalidOperation, KeyError, TypeError, Exception) as exc:
+        log.warning(f"[AI_WALLET] Cannot read balance: {_safe_error(exc)}")
+        return None
+
+
+async def _wallet_recent_transactions(user_id: int) -> list | None:
+    """Read recent entries for the Telegram user, scoped by TENANT_ID."""
+    if not _wallet_enabled():
+        return None
+    try:
+        return await _run_supabase(
+            "ai_wallet_transactions.recent",
+            lambda: sb_admin_get(
+                "ai_wallet_transactions",
+                "select=kind,amount,balance_after,created_at"
+                f"&user_id=eq.{int(user_id)}"
+                "&order=created_at.desc,id.desc&limit=8",
+            ),
+            attempts=1,
+            timeout=9,
+        )
+    except Exception as exc:
+        log.warning(f"[AI_WALLET] Cannot read history: {_safe_error(exc)}")
+        return None
+
+
 def _ai_video_is_admin(update: Update) -> bool:
     """Require the configured store admin for every preview action."""
     return bool(ADMIN_ID and update.effective_user and update.effective_user.id == ADMIN_ID)
@@ -2431,13 +2515,20 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     context.user_data.pop("ai_video_flow", None)
+    balance = await _wallet_balance(update.effective_user.id)
+    balance_label = balance if balance is not None else "Belum tersedia"
+    wallet_status = (
+        "Top Up belum diaktifkan.\n\n"
+        if balance is not None
+        else "Wallet belum disambungkan ke Supabase.\n\n"
+    )
     await _safe_edit_or_send(
         update.callback_query,
         "🍓 BERRY AI STUDIO\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "✨ Welcome to Berry AI Studio!\n\n"
-        "💰 Your Balance: RM0.00 (DEMO)\n"
-        "Wallet belum aktif — ini bukan baki sebenar.\n\n"
+        f"💰 Your Balance: {balance_label}\n"
+        f"{wallet_status}"
         "What would you like to create today? 👇\n\n"
         "🔒 Admin preview — tiada video dijana atau caj.",
         reply_markup=InlineKeyboardMarkup([
@@ -2481,22 +2572,56 @@ async def show_ai_studio_section(
             [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
         ]
     elif section == "wallet":
+        balance = await _wallet_balance(update.effective_user.id)
+        balance_label = balance if balance is not None else "Belum tersedia"
+        status = (
+            "✅ Baki dipaparkan dari Supabase.\n"
+            "Top Up dan pembayaran masih belum aktif."
+            if balance is not None
+            else "⚠️ Wallet belum tersedia. Pasang SQL dan set service key di Render."
+        )
         text = (
             "💰 MY WALLET\n━━━━━━━━━━━━━━━━━━\n"
-            "Your Balance: RM0.00 (DEMO)\n\n"
-            "Wallet, top up dan sejarah transaksi belum aktif.\n"
-            "RM0.00 ini bukan baki sebenar."
+            f"Your Balance: {balance_label}\n\n"
+            f"{status}"
         )
         buttons = [
+            [InlineKeyboardButton("📜 Transaction History", callback_data="ai_studio:transactions")],
             [InlineKeyboardButton("💳 Top Up (akan datang)", callback_data="ai_studio:topup")],
         ]
+    elif section == "transactions":
+        transactions = await _wallet_recent_transactions(update.effective_user.id)
+        if transactions is None:
+            text = "📜 TRANSACTION HISTORY\n\n⚠️ Wallet belum tersedia."
+        elif not transactions:
+            text = "📜 TRANSACTION HISTORY\n\nBelum ada transaksi."
+        else:
+            labels = {"topup":"Top Up", "debit":"AI Generation", "refund":"Refund", "adjustment":"Adjustment"}
+            lines = []
+            for item in transactions:
+                try:
+                    amount = Decimal(str(item.get("amount", "0")))
+                    if not amount.is_finite():
+                        raise ValueError("Invalid amount")
+                    sign = "+" if amount > 0 else "-"
+                    amount_label = f"{sign}RM{abs(amount):,.2f}"
+                except (ValueError, InvalidOperation, TypeError):
+                    amount_label = "RM--"
+                kind = labels.get(item.get("kind"), "Transaction")
+                timestamp = str(item.get("created_at") or "")[:10]
+                lines.append(f"• {timestamp} | {kind} | {amount_label}")
+            text = (
+                "📜 TRANSACTION HISTORY\n━━━━━━━━━━━━━━━━━━\n"
+                "8 transaksi terbaru:\n\n" + "\n".join(lines)
+            )
+        buttons = [[InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet")]]
     elif section == "account":
         user = update.effective_user
         text = (
             "👤 ACCOUNT\n━━━━━━━━━━━━━━━━━━\n"
             f"Telegram ID: {user.id}\n"
             f"Username: @{user.username or 'tiada'}\n\n"
-            "Wallet dan generation history belum aktif."
+            "Lihat baki wallet dan sejarah video melalui menu di bawah."
         )
         buttons = [
             [InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet"),
