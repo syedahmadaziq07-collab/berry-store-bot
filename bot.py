@@ -656,6 +656,72 @@ def dashboard():
             return html, 200, {"Content-Type": "text/html"}
     return "Dashboard not found", 404
 
+@_app.route("/api/dashboard/orders", methods=["GET"])
+def dashboard_orders_read():
+    """Server-only, allowlisted read endpoint for dashboard orders."""
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Server order access is not configured"), 503
+    from urllib.parse import urlencode
+    allowed_columns = {
+        "id", "user_id", "username", "product_id", "product_name",
+        "quantity", "amount", "status", "created_at",
+        "credentials_sent", "variant_id", "receipt_file_id",
+    }
+    allowed_filters = {"status", "created_at"}
+    try:
+        columns = request.args.get("select", "id,status")
+        if not columns or any(col not in allowed_columns for col in columns.split(",")):
+            return jsonify(error="Invalid columns"), 400
+        filters = json.loads(request.args.get("filters", "[]"))
+        if not isinstance(filters, list) or len(filters) > 5:
+            return jsonify(error="Invalid filters"), 400
+        query = [("select", columns)]
+        for item in filters:
+            if not isinstance(item, list) or len(item) != 3:
+                return jsonify(error="Invalid filter"), 400
+            key, op, value = item
+            if key not in allowed_filters or op not in ("eq", "in", "gt", "gte", "lte"):
+                return jsonify(error="Invalid filter"), 400
+            if not isinstance(value, str) or len(value) > 128 or not re.fullmatch(r"[A-Za-z0-9_,:.+T-]+", value):
+                return jsonify(error="Invalid filter value"), 400
+            if key == "status" and op not in ("eq", "in"):
+                return jsonify(error="Invalid status filter"), 400
+            if key == "created_at" and op not in ("gt", "gte", "lte"):
+                return jsonify(error="Invalid date filter"), 400
+            query.append((key, f"{op}.({value})" if op == "in" else f"{op}.{value}"))
+        order = request.args.get("order", "created_at.desc")
+        if order not in ("created_at.asc", "created_at.desc"):
+            return jsonify(error="Invalid order"), 400
+        query.append(("order", order))
+        limit = int(request.args.get("limit", "500"))
+        if limit < 1 or limit > 500:
+            return jsonify(error="Invalid limit"), 400
+        query.append(("limit", str(limit)))
+        count = request.args.get("count") == "exact"
+        headers = _sb_admin_headers()
+        if count:
+            headers["Prefer"] = "count=exact"
+        url = f"{SUPABASE_URL}/rest/v1/orders"
+        response = _httpx.get(url, params=query + [("tenant_id", f"eq.{TENANT_ID}")],
+                              headers=headers, timeout=15)
+        response.raise_for_status()
+        total = None
+        if count:
+            content_range = response.headers.get("content-range", "")
+            if "/" in content_range and content_range.rsplit("/", 1)[1].isdigit():
+                total = int(content_range.rsplit("/", 1)[1])
+        data = [] if request.args.get("head") == "true" else response.json()
+        return jsonify(data=data, count=total), 200
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return jsonify(error="Invalid order query"), 400
+    except Exception as exc:
+        log.warning("[DASHBOARD_ORDERS] %s", type(exc).__name__)
+        return jsonify(error="Unable to load orders"), 503
+
+
 @_app.route("/api/dashboard/approve-order", methods=["POST"])
 def dashboard_approve_order():
     ok, err = _check_dashboard_secret()
