@@ -27,3 +27,11 @@ This branch is intentionally safe to review but **not production ready**.
 - Overview now returns the `kpis`, `revenueTrend`, `categoryRevenue` keys expected by Gemini React. Time-based revenue and wallet liability are placeholders and **must not be presented as verified zeroes**. Fix before production.
 
 These endpoints currently require `X-Dashboard-Secret`. The original Gemini frontend does not send that header; a secure session layer and frontend API integration are still required.
+
+## Authentication work (current branch)
+
+Python now exposes `POST /api/admin/v1/auth/login`, `GET /api/admin/v1/auth/me`, and `POST /api/admin/v1/auth/logout`. Login requires the existing `DASHBOARD_ADMIN_SECRET` (minimum 24 characters), issues a signed 1-hour HttpOnly Secure SameSite=Strict cookie, and returns a CSRF token. Mutating requests must include `X-CSRF-Token`. Login attempts are limited in-memory per remote address; replace with shared Redis/store before multi-instance production. This is **not** yet a full session revocation model. Logout clears the cookie, but a stolen signed cookie remains valid until expiry.
+
+**Frontend integration required:** Remove Gemini's hardcoded demo-password button. Save the CSRF token in React memory on login or `auth/me`; send it on all mutating fetches including logout. Use relative URLs and same-origin cookies. Do not persist token or password in localStorage. The current Gemini frontend has not yet been committed to this branch or built into Flask static assets.
+
+**Known blockers:** The current list endpoints and overview still have 500-row caps; time-based KPIs are placeholders. Additional read-only and write endpoints are unimplemented. Do not merge/deploy.
