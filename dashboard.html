@@ -1013,6 +1013,9 @@ button:active{transform:scale(.97)}
     <div class="nb" data-page="sales" onclick="nav(this)">
       <span class="ic">&#128200;</span>Sales
     </div>
+    <div class="nb" data-page="wallets" onclick="nav(this)">
+      <span class="ic">&#128176;</span>AI Wallet
+    </div>
     <div class="sb-section">Inventory</div>
     <div class="nb" data-page="stocks" onclick="nav(this)">
       <span class="ic">&#128451;</span>Stocks
@@ -1353,6 +1356,50 @@ button:active{transform:scale(.97)}
     </div>
 
 
+    <!-- ====== BERRY AI WALLET (READ-ONLY) ====== -->
+    <div class="page" id="page-wallets">
+      <div class="sec-row" style="margin-bottom:1rem">
+        <div>
+          <div class="sec-title">Berry AI Wallet</div>
+          <div style="font-size:.78rem;color:var(--text-s);margin-top:.25rem">
+            Read-only preview. Top ups and refunds are not yet enabled.
+          </div>
+        </div>
+        <button class="btn-ghost btn-sm btn-pill" onclick="loadWallets()">Refresh</button>
+      </div>
+      <div class="stat-row" style="margin-bottom:1rem">
+        <div class="stat-card">
+          <div class="sc-label">Wallet Accounts (latest 200)</div>
+          <div class="sc-val" id="walletCount">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-label">Balances Shown</div>
+          <div class="sc-val" id="walletTotal">--</div>
+        </div>
+      </div>
+      <div class="table-card" style="margin-bottom:1rem">
+        <div class="tc-hdr"><h3>Customer Wallets</h3><span class="badge b-grey">Read only</span></div>
+        <div class="overflow-x">
+          <table class="box-table">
+            <thead><tr><th>Telegram ID</th><th>Balance</th><th>Last Updated</th></tr></thead>
+            <tbody id="walletAccountsBody"><tr><td colspan="3">Open this page to load balances.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="tc-hdr"><h3>Recent Transactions</h3><span class="badge b-grey">Latest 100</span></div>
+        <div class="overflow-x">
+          <table class="box-table">
+            <thead><tr><th>Date</th><th>Telegram ID</th><th>Type</th><th>Change</th><th>Balance After</th></tr></thead>
+            <tbody id="walletTxBody"><tr><td colspan="5">No transactions loaded.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <p id="walletInfo" style="color:var(--text-s);font-size:.75rem;margin-top:.65rem">
+        Wallets are isolated by tenant. Use the Dashboard Admin Secret to view balances.
+      </p>
+    </div>
+
     <!-- ====== BOT SETTINGS ====== -->
     <div class="page" id="page-botsettings">
       <div class="sec-row" style="margin-bottom:1rem">
@@ -1617,7 +1664,7 @@ let _referralFilter = 'all';
 const PAGE_NAMES = {
   dashboard:'Dashboard', products:'Products', orders:'Orders',
   sales:'Sales', stocks:'Stocks', credentials:'Credentials',
-  broadcast:'Broadcast', referral:'Referral', botsettings:'Bot Settings', notifications:'Notifications'
+  broadcast:'Broadcast', referral:'Referral', wallets:'AI Wallet', botsettings:'Bot Settings', notifications:'Notifications'
 };
 
 // ====================================================
@@ -1872,6 +1919,7 @@ function loadPage(p) {
   if (p==='credentials') loadCredentials();
   if (p==='broadcast')   loadBcastCount();
   if (p==='referral')    loadReferral();
+  if (p==='wallets')     loadWallets();
   if (p==='botsettings') loadBotSettings();
   if (p==='notifications') { refreshNotifUI(); renderLiveAlerts(); }
 }
@@ -3189,6 +3237,44 @@ function renderReferralTable() {
       '</div></td>' +
     '</tr>';
   }).join('');
+}
+
+
+async function loadWallets() {
+  const accounts = document.getElementById('walletAccountsBody');
+  const tx = document.getElementById('walletTxBody');
+  const info = document.getElementById('walletInfo');
+  if (!accounts || !tx || !info) return;
+  accounts.innerHTML = '<tr><td colspan="3">Loading wallets...</td></tr>';
+  tx.innerHTML = '<tr><td colspan="5">Loading history...</td></tr>';
+  document.getElementById('walletCount').textContent = '--';
+  document.getElementById('walletTotal').textContent = '--';
+  try {
+    const result = await dashboardApiGet('/api/dashboard/ai-wallets');
+    const wallets = result.wallets || [];
+    const transactions = result.transactions || [];
+    document.getElementById('walletCount').textContent = wallets.length;
+    document.getElementById('walletTotal').textContent = rm(result.total_balance);
+    accounts.innerHTML = wallets.length ? wallets.map(w => '<tr>' +
+      '<td>' + escH(w.user_id) + '</td>' +
+      '<td><strong>' + escH(rm(w.balance)) + '</strong></td>' +
+      '<td>' + escH(fmtDT(w.updated_at)) + '</td></tr>').join('')
+      : '<tr><td colspan="3">No funded wallets yet.</td></tr>';
+    tx.innerHTML = transactions.length ? transactions.map(t => '<tr>' +
+      '<td>' + escH(fmtDT(t.created_at)) + '</td>' +
+      '<td>' + escH(t.user_id) + '</td>' +
+      '<td>' + escH(t.kind) + '</td>' +
+      '<td>' + escH((Number(t.amount) >= 0 ? '+' : '-') + rm(Math.abs(Number(t.amount)))) + '</td>' +
+      '<td>' + escH(rm(t.balance_after)) + '</td></tr>').join('')
+      : '<tr><td colspan="5">No transactions yet.</td></tr>';
+    info.textContent = result.records_limited
+      ? 'Only the most recent accounts or transactions are shown. Totals are for displayed accounts only.'
+      : 'Read-only wallet ledger. No payments or balance changes can be made here yet.';
+  } catch (e) {
+    accounts.innerHTML = '<tr><td colspan="3">' + escH(e.message || String(e)) + '</td></tr>';
+    tx.innerHTML = '<tr><td colspan="5">Transaction history unavailable.</td></tr>';
+    info.textContent = 'Apply ai_wallet_schema.sql in Supabase and configure TENANT_ID, SUPABASE_SERVICE_KEY and DASHBOARD_ADMIN_SECRET on Render.';
+  }
 }
 
 // ====================================================
