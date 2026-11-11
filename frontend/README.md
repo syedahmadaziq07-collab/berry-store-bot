@@ -1,20 +1,6 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Berry Store Gemini dashboard
 
-# Run and deploy your AI Studio app
+Imported from the user-supplied original Gemini ZIP on 2026-11-11. Original React components, assets and styling retained. The in-memory Express `server.ts` prototype is intentionally excluded.
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/c3c82a50-6272-4c40-ba2c-cb8a3a75dc5c
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Use Node 24: `npm ci`, `npm run lint`, `npm test`, `npm run build`.
+The separate Python host (`admin_app.py`) serves `frontend/dist` and same-origin authenticated APIs. See `docs/gemini-staging-readiness.md` at repository root for verified status and limitations. No secrets or Supabase clients belong in this frontend.
