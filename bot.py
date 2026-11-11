@@ -2423,7 +2423,7 @@ def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
 
 
 async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Landing menu for the unreleased admin-only AI Studio."""
+    """Simple, guided entry point; do not overwhelm first-time users."""
     if not _ai_video_is_admin(update):
         await _safe_edit_or_send(
             update.callback_query, "🚧 AI Video belum dibuka kepada pelanggan.",
@@ -2433,54 +2433,121 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("ai_video_flow", None)
     await _safe_edit_or_send(
         update.callback_query,
-        "🍓 BERRY AI STUDIO — Admin Preview\n\n"
-        "🎬 Video Studio\n"
-        "Bina video daripada gambar dan prompt.\n\n"
-        "⚠️ Ini hanya preview. API, wallet dan pembayaran belum aktif.",
+        "🍓 BERRY AI STUDIO\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🎬 Cipta video AI dalam 3 langkah:\n\n"
+        "1️⃣ Pilih jenis video\n"
+        "2️⃣ Pilih durasi & model\n"
+        "3️⃣ Semak harga, kemudian cipta\n\n"
+        "Pilih cara anda nak mula. 👇\n\n"
+        "🔒 Admin preview — tiada caj atau video dijana.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎬 Video Studio", callback_data="ai_video_models")],
-            [InlineKeyboardButton("🏠 Back to Berry Store", callback_data="home")],
+            [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_duration")],
+            [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
+            [InlineKeyboardButton("🏠 Kembali ke Berry Store", callback_data="home")],
         ]),
     )
 
 
-async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Present only the model demonstrated as selectable in the reference images."""
+async def show_ai_video_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Do not offer an unsupported text-to-video generation flow."""
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
     await _safe_edit_or_send(
         update.callback_query,
-        "🤖 Pilih Model AI\n\n"
-        "🔥 Gemini Omni Flash (15s)\n"
-        "Server rujukan: #6 • 15s • 720p • audio\n"
-        "Input: 1 gambar + prompt\n\n"
-        "Model lain dalam contoh masih berstatus restocking.\n"
-        "Harga sebenar Berry AI Studio belum ditetapkan.\n\n"
-        "⚠️ Preview sahaja — tiada generation atau caj.",
+        "✍️ TEKS → VIDEO\n\n"
+        "Feature ini sedang dirancang.\n"
+        "Buat masa ni, cuba Gambar → Video dahulu.",
+        reply_markup=_ai_video_back_button("ai_video"),
+    )
+
+
+async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Group models by duration before showing individual options or prices."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await _safe_edit_or_send(
+        update.callback_query,
+        "📷 GAMBAR → VIDEO\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 1/3 — Pilih durasi\n\n"
+        "Nak video sepanjang berapa saat?\n\n"
+        "✅ 15 saat tersedia untuk preview.\n"
+        "Durasi lain belum tersedia.\n\n"
+        "💡 Harga dalam RM akan dipaparkan pada pilihan model "
+        "selepas harga sebenar ditetapkan.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔥 Gemini Omni Flash (15s)", callback_data="ai_video_ratio")],
+            [InlineKeyboardButton("⚡ 8–10 saat (akan datang)", callback_data="ai_video_unavailable:short")],
+            [InlineKeyboardButton("🎬 15 saat (preview)", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("🎞️ 30 saat (akan datang)", callback_data="ai_video_unavailable:long")],
             [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video")],
         ]),
     )
 
 
+async def show_ai_video_unavailable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set clear expectations for durations with no verified integration."""
+    if not _ai_video_is_admin(update):
+        return
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🚧 Durasi ini belum tersedia dalam Berry AI Studio.\n\n"
+        "Model dan harga akan diaktifkan selepas API provider disahkan.",
+        reply_markup=_ai_video_back_button("ai_video_duration"),
+    )
+
+
+async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE, duration: str = "15"):
+    """Show only matching models, not a wall of servers and mixed pricing."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    if duration != "15":
+        await show_ai_video_unavailable(update, context)
+        return
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🤖 PILIH MODEL\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 2/3 — Video 15 saat\n\n"
+        "🔥 Gemini Omni Flash\n"
+        "• Durasi: 15 saat\n"
+        "• Kualiti: 720p\n"
+        "• Audio: tersedia\n"
+        "• Input: 1 gambar + prompt\n"
+        "• Harga: belum ditetapkan (RM)\n\n"
+        "Model lain akan disenaraikan mengikut durasi "
+        "apabila API dan harga disahkan.\n\n"
+        "🔒 Demo sahaja. Tiada caj.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔥 Pilih Gemini Omni Flash", callback_data="ai_video_ratio")],
+            [InlineKeyboardButton("⬅️ Tukar Durasi", callback_data="ai_video_duration")],
+        ]),
+    )
+
+
 async def show_ai_video_ratio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Choose the output orientation for the image-to-video preview."""
+    """Last configuration screen before photo and prompt inputs."""
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
     await _safe_edit_or_send(
         update.callback_query,
-        "🔥 Gemini Omni Flash (15s)\n\n"
-        "🎬 Image-to-video • 720p • audio • 15s\n"
-        "📷 Perlu 1 gambar rujukan dan prompt.\n\n"
-        "💡 Terangkan scene, pergerakan, kamera dan bunyi.\n\n"
+        "🎬 GEMINI OMNI FLASH\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 3/3 — Tetapan Video\n\n"
+        "⏱ Durasi: 15 saat\n"
+        "📺 Resolution: 720p\n"
+        "🔊 Audio: tersedia\n"
+        "💰 Harga: belum ditetapkan\n\n"
+        "📷 Sediakan 1 gambar dan prompt.\n"
         "📐 Pilih aspect ratio:",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🖥️ 16:9", callback_data="ai_video_photo:16:9")],
-            [InlineKeyboardButton("📱 9:16", callback_data="ai_video_photo:9:16")],
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_models")],
+            [InlineKeyboardButton("🖥️ Landscape · 16:9", callback_data="ai_video_photo:16:9")],
+            [InlineKeyboardButton("📱 Portrait · 9:16", callback_data="ai_video_photo:9:16")],
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_models:15")],
         ]),
     )
 
@@ -2795,7 +2862,13 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
         elif data == "ai_video":           await show_ai_video(update, context)
+        elif data == "ai_video_text":      await show_ai_video_text(update, context)
+        elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
+        elif data.startswith("ai_video_unavailable:"):
+            await show_ai_video_unavailable(update, context)
         elif data == "ai_video_models":    await show_ai_video_models(update, context)
+        elif data.startswith("ai_video_models:"):
+            await show_ai_video_models(update, context, data.split(":", 1)[1])
         elif data == "ai_video_ratio":     await show_ai_video_ratio(update, context)
         elif data.startswith("ai_video_photo:"):
             await request_ai_video_photo(update, context, data.split(":", 1)[1])
