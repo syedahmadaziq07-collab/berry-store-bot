@@ -1,55 +1,47 @@
-# Berry AI Model Mapping — staged integration
+# Berry AI Model Mapping — staging verification & release gates
 
-## Goal
+## Running staging preview (safe draft)
 
-Allow an administrator to present a Berry-branded name in Telegram while
-privately selecting a real fal.ai model slug, without conflating the two.
+- The Gemini AI Studio and AI Model Catalog pages display a **Model Mapping** editor.
+- Admin can set customer-facing display_name separately from internal
+  provider_model_id, tool_key, credit_cost and enabled.
+- Mapping editor uses authenticated `GET /api/admin/v1/ai/model-mappings` and
+  `PUT /api/admin/v1/ai/model-mappings`.
+- The PUT route requires authenticated session, CSRF, Origin verification and
+  an idempotency UUID, **and** `ADMIN_MODE=staging` plus
+  `ADMIN_MODEL_MAPPING_DRAFT_ENABLED=true`.
+- The saved draft is written **ONLY** to the server's local SQLite admin state
+  file, keyed by tenant. It is **not** written to Supabase or production bot.
+- Render free-service local filesystem is ephemeral. Drafts can disappear
+  after redeploy/restart. Never advertise them as durable configuration.
+- The React UI visibly discloses this limitation.
+- Existing mutation guard still blocks shop/order/customer/wallet/broadcast
+  mutations if `ADMIN_WRITES_ENABLED=false` and
+  `ADMIN_ISOLATED_DATABASE=false`.
 
-- `display_name`: customer-facing brand (e.g., `Berry Image Pro`).
-- `provider_model_id`: private provider slug (e.g., `fal-ai/flux/dev`).
-- `tool_key`: stable Telegram tool identifier.
-- `credit_cost`: proposed Berry Credits per generation **only**.
-- `enabled`: whether to show the configured public label.
+## SECURITY: why not store in bot_settings
 
-## Implemented in this branch
+`public.bot_settings` has a public SELECT RLS policy. Therefore storing
+private provider mapping JSON in its `value` is **not safe**: anyone with
+Data API read access may discover the provider ID. Earlier PR prototype
+did that; it was removed. `bot.py` no longer reads mapping from this public
+table. Never put FAL_KEY or other credentials in model configuration.
 
-- `ai_model_mapping.py`: strict schema validation and separate
-  `public_label()` / `resolve_provider_model()` helpers.
-- `GET /api/admin/v1/ai/model-mappings`: authenticated, tenant-scoped
-  read of the dedicated `bot_settings` key `ai_model_mappings`.
-- `PUT /api/admin/v1/ai/model-mappings`: admin-session/CSRF/idempotency
-  protected. The existing staging host **blocks all business writes** unless
-  both `ADMIN_WRITES_ENABLED` and `ADMIN_ISOLATED_DATABASE` are enabled.
-  Do **not** change either flag on the production-linked staging service.
-- React editor at AI Studio and AI Model Catalog. The mapping editor remains
-  accessible even if optional AI catalogue tables do not exist.
-- Telegram AI Studio **admin preview** reads the public label; it never
-  displays `provider_model_id` and does not activate payment or generation.
-- Dedicated Python unit tests and frontend + Python CI.
+## Still required before customer AI Video launch
 
-## Not implemented / release blockers
+- Provision audited, tenant-scoped **private** model mapping storage with
+  RLS and restricted grants, or an isolated staging database.
+- Implement server-only bot resolution of provider_model_id from that store.
+- Provider model compatibility validation and secure fal.ai generation worker.
+- Atomic wallet debit/refund, durable job state and Telegram delivery.
+- Browser authenticated E2E with real staging data, then deliberate release.
+- Replace weak staging password; production is connected read-only for this
+  dashboard's business routes and should not have shared service-role keys
+  with a publicly guessable admin login.
 
-- fal.ai execution, provider model catalogue validation, secure FAL_KEY
-  provisioning, pricing quote and cost tracking.
-- Atomic credit debit/refund, async job runner, retries, image/video delivery
-  and customer-facing public AI Studio. **Nothing charges the wallet.**
-- A separate writable staging Supabase project and validated migration/audit
-  strategy; current staging intentionally returns HTTP 423 for PUT.
-- Final browser E2E testing and Telegram integration verification.
-- GitHub CI results must pass before considering merge. No production deploy
-  or merge has been authorized.
+## Verification
 
-## How to enable *after* isolated staging is prepared
-
-1. Create an isolated Supabase staging project with copied schema and
-   synthetic non-customer records. Do not use real financial data.
-2. Confirm `bot_settings` has unique key `(tenant_id,key)`; current
-   production schema already contains this structure, but do not alter it.
-3. Configure that staging instance with test credentials and the two
-   write-enable flags. Use a staging bot token, **not** the production token.
-4. Log in, create a mapping, save, reload and validate labels/IDs.
-5. Verify Telegram preview in a non-production bot and only then build
-   a separate authorized fal.ai generation worker.
-6. Review and explicitly approve deployment/merge when ready.
-
-This feature must **not** be represented as a working paid fal.ai service.
+GitHub Actions: `AI Mapping Staging Draft Integration Tests` executes
+Python unit tests for auth/CSRF/tenant separation/write isolation and React
+TypeScript build. Provider requests and production writes are NOT tested
+or enabled. Browser login/full E2E remains a separate acceptance test.
