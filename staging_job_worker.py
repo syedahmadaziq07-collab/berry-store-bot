@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from urllib.parse import urlparse
 from uuid import UUID, uuid5
@@ -79,6 +80,18 @@ def trusted_result_url(value):
     return value
 
 
+def queue_urls(model, request_id, status_url, response_url):
+    """Use the provider-returned root-app URLs, binding both to this request."""
+    if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", request_id):
+        raise JobError("Invalid provider request identifier")
+    from fal_provider import FalProvider
+    FalProvider._model(model)
+    root = "https://queue.fal.run/" + "/".join(model.split("/")[:2]) + "/requests/" + request_id
+    if response_url != root or status_url != root + "/status":
+        raise JobError("Queue URL does not match model and request")
+    return {"provider_request_id": request_id, "queue_status_url": status_url, "queue_result_url": response_url}
+
+
 class StagingJobStore:
     """Service-only RPC restricted to the known isolated staging project."""
     def __init__(self, url, key, tenant_id, client=None):
@@ -134,7 +147,9 @@ class StagingJobWorker:
         try:
             response = self.provider.submit(q["provider_model_id"], arguments)
             request_id = response["request_id"]
-            return self.store.action(job_id, "queued", {"provider_request_id": request_id})
+            recovery = queue_urls(q["provider_model_id"], request_id,
+                                  response["status_url"], response["response_url"])
+            return self.store.action(job_id, "queued", recovery)
         except Exception:
             # Even a failure recording the successful HTTP response is ambiguous.
             # If this write also fails, persisted 'submitting' still blocks replay.
@@ -143,6 +158,39 @@ class StagingJobWorker:
             except JobError:
                 pass
             raise JobError("Submission outcome unknown; no retry or refund performed") from None
+
+    def poll(self, job_id):
+        """Resume a queued job after restart using GETs, never another submission.
+
+        Error or expired output is held for reconciliation, never blindly refunded.
+        """
+        if not self.allow_external:
+            raise JobError("External provider polling disabled")
+        job = self.store.action(job_id, "get")
+        if job["state"] != "queued":
+            return job
+        try:
+            recovery = queue_urls(job["quote"]["provider_model_id"], job["provider_request_id"],
+                                  job["queue_status_url"], job["queue_result_url"])
+            status = self.provider.status(recovery["queue_status_url"])
+            if status.get("request_id") != job["provider_request_id"]:
+                raise JobError("Provider status request mismatch")
+            if status.get("error") or status.get("error_type"):
+                raise JobError("Provider failure requires definitive reconciliation")
+            if status.get("status") in ("IN_QUEUE", "IN_PROGRESS"):
+                return job
+            if status.get("status") != "COMPLETED":
+                raise JobError("Unexpected provider status")
+            result = self.provider.result(recovery["queue_result_url"])
+            if job["quote"]["tool_key"] == "image":
+                if len(result["images"]) != 1:
+                    raise JobError("Unexpected number of output images")
+                url = result["images"][0]["url"]
+            else:
+                url = result["video"]["url"]
+            return self.provider_succeeded(job_id, job["provider_request_id"], url)
+        except Exception:
+            raise JobError("Provider result unavailable; job held without resubmission or refund") from None
 
     def provider_succeeded(self, job_id, provider_request_id, result_url):
         # Caller must obtain a definitive provider result for the stored request.
