@@ -2586,14 +2586,14 @@ async def show_ai_studio_section(
         ]
     elif section == "topup":
         text = (
-            "💳 BERRY CREDITS — TOP UP\\n"
-            "━━━━━━━━━━━━━━━━━━\\n\\n"
-            "Pilih pakej Berry Credits anda.\\n"
-            "💱 RM1 = 1,250 Berry Credits\\n\\n"
-            "🍓 Starter · RM5 — 6,250 credits\\n"
-            "⚡ Creator · RM10 — 12,500 credits\\n"
-            "💎 Pro · RM20 — 25,000 credits\\n"
-            "👑 Studio · RM50 — 62,500 credits\\n\\n"
+            "💳 BERRY CREDITS — TOP UP\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "Pilih pakej Berry Credits anda.\n"
+            "💱 RM1 = 1,250 Berry Credits\n\n"
+            "🍓 Starter · RM5 — 6,250 credits\n"
+            "⚡ Creator · RM10 — 12,500 credits\n"
+            "💎 Pro · RM20 — 25,000 credits\n"
+            "👑 Studio · RM50 — 62,500 credits\n\n"
             "🔒 Pembayaran belum dibuka sehingga kredit automatik "
             "selepas admin approve siap diuji."
         )
@@ -2749,11 +2749,11 @@ async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE,
     name, amount, credits = plan
     await _safe_edit_or_send(
         update.callback_query,
-        f"🧾 PENGESAHAN TOP UP\\n━━━━━━━━━━━━━━━━━━\\n\\n"
-        f"Plan: {name}\\n"
-        f"Jumlah: RM{amount:.2f}\\n"
-        f"Berry Credits: {credits:,}\\n"
-        f"Kadar: RM1 = 1,250 credits\\n\\n"
+        f"🧾 PENGESAHAN TOP UP\n━━━━━━━━━━━━━━━━━━\n\n"
+        f"Plan: {name}\n"
+        f"Jumlah: RM{amount:.2f}\n"
+        f"Berry Credits: {credits:,}\n"
+        f"Kadar: RM1 = 1,250 credits\n\n"
         "🚧 Checkout belum diaktifkan. Tiada caj dibuat. "
         "Selepas integrasi pembayaran dan auto-credit diuji, "
         "butang Confirm akan memaparkan QR yang sama seperti Browse Shop.",
