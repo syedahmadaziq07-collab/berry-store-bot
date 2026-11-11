@@ -784,6 +784,92 @@ def dashboard_table_gateway():
         return jsonify(error="Dashboard request failed"), 503
 
 
+# Gemini Control Center session: signed, short-lived, HttpOnly cookie.
+# Never use the prototype's demo password or client-side service_role key.
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from collections import defaultdict as _defaultdict
+from threading import Lock as _ThreadLock
+from secrets import token_urlsafe as _token_urlsafe
+
+_GEMINI_AUTH_COOKIE = "berry_admin_session"
+_GEMINI_AUTH_TTL = 3600
+_GEMINI_LOGIN_ATTEMPTS = _defaultdict(list)
+_GEMINI_LOGIN_LOCK = _ThreadLock()
+
+def _gemini_signer():
+    if not DASHBOARD_ADMIN_SECRET or len(DASHBOARD_ADMIN_SECRET) < 24:
+        raise RuntimeError("Strong DASHBOARD_ADMIN_SECRET required")
+    return URLSafeTimedSerializer(DASHBOARD_ADMIN_SECRET, salt="berry-admin-v1")
+
+def _gemini_session():
+    raw = request.cookies.get(_GEMINI_AUTH_COOKIE, "")
+    if not raw:
+        return None
+    try:
+        data = _gemini_signer().loads(raw, max_age=_GEMINI_AUTH_TTL)
+        if data.get("role") != "admin" or not isinstance(data.get("csrf"), str):
+            return None
+        return data
+    except (BadSignature, SignatureExpired, ValueError, RuntimeError):
+        return None
+
+def _gemini_session_guard():
+    session = _gemini_session()
+    if not session:
+        return jsonify(error="Authentication required"), 401
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not hmac.compare_digest(supplied, session["csrf"]):
+            return jsonify(error="CSRF validation failed"), 403
+    return None
+
+@_app.route("/api/admin/v1/auth/login", methods=["POST"])
+def gemini_admin_login():
+    from time import monotonic
+    # Bound per-IP attempts; use reverse-proxy remote_addr, not untrusted X-Forwarded-For.
+    ip = request.remote_addr or "unknown"
+    now = monotonic()
+    with _GEMINI_LOGIN_LOCK:
+        attempts = [t for t in _GEMINI_LOGIN_ATTEMPTS[ip] if now - t < 900]
+        if len(attempts) >= 8:
+            return jsonify(error="Too many attempts. Try again later."), 429
+        attempts.append(now)
+        _GEMINI_LOGIN_ATTEMPTS[ip] = attempts
+    password = (request.get_json(silent=True) or {}).get("password", "")
+    if not isinstance(password, str) or not DASHBOARD_ADMIN_SECRET or len(DASHBOARD_ADMIN_SECRET) < 24:
+        return jsonify(error="Invalid login"), 401
+    if not hmac.compare_digest(password, DASHBOARD_ADMIN_SECRET):
+        return jsonify(error="Invalid login"), 401
+    with _GEMINI_LOGIN_LOCK:
+        _GEMINI_LOGIN_ATTEMPTS.pop(ip, None)
+    csrf = _token_urlsafe(32)
+    cookie = _gemini_signer().dumps({"role":"admin","csrf":csrf})
+    response = jsonify(user={"role":"admin"}, csrfToken=csrf)
+    response.set_cookie(_GEMINI_AUTH_COOKIE, cookie, httponly=True,
+                        secure=True, samesite="Strict", max_age=_GEMINI_AUTH_TTL, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+@_app.route("/api/admin/v1/auth/me", methods=["GET"])
+def gemini_admin_me():
+    session = _gemini_session()
+    if not session:
+        return jsonify(authenticated=False), 401
+    response = jsonify(authenticated=True, user={"role":"admin"}, csrfToken=session["csrf"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+@_app.route("/api/admin/v1/auth/logout", methods=["POST"])
+def gemini_admin_logout():
+    blocked = _gemini_session_guard()
+    if blocked:
+        return blocked
+    response = jsonify(ok=True)
+    response.delete_cookie(_GEMINI_AUTH_COOKIE, path="/", secure=True, samesite="Strict")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @_app.route("/api/admin/v1/dashboard/overview", methods=["GET"])
 def berry_control_center_overview():
     """Read-only bridge for the Gemini control-center UI.
@@ -791,9 +877,9 @@ def berry_control_center_overview():
     This endpoint never exposes Supabase credentials and does not mutate
     orders, wallets, or payment status.
     """
-    ok, err = _check_dashboard_secret()
-    if not ok:
-        return jsonify(error=err), 401
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
     if not TENANT_ID or not SUPABASE_SERVICE_KEY:
         return jsonify(error="Admin backend unavailable"), 503
     try:
@@ -829,9 +915,9 @@ def berry_control_center_overview():
 @_app.route("/api/admin/v1/orders", methods=["GET"])
 @_app.route("/api/admin/v1/customers", methods=["GET"])
 def berry_control_center_lists():
-    ok, err = _check_dashboard_secret()
-    if not ok:
-        return jsonify(error=err), 401
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
     if not TENANT_ID or not SUPABASE_SERVICE_KEY:
         return jsonify(error="Admin backend unavailable"), 503
     specs = {
