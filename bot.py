@@ -958,7 +958,13 @@ def berry_control_center_extra_reads():
     try:
         rows = sb_admin_get(table, "select=" + columns + "&limit=500")
         if table == "bot_settings":
-            return jsonify({row["key"]: row.get("value") for row in rows if row.get("key")})
+            safe_keys = {"welcome_message", "browse_shop_enabled", "ai_studio_enabled",
+                         "referral_enabled", "maintenance_mode", "banner_url",
+                         "payment_qr_url", "support_username", "announcement",
+                         "required_channel", "required_channel_url", "min_topup_amount",
+                         "referral_reward_rm"}
+            return jsonify({row["key"]: row.get("value") for row in rows
+                            if row.get("key") in safe_keys})
         return jsonify(rows)
     except Exception as exc:
         log.warning("[CONTROL_CENTER_EXTRA_READ] %s %s", table, type(exc).__name__)
