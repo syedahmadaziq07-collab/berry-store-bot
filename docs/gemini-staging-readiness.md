@@ -9,7 +9,7 @@ Date: 11 November 2026 (Malaysia). Decision: **NOT READY FOR PRODUCTION; definit
 - Separate Flask host `admin_app.py` serves the Vite build. It never imports or runs `bot.py`. Docker final image contains only the Python host and compiled frontend.
 - Staging: https://berry-gemini-admin-staging.onrender.com/dashboard
 - Render service: `srv-dbq2g9mk1f9s73de0u50`, free plan, Oregon, manual deploys only.
-- First verified live deploy: `dep-dbq2g9uk1f9s73de0usg`, source `15ececd8dcb3dde3aa389387987c3e6a4409a200`. See later deployment evidence for a superseding revision.
+- Latest verified live deploy: `dep-dbq2nojbc2fs73covm90`, source `ab154583429b3778b68ba5faad4c967289c9f0f3`. Earlier live deploy: `dep-dbq2g9uk1f9s73de0usg`.
 - Draft follow-up PR: https://github.com/syedahmadaziq07-collab/berry-store-bot/pull/25
 - PR #24 was already merged before this session started. No merge or production deployment was performed in this session.
 
@@ -24,7 +24,7 @@ Date: 11 November 2026 (Malaysia). Decision: **NOT READY FOR PRODUCTION; definit
 | `npm audit --omit=dev` | PASS | Zero reported production dependency advisories at check time |
 | `python -m py_compile admin_app.py bot.py` | PASS | Compiles without importing/running the Telegram bot |
 | `python -m unittest discover -s tests -v` | PASS: 46 | 19 new runtime security/adapter tests plus 27 existing regression checks |
-| GitHub Actions | PASS: 4 workflows | Verified for commit `15ececd8dcb3dde3aa389387987c3e6a4409a200`; includes new frontend/runtime workflow |
+| GitHub Actions | PASS: 4 workflows | Verified for deployed commit `ab154583429b3778b68ba5faad4c967289c9f0f3`; includes new frontend/runtime workflow |
 | Render Docker build and deploy | PASS | Live state verified through Render; build also runs TypeScript, utility tests and Vite |
 | Live HTTPS smoke checks | PASS: 10; BLOCKED: 1 | Details in `staging-smoke-results.json`; no real payment or broadcast |
 | Browser rendering | PASS: desktop login page | Actual deployed page opened; screenshot in `evidence/staging-login.jpg` |
