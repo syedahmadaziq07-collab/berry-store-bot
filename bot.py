@@ -2584,6 +2584,25 @@ async def show_ai_studio_section(
             [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_duration")],
             [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
         ]
+    elif section == "topup":
+        # Display-only preview. Do not create orders, collect payments, or credit wallets.
+        text = (
+            "💳 BERRY CREDITS — TOP UP PLANS\\n"
+            "━━━━━━━━━━━━━━━━━━\\n\\n"
+            "🍓 Starter\\n"
+            "RM5.00 = 6,250 Berry Credits\\n\\n"
+            "⚡ Creator\\n"
+            "RM10.00 = 12,500 Berry Credits\\n\\n"
+            "💎 Pro\\n"
+            "RM20.00 = 25,000 Berry Credits\\n\\n"
+            "👑 Studio\\n"
+            "RM50.00 = 62,500 Berry Credits\\n\\n"
+            "💱 Kadar tetap: RM1 = 1,250 Berry Credits\\n"
+            "1 credit = RM0.0008\\n\\n"
+            "🚧 Paparan pelan sahaja. Pembayaran dan pembelian kredit "
+            "belum diaktifkan; tiada caj dikenakan."
+        )
+        buttons = [[InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet")]]
     elif section == "wallet":
         balance = await _wallet_balance(update.effective_user.id)
         balance_label = balance if balance is not None else "Belum tersedia"
@@ -2600,7 +2619,7 @@ async def show_ai_studio_section(
         )
         buttons = [
             [InlineKeyboardButton("📜 Transaction History", callback_data="ai_studio:transactions")],
-            [InlineKeyboardButton("💳 Top Up (akan datang)", callback_data="ai_studio:topup")],
+            [InlineKeyboardButton("💳 Lihat Top Up Plans", callback_data="ai_studio:topup")],
         ]
     elif section == "transactions":
         transactions = await _wallet_recent_transactions(update.effective_user.id)
