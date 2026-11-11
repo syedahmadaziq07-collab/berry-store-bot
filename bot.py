@@ -3046,6 +3046,16 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _berry_ai_public_name(tool_key: str) -> str | None:
+    """Not wired to Telegram until a private, audited model store exists.
+
+    The earlier prototype read mapping configuration from public.bot_settings,
+    which has public SELECT policies. That is NOT a private provider store.
+    Staging drafts are kept in the isolated admin host SQLite, not the bot.
+    """
+    return None
+
+
 async def show_ai_studio_section(
     update: Update, context: ContextTypes.DEFAULT_TYPE, section: str,
 ):
@@ -3056,9 +3066,11 @@ async def show_ai_studio_section(
     back = [InlineKeyboardButton("⬅️ Back to AI Studio", callback_data="ai_video")]
 
     if section == "video":
+        display_name = await _berry_ai_public_name("video")
         text = (
             "🎬 VIDEO STUDIO\n━━━━━━━━━━━━━━━━━━\n"
-            "Hasilkan video AI langkah demi langkah.\n\n"
+            + (f"✨ {display_name}\n\n" if display_name else "")
+            + "Hasilkan video AI langkah demi langkah.\n\n"
             "Pilih jenis input:"
         )
         buttons = [
@@ -3207,9 +3219,11 @@ async def show_ai_studio_section(
                 reply_markup=InlineKeyboardMarkup([back]),
             )
             return
+        label = await _berry_ai_public_name(section) if section in {"image", "transform", "voice", "enhance", "storyboard"} else None
         text = (
             f"{titles[section]}\n━━━━━━━━━━━━━━━━━━\n\n"
-            "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
+            + (f"✨ {label}\n\n" if label else "")
+            + "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
             "Ia akan diaktifkan selepas sistem berkaitan siap.\n\n"
             "🔒 Tiada caj dikenakan."
         )
