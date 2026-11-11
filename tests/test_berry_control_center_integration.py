@@ -11,9 +11,9 @@ class ControlCenterIntegrationTests(unittest.TestCase):
 
     def test_overview_requires_admin_secret_and_server_key(self):
         start = BOT.index("def berry_control_center_overview():")
-        end = BOT.index('@_app.route("/api/dashboard/orders"', start)
+        end = BOT.index('@_app.route("/api/admin/v1/shop/products"', start)
         handler = BOT[start:end]
-        self.assertIn("_check_dashboard_secret()", handler)
+        self.assertIn("_gemini_session_guard()", handler)
         self.assertIn("SUPABASE_SERVICE_KEY", handler)
         self.assertIn("TENANT_ID", handler)
         self.assertIn('sb_admin_get("orders"', handler)
@@ -62,6 +62,16 @@ class ControlCenterIntegrationTests(unittest.TestCase):
         self.assertNotIn("email,password", handler)
         self.assertNotIn("sb_admin_patch(", handler)
         self.assertNotIn("sb_admin_post(", handler)
+        self.assertIn("safe_keys =", handler)
+
+    def test_wallet_reads_are_authenticated_and_read_only(self):
+        start = BOT.index("def berry_control_center_module_reads():")
+        end = BOT.index('@_app.route("/api/dashboard/orders"', start)
+        handler = BOT[start:end]
+        self.assertIn("_gemini_session_guard()", handler)
+        self.assertIn('sb_admin_get("ai_wallets"', handler)
+        self.assertIn('sb_admin_get("ai_wallet_transactions"', handler)
+        self.assertNotIn("sb_admin_patch(", handler)
 
 if __name__ == "__main__":
     unittest.main()
