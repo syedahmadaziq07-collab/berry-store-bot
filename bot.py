@@ -678,7 +678,7 @@ def dashboard_orders_read():
         filters = json.loads(request.args.get("filters", "[]"))
         if not isinstance(filters, list) or len(filters) > 5:
             return jsonify(error="Invalid filters"), 400
-        query = {"select": columns}
+        query = [("select", columns)]
         for item in filters:
             if not isinstance(item, list) or len(item) != 3:
                 return jsonify(error="Invalid filter"), 400
@@ -691,21 +691,21 @@ def dashboard_orders_read():
                 return jsonify(error="Invalid status filter"), 400
             if key == "created_at" and op not in ("gt", "gte", "lte"):
                 return jsonify(error="Invalid date filter"), 400
-            query[key] = f"{op}.({value})" if op == "in" else f"{op}.{value}"
+            query.append((key, f"{op}.({value})" if op == "in" else f"{op}.{value}"))
         order = request.args.get("order", "created_at.desc")
         if order not in ("created_at.asc", "created_at.desc"):
             return jsonify(error="Invalid order"), 400
-        query["order"] = order
+        query.append(("order", order))
         limit = int(request.args.get("limit", "500"))
         if limit < 1 or limit > 500:
             return jsonify(error="Invalid limit"), 400
-        query["limit"] = str(limit)
+        query.append(("limit", str(limit)))
         count = request.args.get("count") == "exact"
         headers = _sb_admin_headers()
         if count:
             headers["Prefer"] = "count=exact"
         url = f"{SUPABASE_URL}/rest/v1/orders"
-        response = _httpx.get(url, params={**query, "tenant_id": f"eq.{TENANT_ID}"},
+        response = _httpx.get(url, params=query + [("tenant_id", f"eq.{TENANT_ID}")],
                               headers=headers, timeout=15)
         response.raise_for_status()
         total = None
