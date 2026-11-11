@@ -2744,7 +2744,7 @@ async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_T
         "selepas harga sebenar ditetapkan.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⚡ 8–10 saat (akan datang)", callback_data="ai_video_unavailable:short")],
-            [InlineKeyboardButton("🎬 15 saat (preview)", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("🎬 5 saat · Wan 2.6 (ujian)", callback_data="ai_video_models:15")],
             [InlineKeyboardButton("🎞️ 30 saat (akan datang)", callback_data="ai_video_unavailable:long")],
             [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video")],
         ]),
@@ -2832,15 +2832,15 @@ async def request_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_T
         return
     context.user_data["ai_video_flow"] = {
         "stage": "await_photo",
-        "model": "Gemini Omni Flash (15s)",
+        "model": "Wan 2.6 Image-to-Video (5s, 720p)",
         "ratio": ratio,
     }
     await _safe_edit_or_send(
         update.callback_query,
-        f"🔥 Gemini Omni Flash (15s) ({ratio})\n\n"
+        f"🎬 Wan 2.6 Image-to-Video · 5s · 720p ({ratio})\n\n"
         "📷 Hantar SATU gambar rujukan untuk mula.\n"
         "Kemudian bot akan minta prompt.\n\n"
-        "⚠️ Preview sahaja — video belum akan dijana.",
+        "💵 fal.ai API berbayar; generation hanya selepas pengesahan.",
         reply_markup=_ai_video_back_button("ai_video_ratio"),
     )
 
@@ -2861,7 +2861,7 @@ async def accept_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_TY
         f"✅ Gambar diterima! Ratio: {state['ratio']}\n\n"
         "✏️ Sekarang hantar prompt untuk video.\n"
         "Contoh: Cinematic sunrise, slow camera pan, birds singing.\n\n"
-        "⚠️ Ini preview; gambar tidak dihantar ke AI provider.",
+        "🔒 Gambar belum dihantar ke fal.ai. Caj hanya selepas pengesahan.",
         reply_markup=_ai_video_back_button("ai_video_ratio"),
     )
     return True
