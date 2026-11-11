@@ -3,7 +3,7 @@
 Updated 12 November 2026 MYT. Owner target: staging today, 12 November; final report before 08:00 13 November MYT.
 Current customer launch decision: **NO-GO**. Production is unchanged.
 
-Recovery batch follow-up: bounded, deduplicated recovery iterations implemented; one failed job cannot block other completed deliveries. External actions remain disabled by default. No scheduler or live bot started; this is not external E2E. Local suite: 134 tests PASS. Initial PR CI PASS; packaging follow-up requires CI before merge. Recovery module is included and syntax-checked in the admin image; no scheduler starts.
+Recovery batch follow-up: bounded, deduplicated recovery iterations implemented; one failed job cannot block other completed deliveries. External actions remain disabled by default. No scheduler or live bot started; this is not external E2E. Local suite: 134 tests PASS. PR #41 and packaging follow-up CI PASS; merged and deployed to staging. Recovery module is included and syntax-checked in the admin image; no scheduler starts.
 
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
@@ -59,3 +59,7 @@ Top-up checkout now uses one service-only RPC rather than a read-then-insert rac
 - Still IN PROGRESS: full shop fixture coverage, customer bot/job-wallet integration, continuous recovery scheduling and an audited unknown-outcome operator flow. Do not treat the isolated synthetic job wallet as the existing customer wallet.
 - Still BLOCKED for actual external E2E: authenticated staging browser session, dedicated staging Telegram test bot/account, approved provider test budget, independent all-in cost verification.
 - Hourly continuation is active with the staging target today and final GO/NO-GO report scheduled for 13 November at approximately 08:00 MYT. No unattended completion guarantee.
+
+## Recovery batch release, 12 November MYT
+
+PASS: 134 local backend tests and all four PR CI workflows. PR #41 merged; application 4154d472 LIVE at dep-dbqbfomi0phs73cj1vtg. Recovery module packaged and syntax-checked. No daemon, real provider/Telegram call or customer payment enabled. Post-live error logs empty in immediate check interval. External E2E and RM1 net margin remain BLOCKED; customer launch remains NO-GO.
