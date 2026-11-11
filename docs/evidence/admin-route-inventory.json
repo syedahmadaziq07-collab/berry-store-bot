@@ -1,0 +1,176 @@
+[
+  {
+    "handler": "login",
+    "method": "POST",
+    "route_expression": "PREFIX + '/auth/login'",
+    "line": 271
+  },
+  {
+    "handler": "me",
+    "method": "GET",
+    "route_expression": "PREFIX + '/auth/me'",
+    "line": 312
+  },
+  {
+    "handler": "logout",
+    "method": "POST",
+    "route_expression": "PREFIX + '/auth/logout'",
+    "line": 316
+  },
+  {
+    "handler": "get_products",
+    "method": "GET",
+    "route_expression": "PREFIX + '/shop/products'",
+    "line": 337
+  },
+  {
+    "handler": "get_orders",
+    "method": "GET",
+    "route_expression": "PREFIX + '/orders'",
+    "line": 341
+  },
+  {
+    "handler": "get_customers",
+    "method": "GET",
+    "route_expression": "PREFIX + '/customers'",
+    "line": 349
+  },
+  {
+    "handler": "get_credentials",
+    "method": "GET",
+    "route_expression": "PREFIX + '/credentials'",
+    "line": 355
+  },
+  {
+    "handler": "wallet",
+    "method": "GET",
+    "route_expression": "PREFIX + '/wallet'",
+    "line": 359
+  },
+  {
+    "handler": "get_overview",
+    "method": "GET",
+    "route_expression": "PREFIX + '/dashboard/overview'",
+    "line": 364
+  },
+  {
+    "handler": "get_settings",
+    "method": "GET",
+    "route_expression": "PREFIX + '/bot-settings'",
+    "line": 368
+  },
+  {
+    "handler": "referrals",
+    "method": "GET",
+    "route_expression": "PREFIX + '/referrals'",
+    "line": 372
+  },
+  {
+    "handler": "categories",
+    "method": "GET",
+    "route_expression": "PREFIX + '/shop/categories'",
+    "line": 376
+  },
+  {
+    "handler": "ai_catalogue",
+    "method": "GET",
+    "route_expression": "PREFIX + '/ai/tools'",
+    "line": 381
+  },
+  {
+    "handler": "ai_catalogue",
+    "method": "GET",
+    "route_expression": "PREFIX + '/ai/models'",
+    "line": 381
+  },
+  {
+    "handler": "broadcasts",
+    "method": "GET",
+    "route_expression": "PREFIX + '/broadcast'",
+    "line": 385
+  },
+  {
+    "handler": "model_health",
+    "method": "GET",
+    "route_expression": "PREFIX + '/ai/models/<model_id>/health'",
+    "line": 389
+  },
+  {
+    "handler": "logs",
+    "method": "GET",
+    "route_expression": "PREFIX + '/system/audit-logs'",
+    "line": 393
+  },
+  {
+    "handler": "health",
+    "method": "GET",
+    "route_expression": "PREFIX + '/system/health'",
+    "line": 400
+  },
+  {
+    "handler": "product_write",
+    "method": "POST",
+    "route_expression": "PREFIX + '/shop/products'",
+    "line": 414
+  },
+  {
+    "handler": "product_write",
+    "method": "PUT",
+    "route_expression": "PREFIX + '/shop/products/<resource_id>'",
+    "line": 414
+  },
+  {
+    "handler": "product_write",
+    "method": "DELETE",
+    "route_expression": "PREFIX + '/shop/products/<resource_id>'",
+    "line": 414
+  },
+  {
+    "handler": "product_write",
+    "method": "PATCH",
+    "route_expression": "PREFIX + '/shop/products/<resource_id>/stock'",
+    "line": 414
+  },
+  {
+    "handler": "unavailable_mutation",
+    "method": "ROUTE",
+    "route_expression": "PREFIX + '/<path:unimplemented>'",
+    "line": 456
+  },
+  {
+    "handler": "liveness",
+    "method": "GET",
+    "route_expression": "'/healthz'",
+    "line": 460
+  },
+  {
+    "handler": "index",
+    "method": "GET",
+    "route_expression": "'/'",
+    "line": 466
+  },
+  {
+    "handler": "index",
+    "method": "GET",
+    "route_expression": "'/dashboard'",
+    "line": 466
+  },
+  {
+    "handler": "index",
+    "method": "GET",
+    "route_expression": "'/dashboard/<path:route>'",
+    "line": 466
+  },
+  {
+    "handler": "assets",
+    "method": "GET",
+    "route_expression": "'/assets/<path:asset>'",
+    "line": 473
+  },
+  {
+    "handler": "images",
+    "method": "GET",
+    "route_expression": "'/images/<path:image>'",
+    "line": 477
+  }
+]

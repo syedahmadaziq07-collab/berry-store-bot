@@ -1,0 +1,48 @@
+[
+  {
+    "test": "React dashboard served over HTTPS",
+    "status": "passed",
+    "httpStatus": 200
+  },
+  {
+    "test": "Isolated Python health, Telegram polling disabled",
+    "status": "passed"
+  },
+  {
+    "test": "Unauthenticated data access blocked",
+    "status": "passed"
+  },
+  {
+    "test": "Live login and secure session cookie",
+    "status": "passed"
+  },
+  {
+    "test": "Authenticated session restoration",
+    "status": "passed"
+  },
+  {
+    "test": "CSRF rejects logout without token",
+    "status": "passed"
+  },
+  {
+    "test": "Wallet writes blocked before database processing",
+    "status": "passed"
+  },
+  {
+    "test": "Broadcast blocked, no messages sent",
+    "status": "passed"
+  },
+  {
+    "test": "Database connection",
+    "status": "blocked",
+    "reason": "Missing server service key and confirmed tenant ID"
+  },
+  {
+    "test": "No fabricated analytics when database is unavailable",
+    "status": "passed"
+  },
+  {
+    "test": "Live logout revokes session",
+    "status": "passed"
+  }
+]
