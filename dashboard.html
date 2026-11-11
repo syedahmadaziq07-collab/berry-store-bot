@@ -1492,7 +1492,7 @@ button:active{transform:scale(.97)}
     <div class="cf">
       <label>Service Role Key <span style="color:var(--danger);font-weight:700">*</span></label>
       <input id="cfgKey" type="password" placeholder="eyJhbGci... (service_role key only)"/>
-      <div style="font-size:.72rem;color:var(--text-xs);margin-top:.35rem">Use the <strong style="color:var(--text-s)">service_role</strong> key from Supabase &rarr; Settings &rarr; API. The anon key is blocked by RLS.</div>
+      <div style="font-size:.72rem;color:var(--danger);margin-top:.35rem"><strong>Security warning:</strong> This legacy connection puts a privileged Supabase key in your browser and localStorage. Do not use it on shared devices or distribute this dashboard URL as an admin login. A server-side authenticated connection is planned; do not enter a new privileged key here unless you understand the risk.</div>
     </div>
     <div class="cf">
       <label>Dashboard Admin Secret <span style="color:var(--danger);font-weight:700">*</span></label>
