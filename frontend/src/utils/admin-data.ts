@@ -12,11 +12,11 @@ export type ModuleResults = Partial<Record<ModuleId, ModuleResult>>;
 export const MENU_REQUIREMENTS = {
   dashboard: ['overview', 'orders', 'products'], shop: ['products'], orders: ['orders'],
   credentials: ['credentials', 'products'], customers: ['customers'],
-  'ai-studio': ['tools'], 'ai-models': ['models'], wallets: ['wallet'],
+  'ai-studio': [], 'ai-models': [], wallets: ['wallet'],
   'bot-settings': ['settings'], broadcast: ['broadcasts', 'customers'],
   referrals: ['customers', 'settings'], monitoring: ['health'],
 } as const;
-export const MENU_OPTIONAL = {shop: ['categories'], 'ai-studio': ['models'], 'ai-models': ['tools'], monitoring: ['audit']} as const;
+export const MENU_OPTIONAL = {shop: ['categories'], 'ai-studio': ['models', 'tools'], 'ai-models': ['tools', 'models'], monitoring: ['audit']} as const;
 export type MenuId = keyof typeof MENU_REQUIREMENTS;
 const arrays = new Set<ModuleId>(['products', 'categories', 'orders', 'credentials', 'customers', 'tools', 'models', 'broadcasts', 'audit']);
 
