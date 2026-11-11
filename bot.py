@@ -285,13 +285,22 @@ def _sb_admin_headers() -> dict:
     }
 
 
+def _orders_api_headers(table: str, default_headers: dict) -> dict:
+    """Orders contain payment status and receipts: never use an anon API key."""
+    if table == "orders":
+        if not SUPABASE_SERVICE_KEY:
+            raise RuntimeError("SUPABASE_SERVICE_KEY required for orders")
+        return _sb_admin_headers()
+    return default_headers
+
+
 def sb_get(table: str, params: str = "") -> list:
     """SELECT rows. Returns list of dicts."""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     effective_params = _ensure_tenant_filter(table, params)
     if effective_params:
         url += "?" + effective_params
-    r = _httpx.get(url, headers=_sb_headers(), timeout=15)
+    r = _httpx.get(url, headers=_orders_api_headers(table, _sb_headers()), timeout=15)
     r.raise_for_status()
     data = r.json()
     log.debug(f"[SB GET] {table}?{effective_params} → {len(data) if isinstance(data, list) else data}")
@@ -302,7 +311,7 @@ def sb_post(table: str, data: dict) -> list:
     """INSERT a row. Returns list of inserted rows."""
     r = _httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
-        headers={**_sb_headers(), "Prefer": "return=representation"},
+        headers={**_orders_api_headers(table, _sb_headers()), "Prefer": "return=representation"},
         json=_ensure_tenant_data(data), timeout=15,
     )
     r.raise_for_status()
@@ -313,7 +322,7 @@ def sb_upsert(table: str, data: dict) -> list:
     """UPSERT (insert or update). Returns list of rows."""
     r = _httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
-        headers={**_sb_headers(), "Prefer": "return=representation,resolution=merge-duplicates"},
+        headers={**_orders_api_headers(table, _sb_headers()), "Prefer": "return=representation,resolution=merge-duplicates"},
         json=_ensure_tenant_data(data), timeout=15,
     )
     r.raise_for_status()
@@ -325,7 +334,7 @@ def sb_patch(table: str, params: str, data: dict) -> list:
     effective_params = _ensure_tenant_filter(table, params)
     r = _httpx.patch(
         f"{SUPABASE_URL}/rest/v1/{table}?{effective_params}",
-        headers={**_sb_headers(), "Prefer": "return=representation"},
+        headers={**_orders_api_headers(table, _sb_headers()), "Prefer": "return=representation"},
         json=data, timeout=15,
     )
     r.raise_for_status()
