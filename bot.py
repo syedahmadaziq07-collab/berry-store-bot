@@ -2923,8 +2923,8 @@ async def _store_topup_receipt(update, context, oid: str, file_id: str, as_docum
         InlineKeyboardButton("✅ Approve", callback_data=f"approve_{oid}"),
         InlineKeyboardButton("❌ Reject", callback_data=f"reject_{oid}"),
     ]])
-    caption = (f"🍓 BERRY CREDITS TOP UP\\nOrder: {oid}\\n"
-               f"User: {user.id}\\nPlan: {order['product_name']}\\n"
+    caption = (f"🍓 BERRY CREDITS TOP UP\nOrder: {oid}\n"
+               f"User: {user.id}\nPlan: {order['product_name']}\n"
                f"Amount: RM{order['amount']}")
     if as_document:
         await context.bot.send_document(chat_id=ADMIN_ID, document=file_id,
