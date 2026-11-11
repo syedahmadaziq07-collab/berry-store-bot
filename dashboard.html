@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png"/>
 <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1834,55 +1834,65 @@ function periodRange() {
 // CONNECT
 // ====================================================
 function openConnect() {
-  document.getElementById('cfgUrl').value = localStorage.getItem('bs_url') || '';
+  document.getElementById('cfgUrl').value = '';
   document.getElementById('cfgKey').value = '';
-  document.getElementById('cfgDashSecret').value = localStorage.getItem('bs_dash_secret') || '';
+  document.getElementById('cfgDashSecret').value = '';
   document.getElementById('cfgErr').textContent = '';
   document.getElementById('connectOverlay').classList.add('open');
 }
 
-async function doConnect() {
-  const url = document.getElementById('cfgUrl').value.trim();
-  const key = document.getElementById('cfgKey').value.trim();
-  const dashSecret = document.getElementById('cfgDashSecret').value.trim();
-  const err = document.getElementById('cfgErr');
-  if (!url||!key||!dashSecret) { err.textContent='URL, key, and dashboard secret are required.'; return; }
-  const role = jwtRole(key);
-  if (role === 'anon') {
-    err.textContent = 'This is an anon key. RLS will block admin reads. Use the service_role key from Supabase Settings > API.';
-    return;
-  }
-  try {
-    sb = supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-    if (TENANT_ID) {
-      const _origFrom = sb.from.bind(sb);
-      const _tenantTables = new Set(['products','product_variants','orders','credentials','users','bot_settings','push_subscriptions','rental_payments']);
-      sb.from = function(table) {
-        let q = _origFrom(table);
-        if (_tenantTables.has(table)) q = q.eq('tenant_id', TENANT_ID);
-        return q;
-      };
+// Compatibility adapter: only the backend talks to Supabase.
+// No Supabase service_role key or publishable key is used in the browser.
+function serverTable(table) {
+  const state = {table,action:'select',columns:'*',filters:[],count:false,head:false,
+                 order:null,limit:500,payload:null,onConflict:null,single:false};
+  const builder = {
+    select(columns='*',options={}) {state.columns=columns;state.count=options.count==='exact';state.head=!!options.head;return this;},
+    eq(column,value) {state.filters.push([column,'eq',value]);return this;},
+    gt(column,value) {state.filters.push([column,'gt',value]);return this;},
+    gte(column,value) {state.filters.push([column,'gte',value]);return this;},
+    lte(column,value) {state.filters.push([column,'lte',value]);return this;},
+    in(column,values) {state.filters.push([column,'in',values]);return this;},
+    order(column,options={}) {state.order=[column,options.ascending!==false?'asc':'desc'];return this;},
+    limit(n) {state.limit=n;return this;},
+    maybeSingle() {state.single=true;return this;},
+    update(payload) {state.action='update';state.payload=payload;return this;},
+    insert(payload) {state.action='insert';state.payload=payload;return this;},
+    upsert(payload,options={}) {state.action='upsert';state.payload=payload;state.onConflict=options.onConflict||null;return this;},
+    delete() {state.action='delete';return this;},
+    then(resolve,reject) {
+      const promise = fetch('/api/dashboard/table',{method:'POST',
+        headers:{'Content-Type':'application/json','X-Dashboard-Secret':_dashSecret},
+        body:JSON.stringify(state)})
+        .then(async response=>{
+          const result=await response.json();
+          if(!response.ok) return {data:null,count:null,error:new Error(result.error||'Server request failed')};
+          return {data:state.single?(result.data?.[0]||null):result.data,count:result.count,error:null};
+        }).catch(error=>({data:null,count:null,error}));
+      return promise.then(resolve,reject);
     }
-    _sbUrl = url;
-    _sbKey = key;
-    _dashSecret = dashSecret;
-    // Test connection
-    const { error } = await sb.from('products').select('id', { count: 'exact', head: true });
-    if (error) throw error;
-    localStorage.setItem('bs_url', url);
-    // Never persist privileged Supabase credentials in browser storage.
+  };
+  return builder;
+}
+
+async function doConnect() {
+  const dashSecret=document.getElementById('cfgDashSecret').value.trim();
+  const err=document.getElementById('cfgErr');
+  if(!dashSecret){err.textContent='Dashboard admin secret is required.';return;}
+  _dashSecret=dashSecret;
+  try {
+    const result=await serverTable('products').select('id',{count:'exact',head:true});
+    if(result.error)throw result.error;
+    sb={from:serverTable};
+    _sbUrl='';_sbKey='';
     localStorage.removeItem('bs_key');
     localStorage.removeItem('bs_dash_secret');
     setConn(true);
     closeOverlay('connectOverlay');
-    toast('Connected successfully' + (role === 'service_role' ? ' (service_role)' : ''));
+    toast('Connected to secure dashboard API');
     startRefresh();
     startOrderWatcher();
-  } catch(e) {
-    err.textContent = 'Connection failed: ' + e.message;
-    sb = null;
-    setConn(false);
-  }
+  } catch(e){err.textContent='Connection failed: '+e.message;sb=null;_dashSecret='';setConn(false);}
 }
 
 function setConn(on) {
@@ -3412,7 +3422,7 @@ async function enableNotifications() {
 
     await savePushSubscription(_pushSubscription);
     toast('Notifications enabled successfully!');
-    setupRealtimeListeners();
+    // Polling replaces browser Supabase Realtime (no privileged browser token).
   } catch(e) {
     toast('Failed to enable push: ' + e.message);
   }
@@ -3565,44 +3575,7 @@ function clearLiveAlerts() {
 }
 
 // Supabase Realtime listeners for push events
-async function setupRealtimeListeners() {
-  if (!sb || _realtimeChannel) return;
-  await seedOrderStatusCache();
-  _realtimeChannel = sb.channel('admin-push-notifications');
-
-  // New order
-  _realtimeChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-    const o = payload.new;
-    _orderStatusCache[o.id] = o.status;
-    if (o.created_at && (!_latestOrderCreatedAt || o.created_at > _latestOrderCreatedAt)) _latestOrderCreatedAt = o.created_at;
-    notifyNewOrder(o, 'realtime');
-  });
-
-  // Status change detection using local cache
-  _realtimeChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
-    const o = payload.new;
-    const prevStatus = _orderStatusCache[o.id];
-    _orderStatusCache[o.id] = o.status;
-    if (prevStatus === o.status) return;
-    if (o.status === 'waiting_approval' && prevStatus !== 'waiting_approval') {
-      const body = '@' + (o.username || 'customer') + ' clicked "I Have Paid" for ' + (o.product_name || 'order');
-      addLiveAlert('payment-' + o.id + '-' + Date.now(), 'Payment Received', body, '💰');
-      showLocalNotification('Payment Received', body, 'payment-' + o.id);
-    }
-    if ((o.status === 'completed' || o.status === 'approved') && prevStatus !== o.status) {
-      const body = 'Order #' + o.id + ' for ' + (o.product_name || 'product') + ' is ' + o.status;
-      addLiveAlert('completed-' + o.id + '-' + Date.now(), 'Order Completed', body, '✅');
-      showLocalNotification('Order Completed', body, 'completed-' + o.id);
-    }
-  });
-
-  // Credential changes (auto delivery failed / low stock)
-  _realtimeChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'credentials' }, async () => {
-    await checkLowStock();
-  });
-
-  _realtimeChannel.subscribe();
-}
+async function setupRealtimeListeners() { /* Disabled: secure dashboard uses polling. */ }
 
 async function checkLowStock() {
   if (!sb) return;
@@ -3649,10 +3622,9 @@ document.querySelectorAll('.overlay').forEach(o=>{
   // Register service worker
   registerServiceWorker();
 
-  // Clear credentials stored by legacy dashboard releases.
-  // Full server-side dashboard migration is still required before production use.
   localStorage.removeItem('bs_key');
   localStorage.removeItem('bs_dash_secret');
+  localStorage.removeItem('bs_url');
   openConnect();
 })();
 </script>
