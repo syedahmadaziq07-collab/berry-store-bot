@@ -14,7 +14,7 @@ declare
   tx record;
   already boolean := false;
 begin
-  if current_user <> 'service_role' then
+  if auth.role() is distinct from 'service_role' then
     raise exception 'Unauthorized';
   end if;
   if p_tenant_id is null or p_admin_id is null or p_admin_id <= 0
