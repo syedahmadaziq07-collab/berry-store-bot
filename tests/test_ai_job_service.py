@@ -33,8 +33,10 @@ class Tests(unittest.TestCase):
             service.submit_reserved(quote, {"prompt": "x"}, reservation_id="job-1",
                                     verify_reservation=lambda rid, q: False)
         self.assertEqual(provider.calls, 0)
-        self.assertEqual(service.submit_reserved(quote, {"prompt": "x"}, reservation_id="job-1",
-                                                verify_reservation=lambda rid, q: True)["request_id"], "queued")
+        with self.assertRaises(AIJobNotReady):
+            service.submit_reserved(quote, {"prompt": "x"}, reservation_id="job-1",
+                                    verify_reservation=lambda rid, q: True)
+        self.assertEqual(provider.calls, 0)
 
     def test_placeholder_rejected(self):
         mapping = Mapping()
