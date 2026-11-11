@@ -784,6 +784,95 @@ def dashboard_table_gateway():
         return jsonify(error="Dashboard request failed"), 503
 
 
+# Gemini Control Center session: signed, short-lived, HttpOnly cookie.
+# Never use the prototype's demo password or client-side service_role key.
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from collections import defaultdict as _defaultdict
+from threading import Lock as _ThreadLock
+from secrets import token_urlsafe as _token_urlsafe
+
+_GEMINI_AUTH_COOKIE = "berry_admin_session"
+_GEMINI_AUTH_TTL = 3600
+_GEMINI_LOGIN_ATTEMPTS = _defaultdict(list)
+_GEMINI_LOGIN_LOCK = _ThreadLock()
+
+def _gemini_signer():
+    if not DASHBOARD_ADMIN_SECRET or len(DASHBOARD_ADMIN_SECRET) < 24:
+        raise RuntimeError("Strong DASHBOARD_ADMIN_SECRET required")
+    return URLSafeTimedSerializer(DASHBOARD_ADMIN_SECRET, salt="berry-admin-v1")
+
+def _gemini_session():
+    raw = request.cookies.get(_GEMINI_AUTH_COOKIE, "")
+    if not raw:
+        return None
+    try:
+        data = _gemini_signer().loads(raw, max_age=_GEMINI_AUTH_TTL)
+        if data.get("role") != "admin" or not isinstance(data.get("csrf"), str):
+            return None
+        return data
+    except (BadSignature, SignatureExpired, ValueError, RuntimeError):
+        return None
+
+def _gemini_session_guard():
+    session = _gemini_session()
+    if not session:
+        return jsonify(error="Authentication required"), 401
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not hmac.compare_digest(supplied, session["csrf"]):
+            return jsonify(error="CSRF validation failed"), 403
+    return None
+
+@_app.route("/api/admin/v1/auth/login", methods=["POST"])
+def gemini_admin_login():
+    from time import monotonic
+    # Bound per-IP attempts; use reverse-proxy remote_addr, not untrusted X-Forwarded-For.
+    ip = request.remote_addr or "unknown"
+    now = monotonic()
+    with _GEMINI_LOGIN_LOCK:
+        attempts = [t for t in _GEMINI_LOGIN_ATTEMPTS[ip] if now - t < 900]
+        if len(attempts) >= 8:
+            return jsonify(error="Too many attempts. Try again later."), 429
+        attempts.append(now)
+        _GEMINI_LOGIN_ATTEMPTS[ip] = attempts
+    login_payload = request.get_json(silent=True)
+    if not isinstance(login_payload, dict):
+        return jsonify(error="Invalid login"), 401
+    password = login_payload.get("password", "")
+    if not isinstance(password, str) or not DASHBOARD_ADMIN_SECRET or len(DASHBOARD_ADMIN_SECRET) < 24:
+        return jsonify(error="Invalid login"), 401
+    if not hmac.compare_digest(password, DASHBOARD_ADMIN_SECRET):
+        return jsonify(error="Invalid login"), 401
+    with _GEMINI_LOGIN_LOCK:
+        _GEMINI_LOGIN_ATTEMPTS.pop(ip, None)
+    csrf = _token_urlsafe(32)
+    cookie = _gemini_signer().dumps({"role":"admin","csrf":csrf})
+    response = jsonify(user={"role":"admin"}, csrfToken=csrf)
+    response.set_cookie(_GEMINI_AUTH_COOKIE, cookie, httponly=True,
+                        secure=True, samesite="Strict", max_age=_GEMINI_AUTH_TTL, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+@_app.route("/api/admin/v1/auth/me", methods=["GET"])
+def gemini_admin_me():
+    session = _gemini_session()
+    if not session:
+        return jsonify(authenticated=False), 401
+    response = jsonify(authenticated=True, user={"role":"admin"}, csrfToken=session["csrf"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+@_app.route("/api/admin/v1/auth/logout", methods=["POST"])
+def gemini_admin_logout():
+    blocked = _gemini_session_guard()
+    if blocked:
+        return blocked
+    response = jsonify(ok=True)
+    response.delete_cookie(_GEMINI_AUTH_COOKIE, path="/", secure=True, samesite="Strict")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @_app.route("/api/admin/v1/dashboard/overview", methods=["GET"])
 def berry_control_center_overview():
     """Read-only bridge for the Gemini control-center UI.
@@ -791,9 +880,9 @@ def berry_control_center_overview():
     This endpoint never exposes Supabase credentials and does not mutate
     orders, wallets, or payment status.
     """
-    ok, err = _check_dashboard_secret()
-    if not ok:
-        return jsonify(error=err), 401
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
     if not TENANT_ID or not SUPABASE_SERVICE_KEY:
         return jsonify(error="Admin backend unavailable"), 503
     try:
@@ -804,18 +893,136 @@ def berry_control_center_overview():
         completed = [o for o in orders if o.get("status") in ("completed", "approved")]
         pending = [o for o in orders if o.get("status") in ("pending", "waiting_approval")]
         revenue = sum((Decimal(str(o.get("amount") or 0)) for o in completed), Decimal(0))
-        return jsonify(
-            totalRevenue=float(revenue),
-            totalOrders=len(orders),
-            activeProducts=sum(1 for p in products if p.get("is_active") is True),
-            totalCustomers=len(users),
-            pendingOrders=len(pending),
-            completedOrders=len(completed),
-            dataLimited=(len(products)>=500 or len(orders)>=500 or len(users)>=500),
-        )
+        limited = len(products)>=500 or len(orders)>=500 or len(users)>=500
+        kpis = {
+            "totalRevenue": float(revenue),
+            "revenueToday": 0,
+            "revenueThisWeek": 0,
+            "revenueThisMonth": 0,
+            "totalOrders": len(orders),
+            "completedOrdersCount": len(completed),
+            "pendingOrdersCount": len(pending),
+            "totalProducts": len(products),
+            "lowStockCount": sum(1 for p in products if isinstance(p.get("stock"), int) and p["stock"] < 3),
+            "aiWalletLiability": 0,
+            "estimatedGrossProfit": 0,
+        }
+        return jsonify(kpis=kpis, revenueTrend=[], categoryRevenue={}, dataLimited=limited)
     except Exception as exc:
         log.warning("[CONTROL_CENTER_OVERVIEW] %s", type(exc).__name__)
         return jsonify(error="Dashboard overview unavailable"), 503
+
+
+# Gemini frontend read-only adapters. Never expose credential passwords.
+@_app.route("/api/admin/v1/shop/products", methods=["GET"])
+@_app.route("/api/admin/v1/orders", methods=["GET"])
+@_app.route("/api/admin/v1/customers", methods=["GET"])
+def berry_control_center_lists():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    specs = {
+        "/api/admin/v1/shop/products": ("products", "id,name,description,price,stock,duration,is_active,auto_delivery,status"),
+        "/api/admin/v1/orders": ("orders", "id,user_id,username,product_id,product_name,quantity,amount,status,created_at"),
+        "/api/admin/v1/customers": ("users", "id,username,first_name,total_spent,created_at"),
+    }
+    table, columns = specs[request.path]
+    try:
+        rows = sb_admin_get(table, "select=" + columns + "&order=created_at.desc&limit=500")
+        return jsonify(rows)
+    except Exception as exc:
+        log.warning("[CONTROL_CENTER_LIST] %s %s", table, type(exc).__name__)
+        return jsonify(error="Admin list unavailable"), 503
+
+
+@_app.route("/api/admin/v1/shop/categories", methods=["GET"])
+@_app.route("/api/admin/v1/credentials", methods=["GET"])
+@_app.route("/api/admin/v1/bot-settings", methods=["GET"])
+@_app.route("/api/admin/v1/system/health", methods=["GET"])
+def berry_control_center_extra_reads():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    if request.path == "/api/admin/v1/system/health":
+        return jsonify(database="configured", telegram="unknown", status="partial")
+    specs = {
+        "/api/admin/v1/shop/categories": ("categories", "id,name,created_at"),
+        "/api/admin/v1/credentials": ("credentials", "id,product_id,variant_id,is_used,created_at"),
+        "/api/admin/v1/bot-settings": ("bot_settings", "key,value,description,updated_at"),
+    }
+    table, columns = specs[request.path]
+    try:
+        rows = sb_admin_get(table, "select=" + columns + "&limit=500")
+        if table == "bot_settings":
+            safe_keys = {"welcome_message", "browse_shop_enabled", "ai_studio_enabled",
+                         "referral_enabled", "maintenance_mode", "banner_url",
+                         "payment_qr_url", "support_username", "announcement",
+                         "required_channel", "required_channel_url", "min_topup_amount",
+                         "referral_reward_rm"}
+            return jsonify({row["key"]: row.get("value") for row in rows
+                            if row.get("key") in safe_keys})
+        return jsonify(rows)
+    except Exception as exc:
+        log.warning("[CONTROL_CENTER_EXTRA_READ] %s %s", table, type(exc).__name__)
+        return jsonify(error="Admin data unavailable"), 503
+
+
+@_app.route("/api/admin/v1/wallet", methods=["GET"])
+@_app.route("/api/admin/v1/ai/tools", methods=["GET"])
+@_app.route("/api/admin/v1/ai/models", methods=["GET"])
+@_app.route("/api/admin/v1/broadcast", methods=["GET"])
+@_app.route("/api/admin/v1/system/audit-logs", methods=["GET"])
+def berry_control_center_module_reads():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    path = request.path
+    if path == "/api/admin/v1/broadcast":
+        return jsonify([])  # No durable broadcast history API yet.
+    if path == "/api/admin/v1/system/audit-logs":
+        return jsonify([])  # Do not invent audit history.
+    if path == "/api/admin/v1/wallet":
+        try:
+            wallets = sb_admin_get("ai_wallets", "select=user_id,balance,updated_at&limit=500")
+            tx = sb_admin_get("ai_wallet_transactions", "select=id,user_id,kind,amount,balance_after,created_at&order=created_at.desc&limit=500")
+            from decimal import Decimal
+            total = sum((Decimal(str(w.get("balance") or 0)) for w in wallets), Decimal(0))
+            return jsonify(wallets=wallets, transactions=tx, totalBalance=float(total),
+                           dataLimited=len(wallets)>=500 or len(tx)>=500)
+        except Exception as exc:
+            log.warning("[GEMINI_WALLET_READ] %s", type(exc).__name__)
+            return jsonify(error="Wallet unavailable"), 503
+    # AI catalogue tables are optional. Never return mock catalogue data.
+    table = "ai_tools" if path.endswith("/tools") else "ai_models"
+    try:
+        return jsonify(sb_admin_get(table, "select=*&limit=200"))
+    except Exception as exc:
+        log.warning("[GEMINI_AI_READ] %s %s", table, type(exc).__name__)
+        return jsonify(error="AI catalogue unavailable"), 503
+
+
+@_app.route("/api/admin/v1/referrals", methods=["GET"])
+def berry_control_center_referrals():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    try:
+        users = sb_admin_get(
+            "users",
+            "select=id,username,referral_code,referred_by,created_at&limit=500",
+        )
+        return jsonify(users)
+    except Exception as exc:
+        log.warning("[GEMINI_REFERRALS] %s", type(exc).__name__)
+        return jsonify(error="Referrals unavailable"), 503
 
 
 @_app.route("/api/dashboard/orders", methods=["GET"])
@@ -2839,6 +3046,16 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _berry_ai_public_name(tool_key: str) -> str | None:
+    """Not wired to Telegram until a private, audited model store exists.
+
+    The earlier prototype read mapping configuration from public.bot_settings,
+    which has public SELECT policies. That is NOT a private provider store.
+    Staging drafts are kept in the isolated admin host SQLite, not the bot.
+    """
+    return None
+
+
 async def show_ai_studio_section(
     update: Update, context: ContextTypes.DEFAULT_TYPE, section: str,
 ):
@@ -2849,9 +3066,11 @@ async def show_ai_studio_section(
     back = [InlineKeyboardButton("⬅️ Back to AI Studio", callback_data="ai_video")]
 
     if section == "video":
+        display_name = await _berry_ai_public_name("video")
         text = (
             "🎬 VIDEO STUDIO\n━━━━━━━━━━━━━━━━━━\n"
-            "Hasilkan video AI langkah demi langkah.\n\n"
+            + (f"✨ {display_name}\n\n" if display_name else "")
+            + "Hasilkan video AI langkah demi langkah.\n\n"
             "Pilih jenis input:"
         )
         buttons = [
@@ -3000,9 +3219,11 @@ async def show_ai_studio_section(
                 reply_markup=InlineKeyboardMarkup([back]),
             )
             return
+        label = await _berry_ai_public_name(section) if section in {"image", "transform", "voice", "enhance", "storyboard"} else None
         text = (
             f"{titles[section]}\n━━━━━━━━━━━━━━━━━━\n\n"
-            "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
+            + (f"✨ {label}\n\n" if label else "")
+            + "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
             "Ia akan diaktifkan selepas sistem berkaitan siap.\n\n"
             "🔒 Tiada caj dikenakan."
         )
