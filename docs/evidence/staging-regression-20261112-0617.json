@@ -1,0 +1,29 @@
+{
+  "checked_date_myt": "2026-11-12",
+  "scope": "isolated staging only",
+  "status": "PASS",
+  "sql_suites": {
+    "shop_fixture": "PASS",
+    "tenant_integrity": "PASS",
+    "payment_contract": "PASS",
+    "job_lifecycle": "PASS"
+  },
+  "local_regression_tests": {
+    "passed": 31,
+    "failed": 0
+  },
+  "test_data": "All SQL test transactions rolled back",
+  "pr42": {
+    "status": "BLOCKED",
+    "reason": "All three workflows on head 0f1cdef18f54624fae62dcd59f939a35252f63f6 remain queued; no merge performed"
+  },
+  "deployment": {
+    "application": "4154d472b0c34c9b3c8362993395c2a791542494",
+    "status": "LIVE",
+    "new_deploy_started": false
+  },
+  "production_changed": false,
+  "provider_spend": false,
+  "customer_launch": "NO-GO",
+  "external_e2e": "BLOCKED: authenticated staging session, dedicated test bot/account, budget and completed integration required"
+}
