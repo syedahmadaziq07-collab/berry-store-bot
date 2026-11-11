@@ -67,3 +67,5 @@ PASS: 134 local backend tests and all four PR CI workflows. PR #41 merged; appli
 ## Isolated shop fixture checkpoint
 
 PASS: staging-only products, variants, users, credential metadata, categories and settings schema added. All dashboard COLUMNS fields exist (0 missing). Actual SQL relation/access-control smoke suite PASS; test data rolled back. Eight dashboard integration contract tests PASS. No real account credentials stored, production data copied, dashboard configuration changed or writes enabled. This fixture is not a full production schema clone: live checkout/delivery and tenant-integrity semantics still need end-to-end verification. Authenticated browser E2E remains BLOCKED.
+
+Tenant isolation follow-up PASS: composite foreign keys reject cross-tenant product references for variants, credentials and orders. Actual staging SQL rejection tests passed and rolled back. PR #42 CI remains queued; no merge or app redeploy was attempted while checks are pending.
