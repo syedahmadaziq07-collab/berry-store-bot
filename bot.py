@@ -742,17 +742,15 @@ def dashboard_table_gateway():
         headers["Prefer"] = "count=exact" if body.get("count") else "return=representation"
         url = f"{SUPABASE_URL}/rest/v1/{table}"
         payload = body.get("payload")
-        if action != "select":
+        if action not in ("select","delete"):
             if not isinstance(payload,(dict,list)) or (isinstance(payload,list) and (not payload or len(payload)>100)):
                 return jsonify(error="Invalid write payload"), 400
             records = payload if isinstance(payload,list) else [payload]
             writable = _DASHBOARD_WRITABLE_FIELDS[table]
             if any(not isinstance(row,dict) or not row or set(row)-writable for row in records):
                 return jsonify(error="Write fields not permitted"), 403
-            if action in {"update","delete"} and not filters:
+            if action == "update" and not filters:
                 return jsonify(error="Write requires row filter"), 403
-            if action == "delete" and table != "product_variants":
-                return jsonify(error="Delete not permitted"), 403
             for row in records:
                 if "tenant_id" in row:
                     return jsonify(error="Tenant override not permitted"), 403
@@ -763,12 +761,14 @@ def dashboard_table_gateway():
                     return jsonify(error="Invalid upsert conflict"), 400
                 query.append(("on_conflict", "tenant_id,"+conflict))
                 headers["Prefer"] = "resolution=merge-duplicates,return=representation"
-            method = {"insert":"POST","update":"PATCH","delete":"DELETE","upsert":"POST"}[action]
-            if action == "delete":
-                payload = None
+            method = {"insert":"POST","update":"PATCH","upsert":"POST"}[action]
+        elif action == "delete":
+            if table != "product_variants" or not filters:
+                return jsonify(error="Delete not permitted"), 403
+            method = "DELETE"
         else:
             method = "GET"
-        response = _httpx.request(method,url,params=query,headers=headers,json=payload if action != "select" else None,timeout=20)
+        response = _httpx.request(method,url,params=query,headers=headers,json=payload if action in ("insert","update","upsert") else None,timeout=20)
         if response.status_code >= 400:
             log.warning("[DASHBOARD_GATEWAY] %s %s status=%s",table,action,response.status_code)
             return jsonify(error="Database request rejected"), 502
