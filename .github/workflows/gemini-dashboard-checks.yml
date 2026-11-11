@@ -1,0 +1,20 @@
+name: Gemini dashboard integration checks
+on:
+  pull_request:
+    paths:
+      - bot.py
+      - tests/test_berry_control_center_integration.py
+      - .github/workflows/gemini-dashboard-checks.yml
+  workflow_dispatch:
+jobs:
+  python-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Python syntax
+        run: python -m py_compile bot.py
+      - name: Run Gemini integration security tests
+        run: python -m unittest discover -s tests -p 'test_berry_control_center_integration.py' -v
