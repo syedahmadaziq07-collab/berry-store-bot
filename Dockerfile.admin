@@ -14,7 +14,8 @@ COPY admin_app.py ./
 COPY ai_model_mapping.py ./
 COPY ai_model_mapping_store.py ./
 COPY ai_job_service.py staging_job_worker.py fal_provider.py berry_credit_pricing.py ai_wallet_pricing_adapter.py ai_wallet_quote_check.py telegram_wallet_bridge.py ./
-RUN python -m py_compile ai_job_service.py staging_job_worker.py fal_provider.py berry_credit_pricing.py ai_wallet_pricing_adapter.py ai_wallet_quote_check.py telegram_wallet_bridge.py
+COPY topup_checkout.py ./
+RUN python -m py_compile ai_job_service.py staging_job_worker.py fal_provider.py berry_credit_pricing.py ai_wallet_pricing_adapter.py ai_wallet_quote_check.py telegram_wallet_bridge.py topup_checkout.py
 COPY --from=frontend /build/dist/ ./frontend/dist/
 USER berry
 EXPOSE 10000

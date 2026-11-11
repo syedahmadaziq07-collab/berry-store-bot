@@ -5,7 +5,7 @@ Current customer launch decision: **NO-GO**. Production is unchanged.
 
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
-| Backend regression suite | PASS | 107 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
+| Backend regression suite | PASS | 119 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
 | Durable staging job lifecycle | PASS | Separate synthetic MYR cent wallet and immutable quote/ledger. Actual SQL rollback suite passes claim-once, request binding, definitive-failure refunds, ambiguous-outcome hold and ledger reconciliation. Worker tests cover concurrent submits/deliveries and restart/retry safety. External calls disabled by default. Not wired into customer bot. |
 | Frontend | PASS | 16 tests, TypeScript check and production asset build. |
 | Public staging routes/auth guards | PASS | 12 menu shells and 14 unauthenticated API guards; evidence/soft-launch-public-audit-20261112.json. |
@@ -16,11 +16,11 @@ Current customer launch decision: **NO-GO**. Production is unchanged.
 | Supabase security | PASS | Staging advisor has only informational RLS/no-policy notices, consistent with service-only tables; not a production security signoff. |
 | Staging pricing release | PASS | PR #36, commit 29e28fcb, Render dep-dbq9j2l6e07s73fgm41g LIVE. Post-deploy: 12 shells and 14 auth guards PASS. Pricing modules remain preparatory code; no customer billing activated. |
 | Dashboard authenticated E2E | BLOCKED | No authenticated browser session is available in this workspace. Public shells are not evidence of working business operations. |
-| Isolated shop/payment fixtures | BLOCKED | AI staging has private mapping/test wallets and empty AI catalogue; no complete isolated shop/order/wallet schema. Dashboard business reads remain separately configured; do not mutate production data. |
+| Isolated payment/MYR fixture | PASS | Minimal tenants/orders fixture plus actual existing wallet and top-up approval RPCs installed in isolated staging. SQL rollback suite passes checkout replay, ownership, approval/receipt gates, MYR debit/refund, reference conflict and reconciliation. Full shop fixture and authenticated UI remain incomplete. |
 | Telegram bot E2E | BLOCKED | No dedicated staging Telegram bot runtime/session confirmed. Never start production-token polling. |
 | Real provider generation/delivery | BLOCKED | Paid inference budget/approval and staging bot access required; no billable calls made. Durable job lifecycle, delivery retries and ambiguous provider outcomes remain unverified. |
 | Minimum RM1 net profit | BLOCKED | Arithmetic only enforces margin on supplied costs. Provider model/size/duration pricing, FX, payment fees, refunds/retries and operating allocation not independently verified. Existing mapping credit prices are not authorization to generate. |
-| Real top-up/payment | BLOCKED | Owner approval required; receipt verification and payment-to-wallet E2E incomplete. Keep disabled. |
+| Real top-up/payment | BLOCKED | Dummy receipt-to-approval-to-credit contract PASS; bank/payment-provider verification and real Telegram payment E2E remain unverified. Keep disabled. |
 | Production rollout | BLOCKED | Owner approval required after review of E2E evidence. |
 
 ## Work priority
@@ -41,3 +41,7 @@ Report automation scheduled for approximately 08:00 MYT on 13 November 2026. Sch
 - Production service key previously pasted into chat requires owner-approved rotation and coordinated service updates before security signoff. No key was read or rotated during this work.
 - Dedicated synthetic concurrency fixture (tenant aaaaaaaa-2222-4222-8222-222222222222, user 900000002) remains in AI staging. Cleanup DELETE confirmation expired; no customer data or money is involved. Do not claim cleanup completed.
 - Current blockers needing owner input: authenticated staging dashboard session; dedicated staging Telegram bot token through secure configuration; bounded provider test spend. Production and real payments remain approval-gated.
+
+## Atomic checkout follow-up
+
+Top-up checkout now uses one service-only RPC rather than a read-then-insert race. Its stable Telegram-update key and per-user lock reuse active orders and reject changed ownership. Replayed completed orders never reopen payment, and waiting-approval orders never request another payment. The generic MYR ledger also binds replay to the original reference. Customer checkout flag remains disabled; migrations apply only to isolated staging.
