@@ -11,9 +11,9 @@ Current customer launch decision: **NO-GO**. Production is unchanged.
 | Wallet quote precision | PASS | Quotes now use common unit of 25 credits = RM0.02; avoids RPC rejecting sub-cent amounts. 1,001 cost cases tested. |
 | Cost validation | PASS | Negative individual costs cannot cancel positive costs; nonfinite values rejected. |
 | Staging synthetic reservation/refund | PASS | Actual Supabase SQL with assertions: replay debit once, conflicting key rejected, insufficient balance rejected, repeated refund restores original balance. Entire transaction rolled back. |
-| Concurrent reserve/refund | IN PROGRESS | Prototype reserve can return a unique-key error for simultaneous replay; concurrency not certified. No customer use. |
+| Concurrent synthetic reserve/refund | PASS | Staging RPCs serialized by tenant/job advisory lock. Eight simultaneous duplicate reservations all succeeded with one debit; eight duplicate refunds restored balance once. Eight different 1,000-credit jobs against 5,000 credits accepted five and rejected three. Synthetic-credit prototype only; not the customer MYR ledger. |
 | Supabase security | PASS | Staging advisor has only informational RLS/no-policy notices, consistent with service-only tables; not a production security signoff. |
-| Staging release of current changes | IN PROGRESS | Requires PR merge, deploy and post-deploy validation. |
+| Staging pricing release | PASS | PR #36, commit 29e28fcb, Render dep-dbq9j2l6e07s73fgm41g LIVE. Post-deploy: 12 shells and 14 auth guards PASS. Pricing modules remain preparatory code; no customer billing activated. |
 | Dashboard authenticated E2E | BLOCKED | No authenticated browser session is available in this workspace. Public shells are not evidence of working business operations. |
 | Isolated shop/payment fixtures | BLOCKED | AI staging has private mapping/test wallets and empty AI catalogue; no complete isolated shop/order/wallet schema. Dashboard business reads remain separately configured; do not mutate production data. |
 | Telegram bot E2E | BLOCKED | No dedicated staging Telegram bot runtime/session confirmed. Never start production-token polling. |
@@ -33,3 +33,10 @@ Current customer launch decision: **NO-GO**. Production is unchanged.
 7. Publish GO/NO-GO with exact evidence. No customer launch based solely on tests with mocks or LIVE deploy status.
 
 Report automation scheduled for approximately 08:00 MYT on 13 November 2026. Scheduling the report does not imply a continuous background coding process.
+
+## Latest findings
+
+- Mapping revision 4 has image and video both disabled. Image has an obsolete 4-credit placeholder price; video has zero price. Neither is safe to enable.
+- Production service key previously pasted into chat requires owner-approved rotation and coordinated service updates before security signoff. No key was read or rotated during this work.
+- Dedicated synthetic concurrency fixture (tenant aaaaaaaa-2222-4222-8222-222222222222, user 900000002) remains in AI staging. Cleanup DELETE confirmation expired; no customer data or money is involved. Do not claim cleanup completed.
+- Current blockers needing owner input: authenticated staging dashboard session; dedicated staging Telegram bot token through secure configuration; bounded provider test spend. Production and real payments remain approval-gated.

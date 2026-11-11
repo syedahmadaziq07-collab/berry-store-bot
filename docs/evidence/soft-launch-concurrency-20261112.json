@@ -1,0 +1,9 @@
+{
+ "environment": "Supabase cirsdvkfkvypprnmyykk isolated AI staging",
+ "scope": "Synthetic integer credits only; no customer MYR wallet or paid generation",
+ "duplicate_reservation": {"parallel_requests": 8, "successful_responses": 8, "job_rows": 1, "balance_after": 3675, "opening_balance": 5000, "reserved_credits": 1325, "result": "PASS"},
+ "duplicate_refund": {"parallel_requests": 8, "successful_responses": 8, "balance_after": 5000, "result": "PASS"},
+ "competing_jobs": {"parallel_requests": 8, "credits_each": 1000, "opening_balance": 5000, "accepted": 5, "insufficient_balance": 3, "result": "PASS"},
+ "cleanup": "BLOCKED: deletion confirmation expired; synthetic fixtures retained",
+ "production_ready": false
+}
