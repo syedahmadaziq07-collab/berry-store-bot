@@ -44,6 +44,9 @@ ALTER TABLE public.ai_wallet_transactions ENABLE ROW LEVEL SECURITY;
 -- No anonymous or authenticated direct table access; Telegram identity is verified by the bot.
 REVOKE ALL ON TABLE public.ai_wallets, public.ai_wallet_transactions FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.ai_wallets, public.ai_wallet_transactions TO service_role;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+ON public.ai_wallets, public.ai_wallet_transactions FROM service_role;
+REVOKE USAGE, UPDATE ON SEQUENCE public.ai_wallet_transactions_id_seq FROM service_role;
 
 -- Only server-side trusted code may mutate a wallet, via ONE atomic ledger operation.
 -- Never call this RPC from a browser or Telegram client.
