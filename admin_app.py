@@ -194,6 +194,14 @@ def create_app(config=None, store=None, mapping_store=None):
         app.config["AI_MAPPING_SUPABASE_URL"], app.config["AI_MAPPING_SUPABASE_SERVICE_KEY"],
         app.config["TENANT_ID"], business_url=app.config["SUPABASE_URL"])
     app.extensions["berry_private_mapping"] = private_mapping
+    # The AI catalogue is staging-only and must never fall back to the shop database.
+    ai_catalogue_store = DataStore(
+        app.config["AI_MAPPING_SUPABASE_URL"],
+        app.config["AI_MAPPING_SUPABASE_SERVICE_KEY"],
+        app.config["TENANT_ID"],
+    )
+    app.extensions["berry_ai_catalogue"] = ai_catalogue_store
+
 
     def mapping_private_ready():
         return (app.config["ADMIN_MODE"] == "staging" and
@@ -405,7 +413,12 @@ def create_app(config=None, store=None, mapping_store=None):
     @app.get(PREFIX + "/ai/tools")
     @app.get(PREFIX + "/ai/models")
     def ai_catalogue():
-        return jsonify(database.read("ai_tools" if request.path.endswith("tools") else "ai_models"))
+        if (app.config["ADMIN_MODE"] != "staging" or
+                not app.config["ADMIN_MODEL_MAPPING_PRIVATE_ENABLED"] or
+                not private_mapping.configured() or
+                not ai_catalogue_store.configured()):
+            raise BackendUnavailable("AI Catalogue staging belum dikonfigurasi secara terasing")
+        return jsonify(ai_catalogue_store.read("ai_tools" if request.path.endswith("tools") else "ai_models"))
 
     @app.get(PREFIX + "/ai/model-mappings")
     def model_mapping_list():
