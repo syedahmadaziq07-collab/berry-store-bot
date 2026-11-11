@@ -64,6 +64,16 @@ class ControlCenterIntegrationTests(unittest.TestCase):
         self.assertNotIn("sb_admin_post(", handler)
         self.assertIn("safe_keys =", handler)
 
+    def test_referral_directory_is_read_only(self):
+        start = BOT.index("def berry_control_center_referrals():")
+        end = BOT.index('@_app.route("/api/dashboard/orders"', start)
+        handler = BOT[start:end]
+        self.assertIn("_gemini_session_guard()", handler)
+        self.assertIn('sb_admin_get(', handler)
+        self.assertIn('"users"', handler)
+        self.assertNotIn("sb_admin_patch(", handler)
+        self.assertNotIn("sb_admin_post(", handler)
+
     def test_wallet_reads_are_authenticated_and_read_only(self):
         start = BOT.index("def berry_control_center_module_reads():")
         end = BOT.index('@_app.route("/api/dashboard/orders"', start)
