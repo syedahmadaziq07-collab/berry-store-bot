@@ -861,7 +861,16 @@ from telegram.ext import (
 
 # ─── UI Helpers ───────────────────────────────────────────────────────────────
 
-def main_kb():
+def main_kb(user_id: int | None = None):
+    # Preview AI Video only to this tenant's admin until generation/payment are ready.
+    if ADMIN_ID and user_id == ADMIN_ID:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
+             InlineKeyboardButton("🎬 AI Video", callback_data="ai_video")],
+            [InlineKeyboardButton("📦 My Orders", callback_data="myorders"),
+             InlineKeyboardButton("👥 Referral", callback_data="referral")],
+            [InlineKeyboardButton("💬 Support", callback_data="support")],
+        ])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
          InlineKeyboardButton("📦 My Orders",   callback_data="myorders")],
@@ -1011,7 +1020,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Total Users: {total_users}\n"
             f"• Total Sold: {total_sold} pcs\n\n"
             f"Tekan butang di bawah untuk mula!",
-            reply_markup=main_kb(),
+            reply_markup=main_kb(update.effective_user.id),
         )
         log.info(f"[START] welcome_sent=true")
 
@@ -1877,7 +1886,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _receipt_msg = await _setting('receipt_received_msg', '✅ Resit diterima!')
     await update.message.reply_text(
         f"{_receipt_msg}\nOrder ID: {order_id}\nAdmin akan sahkan pembayaran anda.",
-        reply_markup=main_kb(),
+        reply_markup=main_kb(update.effective_user.id),
     )
     try:
         await context.bot.send_photo(
@@ -2398,6 +2407,25 @@ async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=back_home())
 
 
+async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only placeholder until AI generation and wallet are implemented."""
+    if not ADMIN_ID or update.effective_user.id != ADMIN_ID:
+        await _safe_edit_or_send(
+            update.callback_query,
+            "🚧 AI Video belum dibuka kepada pelanggan.",
+            reply_markup=back_home(),
+        )
+        return
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🎬 AI Video — Admin Preview\n\n"
+        "Menu AI Video berjaya dipasang.\n"
+        "Generation, kredit dan pembayaran belum diaktifkan.\n"
+        "Tiada kredit atau bayaran akan ditolak.",
+        reply_markup=back_home(),
+    )
+
+
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     total_users = total_sold = 0
@@ -2415,7 +2443,7 @@ async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 Account\n• ID: {user.id}\n• Username: @{user.username or 'tiada'}\n\n"
         f"📊 Store Stats\n• Total Users: {total_users}\n• Total Sold: {total_sold} pcs\n\n"
         f"Tekan butang di bawah untuk mula!",
-        reply_markup=main_kb())
+        reply_markup=main_kb(update.effective_user.id))
 
 # ─── Admin Helper ─────────────────────────────────────────────────────────────
 
@@ -2628,6 +2656,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
+        elif data == "ai_video":           await show_ai_video(update, context)
         elif data == "myorders":           await my_orders(update, context)
         elif data == "referral":           await show_referral(update, context)
         elif data == "support":            await show_support(update, context)
@@ -2876,7 +2905,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(
             "Pilih menu di bawah:",
-            reply_markup=main_kb(),
+            reply_markup=main_kb(update.effective_user.id),
         )
         return
 
