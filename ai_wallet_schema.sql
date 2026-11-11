@@ -106,7 +106,8 @@ BEGIN
 
     IF FOUND THEN
         IF v_existing.user_id <> p_user_id OR v_existing.amount <> p_amount
-           OR v_existing.kind <> p_kind THEN
+           OR v_existing.kind <> p_kind
+           OR v_existing.reference IS DISTINCT FROM p_reference THEN
             RAISE EXCEPTION 'Idempotency key already used for a different operation';
         END IF;
         transaction_id := v_existing.id;
