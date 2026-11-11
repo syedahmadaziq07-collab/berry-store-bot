@@ -3081,8 +3081,7 @@ async def show_ai_studio_section(
         text = (
             "🎬 VIDEO STUDIO\n━━━━━━━━━━━━━━━━━━\n"
             + (f"✨ {display_name}\n\n" if display_name else "")
-            + 
-            "Hasilkan video AI langkah demi langkah.\n\n"
+            + "Hasilkan video AI langkah demi langkah.\n\n"
             "Pilih jenis input:"
         )
         buttons = [
@@ -3231,9 +3230,11 @@ async def show_ai_studio_section(
                 reply_markup=InlineKeyboardMarkup([back]),
             )
             return
+        label = await _berry_ai_public_name(section) if section in {"image", "transform", "voice", "enhance", "storyboard"} else None
         text = (
             f"{titles[section]}\n━━━━━━━━━━━━━━━━━━\n\n"
-            "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
+            + (f"✨ {label}\n\n" if label else "")
+            + "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
             "Ia akan diaktifkan selepas sistem berkaitan siap.\n\n"
             "🔒 Tiada caj dikenakan."
         )
