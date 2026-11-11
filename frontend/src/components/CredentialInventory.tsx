@@ -33,8 +33,9 @@ export const CredentialInventory: React.FC<CredentialInventoryProps> = ({
 
   const selectedProduct = products.find(p => p.id === selectedProductId);
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text: string, id: string) => {
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -57,7 +58,7 @@ export const CredentialInventory: React.FC<CredentialInventoryProps> = ({
         <div>
           <h1 className="text-xl font-bold text-white font-display">Inventori Kredensial & Penghantaran Auto</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Simpan akaun, kata laluan & token digital. Dihantar secara atomik kepada pembeli Telegram tanpa pertindihan.
+            Semak metadata inventori. Penghantaran perlu disahkan melalui aliran pembayaran dan Telegram.
           </p>
         </div>
 
@@ -76,12 +77,12 @@ export const CredentialInventory: React.FC<CredentialInventoryProps> = ({
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="text-xs text-slate-400">Jumlah Kredensial Tersedia (Ready)</div>
           <div className="text-2xl font-bold text-emerald-400 font-mono mt-1 tabular-nums">{availableCount}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Sedia dihantar automatik oleh bot</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Rekod inventori belum digunakan</div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div className="text-xs text-slate-400">Telah Dihantar kepada Pelanggan</div>
+          <div className="text-xs text-slate-400">Rekod Ditandakan Digunakan</div>
           <div className="text-2xl font-bold text-slate-300 font-mono mt-1 tabular-nums">{usedCount}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Berjaya dipadankan dengan pesanan</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Status penggunaan daripada database</div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="text-xs text-slate-400">Keselamatan Data</div>
@@ -124,9 +125,10 @@ export const CredentialInventory: React.FC<CredentialInventoryProps> = ({
                         <span>{c.credential_data_masked || c.credential_data}</span>
                         <button
                           type="button"
+                          disabled={!c.credential_data}
                           onClick={() => handleCopy(c.credential_data, c.id)}
                           className="p-1 hover:text-pink-400 transition-colors"
-                          title="Salin Kredensial"
+                          title={c.credential_data ? "Salin Kredensial" : "Credential dilindungi oleh server"}
                         >
                           {copiedId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>

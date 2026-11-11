@@ -1,5 +1,6 @@
+import { loadAdminModules, MENU_REQUIREMENTS, MENU_OPTIONAL, MODULE_ENDPOINTS, ModuleId, ModuleResults, pageFromPath } from './utils/admin-data';
 import { apiFetch, setCsrfToken } from './api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LoginView } from './components/LoginView';
 import { Sidebar, PageId } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
@@ -32,7 +33,7 @@ import {
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  const [currentPage, setCurrentPage] = useState<PageId>(() => pageFromPath(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -87,8 +88,9 @@ export default function App() {
   const [revenueTrend, setRevenueTrend] = useState<any[]>([]);
   const [categoryRevenue, setCategoryRevenue] = useState<Record<string, number>>({});
   const [systemHealth, setSystemHealth] = useState<any>(null);
-  const [dataError, setDataError] = useState('');
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [moduleResults, setModuleResults] = useState<ModuleResults>({});
+  const loadSequence = useRef(0);
+  const activeLoad = useRef<AbortController | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -116,76 +118,47 @@ export default function App() {
     checkAuth();
   }, []);
 
-  // Fetch all dashboard data
-  const fetchAllData = async () => {
-    setIsRefreshing(true);
-    try {
-      const [
-        dashRes,
-        prodRes,
-        catRes,
-        ordRes,
-        credRes,
-        custRes,
-        toolRes,
-        modRes,
-        walRes,
-        botRes,
-        bcRes,
-        auditRes,
-        healthRes,
-      ] = await Promise.all([
-        fetch('/api/admin/v1/dashboard/overview'),
-        fetch('/api/admin/v1/shop/products'),
-        fetch('/api/admin/v1/shop/categories'),
-        fetch('/api/admin/v1/orders'),
-        fetch('/api/admin/v1/credentials'),
-        fetch('/api/admin/v1/customers'),
-        fetch('/api/admin/v1/ai/tools'),
-        fetch('/api/admin/v1/ai/models'),
-        fetch('/api/admin/v1/wallet'),
-        fetch('/api/admin/v1/bot-settings'),
-        fetch('/api/admin/v1/broadcast'),
-        fetch('/api/admin/v1/system/audit-logs'),
-        fetch('/api/admin/v1/system/health'),
-      ]);
+  const navigate = (page: PageId) => {
+    setCurrentPage(page);
+    window.history.pushState({}, '', page === 'dashboard' ? '/dashboard' : `/dashboard/${page}`);
+  };
+  useEffect(() => {
+    const onPopState = () => setCurrentPage(pageFromPath(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => { window.removeEventListener('popstate', onPopState); activeLoad.current?.abort(); };
+  }, []);
 
-      const responses = [dashRes, prodRes, catRes, ordRes, credRes, custRes, toolRes, modRes, walRes, botRes, bcRes, auditRes, healthRes];
-      if (responses.some(r => r.status === 401)) { setIsAuthenticated(false); return; }
-      const failed = await Promise.all(responses.filter(r => !r.ok).map(async r => {
-        const detail = await r.clone().json().catch(() => ({}));
-        return `${r.url.split('/api/admin/v1/')[1]}: ${detail.error || r.status}`;
-      }));
-      setDataError(failed.join(' · '));
-      setDataLoaded(dashRes.ok);
-      if (dashRes.ok) {
-        const d = await dashRes.json();
-        setKpis(d.kpis);
-        setRevenueTrend(d.revenueTrend || []);
-        setCategoryRevenue(d.categoryRevenue || {});
+  // Each module can fail independently. A previous response cannot overwrite a newer refresh.
+  const fetchAllData = async () => {
+    const sequence = ++loadSequence.current;
+    activeLoad.current?.abort();
+    const controller = new AbortController();
+    activeLoad.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 25000);
+    setIsRefreshing(true);
+    setModuleResults(Object.fromEntries(Object.keys(MODULE_ENDPOINTS).map(id => [id, {status: 'loading'}])));
+    try {
+      const results = await loadAdminModules(fetch, controller.signal);
+      if (sequence !== loadSequence.current) return;
+      if (Object.values(results).some(r => r?.status === 'error' && r.httpStatus === 401)) {
+        setIsAuthenticated(false); setCsrfToken(''); setModuleResults({}); return;
       }
-      if (prodRes.ok) setProducts(await prodRes.json());
-      if (catRes.ok) setCategories(await catRes.json());
-      if (ordRes.ok) setOrders(await ordRes.json());
-      if (credRes.ok) setCredentials(await credRes.json());
-      if (custRes.ok) setCustomers(await custRes.json());
-      if (toolRes.ok) setAiTools(await toolRes.json());
-      if (modRes.ok) setAiModels(await modRes.json());
-      if (walRes.ok) {
-        const w = await walRes.json();
-        setWallets(w.wallets || []);
-        setTransactions(w.transactions || []);
-        setWalletTotalBalance(w.totalBalance || 0);
-      }
-      if (botRes.ok) setBotSettings(await botRes.json());
-      if (bcRes.ok) setBroadcasts(await bcRes.json());
-      if (auditRes.ok) setAuditLogs(await auditRes.json());
-      if (healthRes.ok) setSystemHealth(await healthRes.json());
-    } catch (err) {
-      setDataError('Sambungan backend gagal. Data belum disahkan.');
-      setDataLoaded(false);
+      setModuleResults(results);
+      const data = (id: ModuleId): any => results[id]?.status === 'ready' ? (results[id] as any).data : null;
+      const overview = data('overview');
+      if (overview) { setKpis(overview.kpis); setRevenueTrend(overview.revenueTrend || []); setCategoryRevenue(overview.categoryRevenue || {}); }
+      setProducts(data('products') || []); setCategories(data('categories') || []);
+      setOrders(data('orders') || []); setCredentials(data('credentials') || []);
+      setCustomers(data('customers') || []); setAiTools(data('tools') || []); setAiModels(data('models') || []);
+      const wallet = data('wallet');
+      setWallets(wallet?.wallets || []); setTransactions(wallet?.transactions || []);
+      setWalletTotalBalance(wallet?.totalBalance ?? 0);
+      if (data('settings')) setBotSettings(data('settings'));
+      setBroadcasts(data('broadcasts') || []); setAuditLogs(data('audit') || []);
+      setSystemHealth(data('health'));
     } finally {
-      setIsRefreshing(false);
+      window.clearTimeout(timeout);
+      if (sequence === loadSequence.current) setIsRefreshing(false);
     }
   };
 
@@ -212,7 +185,9 @@ export default function App() {
       await apiFetch('/api/admin/v1/auth/logout', { method: 'POST' });
     } catch (err: any) { showToast(err.message); return; }
     setCsrfToken('');
-    setDataLoaded(false);
+    activeLoad.current?.abort();
+    loadSequence.current += 1;
+    setModuleResults({});
     setIsAuthenticated(false);
     setCurrentUser(null);
   };
@@ -435,6 +410,11 @@ export default function App() {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const required = MENU_REQUIREMENTS[currentPage] as readonly ModuleId[];
+  const optional = (MENU_OPTIONAL as Partial<Record<PageId, readonly ModuleId[]>>)[currentPage] || [];
+  const errors = [...required, ...optional].filter(id => moduleResults[id]?.status === 'error');
+  const pageReady = required.every(id => moduleResults[id]?.status === 'ready');
+
   const pendingOrdersCount = orders.filter(o => o.status === 'waiting_payment' || o.status === 'pending').length;
   const lowStockCount = products.filter(p => p.stock <= 5 && p.is_active).length;
 
@@ -452,7 +432,7 @@ export default function App() {
       <div className="hidden md:flex">
         <Sidebar
           currentPage={currentPage}
-          onSelectPage={setCurrentPage}
+          onSelectPage={navigate}
           onLogout={handleLogout}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -468,7 +448,7 @@ export default function App() {
             <Sidebar
               currentPage={currentPage}
               onSelectPage={(p) => {
-                setCurrentPage(p);
+                navigate(p);
                 setMobileMenuOpen(false);
               }}
               onLogout={handleLogout}
@@ -498,10 +478,15 @@ export default function App() {
 
         <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           <div role="status" className="mb-4 p-3 rounded-xl border border-amber-800 bg-amber-950/30 text-xs text-amber-200">{systemHealth?.mode || 'staging'} · {systemHealth?.writesEnabled ? 'Perubahan dibenarkan' : 'Data kedai dilindungi: perubahan, pembayaran dan broadcast dikunci.'}</div>
-          {dataError && <div role="alert" className="mb-4 p-3 rounded-xl border border-red-800 bg-red-950/40 text-xs text-red-200 break-words">Data tidak lengkap: {dataError}</div>}
-          {isRefreshing && <p className="mb-4 text-xs text-pink-400">Memuatkan data sebenar...</p>}
-          {currentPage === 'dashboard' && !dataLoaded && <p className="p-6 text-slate-300">Analytics belum tersedia. Semak konfigurasi sambungan backend.</p>}
-          {currentPage === 'dashboard' && dataLoaded && (
+          {errors.map(id => <div key={id} role="alert" data-module={id} className="mb-3 p-3 rounded-xl border border-red-800 bg-red-950/40 text-xs text-red-200 break-words">
+            {id}: {moduleResults[id]?.status === 'error' ? (moduleResults[id] as any).error : ''}
+          </div>)}
+          {isRefreshing && <p role="status" className="mb-4 text-xs text-pink-400">Memuatkan data sebenar...</p>}
+          {!isRefreshing && !pageReady && <div className="p-6 border border-slate-800 rounded-xl text-sm text-slate-300">
+            Menu ini belum dapat memaparkan data yang disahkan. Semak sambungan backend dan cuba semula.
+            <button type="button" onClick={fetchAllData} className="ml-3 text-pink-400 underline">Cuba semula</button>
+          </div>}
+          {currentPage === 'dashboard' && pageReady && (
             <DashboardOverview
               kpis={kpis}
               orders={orders}
@@ -509,13 +494,13 @@ export default function App() {
               lowStockAlerts={products.filter(p => p.stock <= 5 && p.is_active)}
               revenueTrend={revenueTrend}
               categoryRevenue={categoryRevenue}
-              onNavigateToOrders={() => setCurrentPage('orders')}
-              onNavigateToShop={() => setCurrentPage('shop')}
+              onNavigateToOrders={() => navigate('orders')}
+              onNavigateToShop={() => navigate('shop')}
               onApproveOrder={(id) => handleUpdateOrderStatus(id, 'completed')}
             />
           )}
 
-          {currentPage === 'shop' && (
+          {currentPage === 'shop' && pageReady && (
             <ShopManagement
               categories={categories}
               products={products}
@@ -527,14 +512,14 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'orders' && (
+          {currentPage === 'orders' && pageReady && (
             <OrderManagement
               orders={orders}
               onUpdateOrderStatus={handleUpdateOrderStatus}
             />
           )}
 
-          {currentPage === 'credentials' && (
+          {currentPage === 'credentials' && pageReady && (
             <CredentialInventory
               credentials={credentials}
               products={products}
@@ -543,15 +528,17 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'customers' && (
+          {currentPage === 'customers' && pageReady && (
             <CustomerDirectory
               customers={customers}
               onUpdateCustomer={handleUpdateCustomer}
             />
           )}
 
-          {currentPage === 'ai-studio' && (
+          {currentPage === 'ai-studio' && pageReady && (
             <AIStudioManagement
+              key="tools"
+              initialTab="tools"
               tools={aiTools}
               models={aiModels}
               onUpdateTool={handleUpdateTool}
@@ -559,8 +546,10 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'ai-models' && (
+          {currentPage === 'ai-models' && pageReady && (
             <AIStudioManagement
+              key="models"
+              initialTab="models"
               tools={aiTools}
               models={aiModels}
               onUpdateTool={handleUpdateTool}
@@ -568,7 +557,7 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'wallets' && (
+          {currentPage === 'wallets' && pageReady && (
             <WalletManagement
               totalBalance={walletTotalBalance}
               wallets={wallets}
@@ -577,14 +566,14 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'bot-settings' && (
+          {currentPage === 'bot-settings' && pageReady && (
             <TelegramBotControl
               settings={botSettings}
               onSaveSettings={handleSaveBotSettings}
             />
           )}
 
-          {currentPage === 'broadcast' && (
+          {currentPage === 'broadcast' && pageReady && (
             <BroadcastMarketing
               broadcasts={broadcasts}
               customerCount={customers.length}
@@ -592,7 +581,7 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'referrals' && (
+          {currentPage === 'referrals' && pageReady && (
             <ReferralSystem
               customers={customers}
               referralRewardRM={botSettings.referral_reward_rm || ''}
@@ -600,7 +589,7 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'monitoring' && (
+          {currentPage === 'monitoring' && pageReady && (
             <SystemMonitoring
               auditLogs={auditLogs}
               health={systemHealth}

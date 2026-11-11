@@ -16,6 +16,7 @@ import { AITool, AIModel } from '../types/store';
 import { formatMYR } from '../utils/store-logic';
 
 interface AIStudioManagementProps {
+  initialTab?: 'tools' | 'models';
   tools: AITool[];
   models: AIModel[];
   onUpdateTool: (id: string, updates: Partial<AITool>) => Promise<void>;
@@ -25,10 +26,11 @@ interface AIStudioManagementProps {
 export const AIStudioManagement: React.FC<AIStudioManagementProps> = ({
   tools,
   models,
+  initialTab = 'tools',
   onUpdateTool,
   onUpdateModel,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tools' | 'models'>('tools');
+  const [activeTab, setActiveTab] = useState<'tools' | 'models'>(initialTab);
   const [testingModelId, setTestingModelId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; latency: number } | null>(null);
 

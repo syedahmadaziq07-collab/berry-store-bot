@@ -166,6 +166,45 @@ class AdminSecurityTests(unittest.TestCase):
         self.assertNotIn('tenant_id', self.store.calls[0][2])
         self.assertNotIn('role', self.store.calls[0][2])
 
+    def test_all_connected_read_contracts_and_missing_schema_failures(self):
+        self.login()
+        paths = {'/shop/products': ['products', 'product_variants'], '/orders': ['orders'],
+                 '/credentials': ['credentials'], '/shop/categories': ['categories'],
+                 '/ai/tools': ['ai_tools'], '/ai/models': ['ai_models'],
+                 '/referrals': ['users'], '/bot-settings': ['bot_settings'],
+                 '/customers': ['users', 'orders', 'ai_wallets'],
+                 '/wallet': ['ai_wallets', 'ai_wallet_transactions'],
+                 '/dashboard/overview': ['products', 'orders', 'ai_wallets']}
+        for path, tables in paths.items():
+            with self.subTest(path=path):
+                self.store.calls.clear()
+                self.assertEqual(self.client.get(API + path, base_url=BASE).status_code, 200)
+                self.assertEqual(set(self.store.calls), set(tables))
+                with patch.object(self.store, 'read', side_effect=BackendUnavailable('Schema unavailable')):
+                    response = self.client.get(API + path, base_url=BASE)
+                    self.assertEqual(response.status_code, 503)
+                    self.assertEqual(response.json, {'error': 'Schema unavailable'})
+
+    def test_recent_orders_are_sorted_and_naive_dates_are_utc(self):
+        self.store.rows['orders'].append({'id': 'ORD-2','status': 'pending','amount': 1,'created_at': '2026-11-12T01:00:00'})
+        self.login()
+        response = self.client.get(API + '/orders', base_url=BASE)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([r['id'] for r in response.json], ['ORD-2', 'ORD-1'])
+        self.assertEqual(response.json[0]['created_at'], '2026-11-12T01:00:00+00:00')
+
+    def test_invalid_database_date_returns_visible_error(self):
+        self.store.rows['orders'][0]['created_at'] = 'not-a-date'
+        self.login()
+        self.assertEqual(self.client.get(API + '/orders', base_url=BASE).status_code, 503)
+        self.assertEqual(self.client.get(API + '/dashboard/overview', base_url=BASE).status_code, 503)
+
+    def test_health_identifies_missing_server_configuration_without_secrets(self):
+        self.login()
+        response = self.client.get(API + '/system/health', base_url=BASE)
+        self.assertEqual(response.json['configuration'], {'tenantConfigured': True, 'serverKeyConfigured': False})
+        self.assertNotIn('test-password-only', response.text)
+
 
 class DataStoreTests(unittest.TestCase):
     def test_pagination_and_tenant_scoping(self):
@@ -206,6 +245,28 @@ class DataStoreTests(unittest.TestCase):
         self.assertEqual(data['kpis']['pendingOrdersCount'], 1)
         self.assertIsNone(data['kpis']['estimatedGrossProfit'])
         self.assertFalse(data['dataLimited'])
+
+    def test_unsafe_supabase_url_configuration_fails_closed(self):
+        for suffix in [':443', '/rest/v1', '?token=secret', '#fragment']:
+            self.assertFalse(DataStore('https://project.supabase.co' + suffix, 'key', TENANT).configured())
+        self.assertFalse(DataStore('https://user:secret@project.supabase.co', 'key', TENANT).configured())
+
+    def test_unknown_transaction_result_is_not_success(self):
+        for body in [[], {}, {'status': 'pending'}, {'error': 'not committed'}]:
+            store = DataStore('https://project.supabase.co', 'secret-key', TENANT,
+                httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))))
+            with self.assertRaises(BackendUnavailable):
+                store.mutate('product_stock', '1', {'stock': 1}, 'admin', 'key')
+
+    def test_transaction_transport_error_is_sanitized_and_retry_aware(self):
+        def handler(request):
+            raise httpx.ReadTimeout('secret-key must not escape', request=request)
+        store = DataStore('https://project.supabase.co', 'secret-key', TENANT,
+            httpx.Client(transport=httpx.MockTransport(handler)))
+        with self.assertRaises(BackendUnavailable) as error:
+            store.mutate('product_stock', '1', {'stock': 1}, 'admin', 'key')
+        self.assertNotIn('secret-key', str(error.exception))
+        self.assertIn('idempotency key', str(error.exception))
 
 
 if __name__ == '__main__':

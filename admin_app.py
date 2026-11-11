@@ -63,7 +63,7 @@ class DataStore:
         try:
             UUID(self.tenant)
             parsed = urlparse(self.url)
-            return bool(self.key and parsed.scheme == "https" and parsed.hostname and parsed.hostname.endswith('.supabase.co'))
+            return bool(self.key and parsed.scheme == "https" and parsed.hostname and parsed.hostname.endswith('.supabase.co') and parsed.port is None and not parsed.username and not parsed.password and parsed.path in ('', '/') and not parsed.query and not parsed.fragment)
         except (ValueError, TypeError, AttributeError):
             return False
 
@@ -99,13 +99,19 @@ class DataStore:
     def mutate(self, operation, resource_id, payload, actor, key):
         if not self.configured():
             raise BackendUnavailable("Sambungan Supabase server belum dikonfigurasi")
-        response = self.client.post(f"{self.url}/rest/v1/rpc/berry_admin_catalog_mutation", headers=self.headers(), json={
-            "p_tenant": self.tenant, "p_operation": operation, "p_id": resource_id,
-            "p_payload": payload, "p_actor": actor, "p_key": key,
-        })
-        if response.status_code != 200:
-            raise BackendUnavailable("Transaksi ditolak; semak RPC audit dan idempotency sebelum mencuba semula")
-        return response.json()
+        try:
+            response = self.client.post(f"{self.url}/rest/v1/rpc/berry_admin_catalog_mutation", headers=self.headers(), json={
+                "p_tenant": self.tenant, "p_operation": operation, "p_id": resource_id,
+                "p_payload": payload, "p_actor": actor, "p_key": key,
+            })
+            if response.status_code != 200:
+                raise BackendUnavailable("Transaksi ditolak; semak RPC audit dan idempotency sebelum mencuba semula")
+            result = response.json()
+            if not isinstance(result, dict) or result.get("status") != "committed":
+                raise BackendUnavailable("Respons transaksi belum disahkan")
+            return result
+        except (httpx.HTTPError, ValueError) as exc:
+            raise BackendUnavailable("Keputusan transaksi tidak diketahui. Semak audit sebelum cuba semula dengan idempotency key yang sama.") from exc
 
 
 def money(value):
@@ -121,7 +127,10 @@ def money(value):
 def timestamp(value):
     if not value:
         return None
-    dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise BackendUnavailable("Tarikh database tidak sah") from exc
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
@@ -330,7 +339,11 @@ def create_app(config=None, store=None):
 
     @app.get(PREFIX + "/orders")
     def get_orders():
-        return jsonify([dict(o, product_id=str(o.get("product_id") or ""), amount=float(money(o.get("amount"))), username=o.get("username") or "", product_name=o.get("product_name") or "") for o in database.read("orders")])
+        rows = database.read("orders")
+        rows.sort(key=lambda row: (timestamp(row.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc), str(row["id"])), reverse=True)
+        return jsonify([dict(o, created_at=timestamp(o.get("created_at")).isoformat() if o.get("created_at") else None,
+            product_id=str(o.get("product_id") or ""), amount=float(money(o.get("amount"))),
+            username=o.get("username") or "", product_name=o.get("product_name") or "") for o in rows])
 
     @app.get(PREFIX + "/customers")
     def get_customers():
@@ -392,7 +405,7 @@ def create_app(config=None, store=None):
                 database_status = "ok"
             except BackendUnavailable:
                 database_status = "unavailable"
-        return jsonify(database=database_status, telegram="polling_disabled_in_admin_host", ai="not_verified", mode=app.config["ADMIN_MODE"], writesEnabled=bool(app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]), auditPersistence="local_sqlite; configure persistent disk/shared store before production", status="ok" if database_status == "ok" else "degraded")
+        return jsonify(configuration={"tenantConfigured": bool(app.config["TENANT_ID"]), "serverKeyConfigured": bool(app.config["SUPABASE_SERVICE_KEY"])}, database=database_status, telegram="polling_disabled_in_admin_host", ai="not_verified", mode=app.config["ADMIN_MODE"], writesEnabled=bool(app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]), auditPersistence="local_sqlite; configure persistent disk/shared store before production", status="ok" if database_status == "ok" else "degraded")
 
     @app.post(PREFIX + "/shop/products")
     @app.put(PREFIX + "/shop/products/<resource_id>")

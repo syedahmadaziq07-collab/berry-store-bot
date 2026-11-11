@@ -1,3 +1,5 @@
+import { MutationKeys } from './utils/idempotency';
+const mutationKeys = new MutationKeys();
 let csrfToken = '';
 export function setCsrfToken(token: string) { csrfToken = token; }
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -10,8 +12,15 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   }
   const headers = new Headers(init.headers);
   if (mutating && csrfToken) headers.set('X-CSRF-Token', csrfToken);
-  if (mutating) headers.set('Idempotency-Key', crypto.randomUUID());
+  let fingerprint = '';
+  if (mutating) {
+    const bytes = new TextEncoder().encode(`${method}:${path}:${typeof init.body === 'string' ? init.body : ''}`);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    fingerprint = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+    headers.set('Idempotency-Key', mutationKeys.acquire(fingerprint, () => crypto.randomUUID()));
+  }
   const res = await fetch(path, {...init, headers, credentials: 'same-origin'});
+  if (mutating) mutationKeys.settle(fingerprint, res.status);
   if (!res.ok) {
     const data = await res.clone().json().catch(() => ({}));
     const error = new Error(data.error || `Permintaan gagal (${res.status})`);

@@ -23,7 +23,7 @@ export const ReferralSystem: React.FC<ReferralSystemProps> = ({
   referralRewardRM,
   onUpdateReward,
 }) => {
-  const [rewardInput, setRewardInput] = useState(referralRewardRM || '2.00');
+  const [rewardInput, setRewardInput] = useState(referralRewardRM);
   const [isSavingReward, setIsSavingReward] = useState(false);
   const [rewardSaved, setRewardSaved] = useState(false);
 

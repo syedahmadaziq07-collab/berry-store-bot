@@ -1,3 +1,4 @@
+import { ordersCsv } from '../utils/csv';
 import React, { useState } from 'react';
 import {
   Search,
@@ -72,26 +73,12 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
   };
 
   const handleExportCSV = () => {
-    const headers = ['Order ID', 'Telegram User ID', 'Username', 'Product', 'Amount RM', 'Status', 'Date', 'Notes'];
-    const rows = filteredOrders.map(o => [
-      o.id,
-      o.user_id,
-      o.username,
-      `"${o.product_name.replace(/"/g, '""')}"`,
-      o.amount.toFixed(2),
-      o.status,
-      o.created_at,
-      `"${(o.notes || '').replace(/"/g, '""')}"`,
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const url = URL.createObjectURL(new Blob([ordersCsv(filteredOrders)], {type: 'text/csv;charset=utf-8'}));
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `berry_store_orders_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
+    link.href = url;
+    link.download = `berry-orders-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
-    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
