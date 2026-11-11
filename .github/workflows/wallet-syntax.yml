@@ -1,0 +1,54 @@
+name: Wallet source syntax
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Python syntax
+        run: python -m py_compile bot.py
+      - name: Validate embedded dashboard JavaScript syntax
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import subprocess
+          import tempfile
+
+          class InlineScripts(HTMLParser):
+              def __init__(self):
+                  super().__init__(convert_charrefs=False)
+                  self.active = False
+                  self.blocks = []
+              def handle_starttag(self, tag, attrs):
+                  if tag != "script":
+                      return
+                  attrs = dict(attrs)
+                  self.active = not attrs.get("src") and attrs.get("type", "") in ("", "text/javascript")
+                  if self.active:
+                      self.blocks.append([])
+              def handle_data(self, data):
+                  if self.active:
+                      self.blocks[-1].append(data)
+              def handle_endtag(self, tag):
+                  if tag == "script":
+                      self.active = False
+
+          parser = InlineScripts()
+          parser.feed(Path("dashboard.html").read_text(encoding="utf-8"))
+          assert parser.blocks, "No inline JavaScript found"
+          with tempfile.TemporaryDirectory() as tmp:
+              for index, block in enumerate(parser.blocks):
+                  file = Path(tmp) / f"inline_{index}.js"
+                  file.write_text("".join(block), encoding="utf-8")
+                  subprocess.run(["node", "--check", str(file)], check=True)
+          print(f"Validated {len(parser.blocks)} dashboard scripts")
+          PY
