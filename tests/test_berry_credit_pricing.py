@@ -23,6 +23,14 @@ class PricingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             required_credits("-0.01")
 
+    def test_negative_component_cannot_be_hidden_by_other_cost(self):
+        for api, extra in (("-1", "2"), ("2", "-1"), ("NaN", "1"), ("Infinity", "0")):
+            with self.subTest(api=api, extra=extra):
+                with self.assertRaises(ValueError):
+                    required_credits(api, extra_cost_myr=extra)
+                with self.assertRaises(ValueError):
+                    gross_profit_myr(5000, api, extra_cost_myr=extra)
+
 
 if __name__ == "__main__":
     unittest.main()
