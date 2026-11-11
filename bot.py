@@ -804,18 +804,48 @@ def berry_control_center_overview():
         completed = [o for o in orders if o.get("status") in ("completed", "approved")]
         pending = [o for o in orders if o.get("status") in ("pending", "waiting_approval")]
         revenue = sum((Decimal(str(o.get("amount") or 0)) for o in completed), Decimal(0))
-        return jsonify(
-            totalRevenue=float(revenue),
-            totalOrders=len(orders),
-            activeProducts=sum(1 for p in products if p.get("is_active") is True),
-            totalCustomers=len(users),
-            pendingOrders=len(pending),
-            completedOrders=len(completed),
-            dataLimited=(len(products)>=500 or len(orders)>=500 or len(users)>=500),
-        )
+        limited = len(products)>=500 or len(orders)>=500 or len(users)>=500
+        kpis = {
+            "totalRevenue": float(revenue),
+            "revenueToday": 0,
+            "revenueThisWeek": 0,
+            "revenueThisMonth": 0,
+            "totalOrders": len(orders),
+            "completedOrdersCount": len(completed),
+            "pendingOrdersCount": len(pending),
+            "totalProducts": len(products),
+            "lowStockCount": sum(1 for p in products if isinstance(p.get("stock"), int) and p["stock"] < 3),
+            "aiWalletLiability": 0,
+            "estimatedGrossProfit": 0,
+        }
+        return jsonify(kpis=kpis, revenueTrend=[], categoryRevenue={}, dataLimited=limited)
     except Exception as exc:
         log.warning("[CONTROL_CENTER_OVERVIEW] %s", type(exc).__name__)
         return jsonify(error="Dashboard overview unavailable"), 503
+
+
+# Gemini frontend read-only adapters. Never expose credential passwords.
+@_app.route("/api/admin/v1/shop/products", methods=["GET"])
+@_app.route("/api/admin/v1/orders", methods=["GET"])
+@_app.route("/api/admin/v1/customers", methods=["GET"])
+def berry_control_center_lists():
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    specs = {
+        "/api/admin/v1/shop/products": ("products", "id,name,description,price,stock,duration,is_active,auto_delivery,status"),
+        "/api/admin/v1/orders": ("orders", "id,user_id,username,product_id,product_name,quantity,amount,status,created_at"),
+        "/api/admin/v1/customers": ("users", "id,username,first_name,total_spent,created_at"),
+    }
+    table, columns = specs[request.path]
+    try:
+        rows = sb_admin_get(table, "select=" + columns + "&order=created_at.desc&limit=500")
+        return jsonify(rows)
+    except Exception as exc:
+        log.warning("[CONTROL_CENTER_LIST] %s %s", table, type(exc).__name__)
+        return jsonify(error="Admin list unavailable"), 503
 
 
 @_app.route("/api/dashboard/orders", methods=["GET"])
