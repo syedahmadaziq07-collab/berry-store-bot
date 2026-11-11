@@ -937,6 +937,34 @@ def berry_control_center_lists():
         return jsonify(error="Admin list unavailable"), 503
 
 
+@_app.route("/api/admin/v1/shop/categories", methods=["GET"])
+@_app.route("/api/admin/v1/credentials", methods=["GET"])
+@_app.route("/api/admin/v1/bot-settings", methods=["GET"])
+@_app.route("/api/admin/v1/system/health", methods=["GET"])
+def berry_control_center_extra_reads():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    if request.path == "/api/admin/v1/system/health":
+        return jsonify(database="configured", telegram="unknown", status="partial")
+    specs = {
+        "/api/admin/v1/shop/categories": ("categories", "id,name,created_at"),
+        "/api/admin/v1/credentials": ("credentials", "id,product_id,variant_id,is_used,created_at"),
+        "/api/admin/v1/bot-settings": ("bot_settings", "key,value,description,updated_at"),
+    }
+    table, columns = specs[request.path]
+    try:
+        rows = sb_admin_get(table, "select=" + columns + "&limit=500")
+        if table == "bot_settings":
+            return jsonify({row["key"]: row.get("value") for row in rows if row.get("key")})
+        return jsonify(rows)
+    except Exception as exc:
+        log.warning("[CONTROL_CENTER_EXTRA_READ] %s %s", table, type(exc).__name__)
+        return jsonify(error="Admin data unavailable"), 503
+
+
 @_app.route("/api/dashboard/orders", methods=["GET"])
 def dashboard_orders_read():
     """Server-only, allowlisted read endpoint for dashboard orders."""
