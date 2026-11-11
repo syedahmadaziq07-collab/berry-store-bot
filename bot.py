@@ -2744,7 +2744,8 @@ async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_T
         "selepas harga sebenar ditetapkan.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⚡ 8–10 saat (akan datang)", callback_data="ai_video_unavailable:short")],
-            [InlineKeyboardButton("🎬 5 saat · Wan 2.6 (ujian)", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("🎬 5 saat · PixVerse", callback_data="ai_video_models:5")],
+            [InlineKeyboardButton("🎞️ 8 saat · PixVerse", callback_data="ai_video_models:8")],
             [InlineKeyboardButton("🎞️ 30 saat (akan datang)", callback_data="ai_video_unavailable:long")],
             [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video")],
         ]),
@@ -2768,25 +2769,26 @@ async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYP
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
-    if duration != "15":
+    context.user_data["pixverse_duration"] = duration
+    if duration not in ("5", "8"):
         await show_ai_video_unavailable(update, context)
         return
     await _safe_edit_or_send(
         update.callback_query,
-        "🤖 PILIH MODEL\n"
+        "🤖 PIXVERSE V3.5\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "Langkah 2/3 — Video 15 saat\n\n"
-        "🔥 Gemini Omni Flash\n"
-        "• Durasi: 15 saat\n"
+        f"Langkah 2/3 — Video {duration} saat\n\n"
+        "🎬 PixVerse V3.5 · Image-to-Video\n"
+        f"• Durasi: {duration} saat\n"
         "• Kualiti: 720p\n"
-        "• Audio: tersedia\n"
+        "• Audio: tiada\n"
         "• Input: 1 gambar + prompt\n"
-        "• Harga: belum ditetapkan (RM)\n\n"
+        "• Kos API 720p: USD0.20 (5s) / USD0.40 (8s)\n\n"
         "Model lain akan disenaraikan mengikut durasi "
         "apabila API dan harga disahkan.\n\n"
         "🔒 Demo sahaja. Tiada caj.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔥 Pilih Gemini Omni Flash", callback_data="ai_video_ratio")],
+            [InlineKeyboardButton("🎬 Pilih PixVerse 720p", callback_data="ai_video_ratio")],
             [InlineKeyboardButton("⬅️ Tukar Durasi", callback_data="ai_video_duration")],
         ]),
     )
@@ -2799,18 +2801,17 @@ async def show_ai_video_ratio(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.pop("ai_video_flow", None)
     await _safe_edit_or_send(
         update.callback_query,
-        "🎬 GEMINI OMNI FLASH\n"
+        "🎬 PIXVERSE V3.5\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "Langkah 3/3 — Tetapan Video\n\n"
-        "⏱ Durasi: 15 saat\n"
+        f"⏱ Durasi: {context.user_data.get('pixverse_duration', '5')} saat\n"
         "📺 Resolution: 720p\n"
-        "🔊 Audio: tersedia\n"
-        "💰 Harga: belum ditetapkan\n\n"
+        "🔇 Audio: tiada\n"
+        "💰 Harga API: USD0.20 (5s) / USD0.40 (8s)\n\n"
         "📷 Sediakan 1 gambar dan prompt.\n"
-        "📐 Pilih aspect ratio:",
+        "📐 Ratio output ikut gambar asal:",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🖥️ Landscape · 16:9", callback_data="ai_video_photo:16:9")],
-            [InlineKeyboardButton("📱 Portrait · 9:16", callback_data="ai_video_photo:9:16")],
+            [InlineKeyboardButton("📷 Teruskan upload gambar", callback_data="ai_video_photo:auto")],
             [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_models:15")],
         ]),
     )
@@ -2820,7 +2821,7 @@ async def request_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_T
     """Start an ephemeral preview session without writing to the database."""
     if not _ai_video_is_admin(update):
         return
-    if ratio not in ("16:9", "9:16"):
+    if ratio != "auto":
         return
     if context.user_data.get("pending_receipt"):
         await _safe_edit_or_send(
@@ -2832,12 +2833,13 @@ async def request_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_T
         return
     context.user_data["ai_video_flow"] = {
         "stage": "await_photo",
-        "model": "Wan 2.6 Image-to-Video (5s, 720p)",
+        "model": "PixVerse V3.5 (720p)",
+        "duration": context.user_data.get("pixverse_duration", "5"),
         "ratio": ratio,
     }
     await _safe_edit_or_send(
         update.callback_query,
-        f"🎬 Wan 2.6 Image-to-Video · 5s · 720p ({ratio})\n\n"
+        f"🎬 PixVerse V3.5 · {context.user_data.get('pixverse_duration', '5')}s · 720p\n\n"
         "📷 Hantar SATU gambar rujukan untuk mula.\n"
         "Kemudian bot akan minta prompt.\n\n"
         "💵 fal.ai API berbayar; generation hanya selepas pengesahan.",
@@ -2879,6 +2881,7 @@ async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 1500 aksara.")
         return True
     state["prompt"] = prompt
+    state["provider_cost_usd"] = "0.20" if state.get("duration") == "5" else "0.40"
     state["stage"] = "await_confirm"
     await update.message.reply_text(
         "✅ SEMAK SEBELUM GENERATE\n\n"
@@ -2886,7 +2889,7 @@ async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_T
         f"📐 Ratio: {state['ratio']}\n"
         "📷 Gambar: diterima\n"
         f"✏️ Prompt: {prompt}\n\n"
-        "💵 Anggaran caj fal.ai: USD0.50 (5s, 720p).\n"
+        f"💵 Anggaran caj fal.ai: USD{state['provider_cost_usd']} (720p).\n"
         "⚠️ Caj sebenar ditentukan fal.ai. Klik Generate hanya jika setuju.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Generate (API berbayar)", callback_data="ai_video_generate")],
@@ -2928,11 +2931,11 @@ async def generate_ai_video_confirmed(update: Update, context: ContextTypes.DEFA
                 path.write_bytes(image_bytes)
                 image_url = fal_client.upload_file(str(path))
                 return fal_client.subscribe(
-                    "wan/v2.6/image-to-video",
+                    "fal-ai/pixverse/v3.5/image-to-video",
                     arguments={
                         "prompt": state["prompt"],
                         "image_url": image_url,
-                        "duration": "5",
+                        "duration": state["duration"],
                         "resolution": "720p",
                     },
                 )
@@ -2940,7 +2943,7 @@ async def generate_ai_video_confirmed(update: Update, context: ContextTypes.DEFA
         url = ((result or {}).get("video") or {}).get("url")
         if not url or not url.startswith("https://"):
             raise ValueError("fal.ai did not return a video URL")
-        await query.message.reply_video(video=url, caption="🎬 Berry AI Studio · Wan 2.6 · 5s")
+        await query.message.reply_video(video=url, caption="🎬 Berry AI Studio · PixVerse V3.5")
     except Exception as exc:
         log.warning("[FAL_VIDEO] generation or delivery failed: %s", type(exc).__name__)
         await query.message.reply_text(
