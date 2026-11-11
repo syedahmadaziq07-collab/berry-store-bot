@@ -3,11 +3,11 @@
 Updated 12 November 2026 MYT. Owner target: staging today, 12 November; final report before 08:00 13 November MYT.
 Current customer launch decision: **NO-GO**. Production is unchanged.
 
-Recovery batch follow-up: bounded, deduplicated recovery iterations implemented; one failed job cannot block other completed deliveries. External actions remain disabled by default. No scheduler or live bot started; this is not external E2E. Local suite: 134 tests PASS. Staging PR/CI verification pending.
+Recovery batch follow-up: bounded, deduplicated recovery iterations implemented; one failed job cannot block other completed deliveries. External actions remain disabled by default. No scheduler or live bot started; this is not external E2E. Local suite: 134 tests PASS. Initial PR CI PASS; packaging follow-up requires CI before merge. Recovery module is included and syntax-checked in the admin image; no scheduler starts.
 
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
-| Backend regression suite | PASS | 129 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
+| Backend regression suite | PASS | 134 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
 | Provider restart recovery | PASS | Queue status/result URLs are durably frozen and bound to model/request. Worker tests resume through GET-only polling; malformed/expired results stay held. Provider traffic mocked; no actual inference or live recovery loop tested. |
 | Durable staging job lifecycle | PASS | Separate synthetic MYR cent wallet and immutable quote/ledger. Actual SQL rollback suite passes claim-once, request binding, definitive-failure refunds, ambiguous-outcome hold and ledger reconciliation. Worker tests cover concurrent submits/deliveries and restart/retry safety. External calls disabled by default. Not wired into customer bot. |
 | Frontend | PASS | 16 tests, TypeScript check and production asset build. |
