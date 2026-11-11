@@ -56,7 +56,7 @@ export function AIModelMappingPanel() {
       const payload = await result.json();
       if (!Array.isArray(payload)) throw new Error('Respons simpanan tidak sah');
       setItems(payload);
-      setNotice('Mapping disimpan dalam database. Generation fal.ai masih perlu worker yang disahkan.');
+      setNotice('Draft berjaya disimpan pada storan sementara staging (boleh hilang selepas restart). Ia belum digunakan oleh Telegram bot atau fal.ai.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Simpanan gagal');
     } finally {
@@ -70,8 +70,8 @@ export function AIModelMappingPanel() {
         <div>
           <h2 className="font-bold text-white">Nama Telegram ≠ Model Sebenar</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Nama paparan untuk pelanggan berasingan daripada Provider Model ID fal.ai.
-            Mapping sahaja tidak mengaktifkan generation atau caj Berry Credits.
+            Preview staging sahaja: nama paparan berasingan daripada Provider Model ID fal.ai.
+            Ini draft sementara, bukan konfigurasi bot live; tiada generation atau caj Berry Credits.
           </p>
         </div>
         <button type="button" onClick={add} disabled={loading}
@@ -121,7 +121,7 @@ export function AIModelMappingPanel() {
         className="px-4 py-2 bg-pink-600 hover:bg-pink-500 rounded-lg text-white text-xs disabled:opacity-50">
         {saving ? 'Menyimpan...' : 'Simpan Mapping'}
       </button>
-      <p className="text-[11px] text-amber-300">Staging yang membaca database production akan menyekat penyimpanan (HTTP 423) sehingga database ujian berasingan tersedia.</p>
+      <p className="text-[11px] text-amber-300">Simpanan draft hanya pada SQLite staging dan mungkin hilang semasa redeploy. Tidak dikongsi dengan bot Telegram. Database production tidak disentuh.</p>
     </section>
   );
 }
