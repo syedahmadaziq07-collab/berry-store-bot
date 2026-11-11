@@ -2738,15 +2738,13 @@ async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_T
         "━━━━━━━━━━━━━━━━━━\n"
         "Langkah 1/3 — Pilih durasi\n\n"
         "Nak video sepanjang berapa saat?\n\n"
-        "✅ 15 saat tersedia untuk preview.\n"
-        "Durasi lain belum tersedia.\n\n"
-        "💡 Harga dalam RM akan dipaparkan pada pilihan model "
-        "selepas harga sebenar ditetapkan.",
+        "✅ PixVerse V3.5: 5 atau 8 saat.\n"
+        "8s dikenakan 2× kos 5s.\n\n"
+        "💵 Kos API 720p: USD0.20 (5s), USD0.40 (8s).\n"
+        "🔒 Admin-only; belum melibatkan Berry Credits.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚡ 8–10 saat (akan datang)", callback_data="ai_video_unavailable:short")],
             [InlineKeyboardButton("🎬 5 saat · PixVerse", callback_data="ai_video_models:5")],
             [InlineKeyboardButton("🎞️ 8 saat · PixVerse", callback_data="ai_video_models:8")],
-            [InlineKeyboardButton("🎞️ 30 saat (akan datang)", callback_data="ai_video_unavailable:long")],
             [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video")],
         ]),
     )
@@ -2764,7 +2762,7 @@ async def show_ai_video_unavailable(update: Update, context: ContextTypes.DEFAUL
     )
 
 
-async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE, duration: str = "15"):
+async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE, duration: str = "5"):
     """Show only matching models, not a wall of servers and mixed pricing."""
     if not _ai_video_is_admin(update):
         return
@@ -2786,7 +2784,7 @@ async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYP
         "• Kos API 720p: USD0.20 (5s) / USD0.40 (8s)\n\n"
         "Model lain akan disenaraikan mengikut durasi "
         "apabila API dan harga disahkan.\n\n"
-        "🔒 Demo sahaja. Tiada caj.",
+        "🔒 Admin-only. Caj fal.ai hanya selepas tekan Generate.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎬 Pilih PixVerse 720p", callback_data="ai_video_ratio")],
             [InlineKeyboardButton("⬅️ Tukar Durasi", callback_data="ai_video_duration")],
@@ -2812,7 +2810,7 @@ async def show_ai_video_ratio(update: Update, context: ContextTypes.DEFAULT_TYPE
         "📐 Ratio output ikut gambar asal:",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("📷 Teruskan upload gambar", callback_data="ai_video_photo:auto")],
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_duration")],
         ]),
     )
 
@@ -2877,8 +2875,8 @@ async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_T
     if not isinstance(state, dict) or state.get("stage") != "await_prompt":
         return False
     prompt = (update.message.text or "").strip()
-    if not prompt or len(prompt) > 1500:
-        await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 1500 aksara.")
+    if not prompt or len(prompt.encode("utf-8")) > 2048:
+        await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 2048 bytes UTF-8.")
         return True
     state["prompt"] = prompt
     state["provider_cost_usd"] = "0.20" if state.get("duration") == "5" else "0.40"
