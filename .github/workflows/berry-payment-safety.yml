@@ -9,6 +9,7 @@ on:
       - tests/test_berry_payment_release_gates.py
       - tests/test_berry_topup_contract.py
       - tests/test_berry_dashboard_orders_proxy.py
+      - tests/test_berry_dashboard_server_migration.py
   workflow_dispatch:
 jobs:
   static-checks:
@@ -20,5 +21,14 @@ jobs:
           python-version: '3.11'
       - name: Compile bot without importing or running it
         run: python -m py_compile bot.py
+      - name: Validate dashboard JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path('dashboard.html').read_text(encoding='utf-8')
+          script = html.split('<script>')[-1].split('</script>')[0]
+          Path('/tmp/berry-dashboard.js').write_text(script, encoding='utf-8')
+          PY
+          node --check /tmp/berry-dashboard.js
       - name: Payment safety tests
         run: python -m unittest discover -s tests -p 'test_berry_*py' -v

@@ -656,6 +656,134 @@ def dashboard():
             return html, 200, {"Content-Type": "text/html"}
     return "Dashboard not found", 404
 
+# Dashboard table gateway. Keep credentials server-side and enforce tenant boundaries.
+_DASHBOARD_TABLE_FIELDS = {
+    "products": {"id","name","description","price","stock","duration","is_active","created_at","account_type","auto_delivery","variants","status","delivery_note"},
+    "product_variants": {"id","product_id","variant_name","stock","price","created_at","description","delivery_note"},
+    "credentials": {"id","product_id","is_used","variant_id","created_at"},
+    "users": {"id","username","first_name","referral_code","referred_by","total_spent","created_at"},
+    "bot_settings": {"key","value","description","payment_qr_url","payment_method_text","banner_url","setup_completed","updated_at"},
+    "push_subscriptions": {"endpoint","is_active","user_agent","subscription"},
+}
+_DASHBOARD_WRITABLE_FIELDS = {
+    "products": {"name","description","price","stock","duration","is_active","account_type","auto_delivery","variants","status","delivery_note"},
+    "product_variants": {"product_id","variant_name","stock","price","description","delivery_note"},
+    "credentials": {"product_id","variant_id","email","password","is_used"},
+    "bot_settings": {"key","value","description"},
+    "push_subscriptions": {"endpoint","is_active","user_agent","subscription"},
+}
+_DASHBOARD_ACTIONS = {
+    "products": {"select","update"},
+    "product_variants": {"select","insert","update","delete"},
+    "credentials": {"select","insert"},
+    "users": {"select"},
+    "bot_settings": {"select","upsert"},
+    "push_subscriptions": {"insert","update","upsert"},
+}
+
+@_app.route("/api/dashboard/table", methods=["POST"])
+def dashboard_table_gateway():
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Dashboard backend unavailable"), 503
+    try:
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify(error="Invalid JSON"), 400
+        table = body.get("table")
+        action = body.get("action", "select")
+        if table not in _DASHBOARD_ACTIONS or action not in _DASHBOARD_ACTIONS[table]:
+            return jsonify(error="Operation not permitted"), 403
+        fields = _DASHBOARD_TABLE_FIELDS[table]
+        columns = body.get("columns", "*")
+        if not isinstance(columns, str) or len(columns) > 300:
+            return jsonify(error="Invalid columns"), 400
+        if columns == "*":
+            # Credentials must never be returned by the generic dashboard gateway.
+            if table == "credentials":
+                return jsonify(error="Credentials detail access denied"), 403
+        elif not columns or any(col not in fields for col in columns.split(",")):
+            return jsonify(error="Invalid columns"), 400
+        filters = body.get("filters", [])
+        if not isinstance(filters, list) or len(filters) > 6:
+            return jsonify(error="Invalid filters"), 400
+        query = [("tenant_id", f"eq.{TENANT_ID}")]
+        for f in filters:
+            if not isinstance(f, list) or len(f) != 3:
+                return jsonify(error="Invalid filter"), 400
+            field, op, val = f
+            if field not in fields or op not in {"eq","gt","gte","lte","in"}:
+                return jsonify(error="Invalid filter"), 400
+            if action != "select" and (op != "eq" or field not in {"id","product_id","endpoint"}):
+                return jsonify(error="Unsafe write filter"), 403
+            if op == "in":
+                if not isinstance(val, list) or len(val) > 30 or any(not isinstance(v, (str,int)) for v in val):
+                    return jsonify(error="Invalid in-filter"), 400
+                value = "(" + ",".join(str(v) for v in val) + ")"
+            else:
+                if not isinstance(val, (str,int,float,bool)) or len(str(val)) > 150:
+                    return jsonify(error="Invalid filter value"), 400
+                value = str(val).lower() if isinstance(val,bool) else str(val)
+            if not re.fullmatch(r"[a-zA-Z0-9_.,:+T()\\-]+", value):
+                return jsonify(error="Invalid filter value"), 400
+            query.append((field, f"{op}.{value}"))
+        order = body.get("order")
+        if order is not None:
+            if not isinstance(order,list) or len(order)!=2 or order[0] not in fields or order[1] not in ("asc","desc"):
+                return jsonify(error="Invalid sort"), 400
+            query.append(("order", f"{order[0]}.{order[1]}"))
+        limit = body.get("limit", 500)
+        if not isinstance(limit,int) or limit < 1 or limit > 500:
+            return jsonify(error="Invalid limit"), 400
+        query.extend([("limit", str(limit)), ("select", columns)])
+        headers = _sb_admin_headers()
+        headers["Prefer"] = "count=exact" if body.get("count") else "return=representation"
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        payload = body.get("payload")
+        if action not in ("select","delete"):
+            if not isinstance(payload,(dict,list)) or (isinstance(payload,list) and (not payload or len(payload)>100)):
+                return jsonify(error="Invalid write payload"), 400
+            records = payload if isinstance(payload,list) else [payload]
+            writable = _DASHBOARD_WRITABLE_FIELDS[table]
+            if any(not isinstance(row,dict) or not row or set(row)-writable for row in records):
+                return jsonify(error="Write fields not permitted"), 403
+            if action == "update" and not filters:
+                return jsonify(error="Write requires row filter"), 403
+            for row in records:
+                if "tenant_id" in row:
+                    return jsonify(error="Tenant override not permitted"), 403
+                row["tenant_id"] = TENANT_ID
+            if action == "upsert":
+                conflict = body.get("onConflict")
+                if conflict not in {"key","endpoint"}:
+                    return jsonify(error="Invalid upsert conflict"), 400
+                query.append(("on_conflict", "tenant_id,"+conflict))
+                headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+            method = {"insert":"POST","update":"PATCH","upsert":"POST"}[action]
+        elif action == "delete":
+            if table != "product_variants" or not filters:
+                return jsonify(error="Delete not permitted"), 403
+            method = "DELETE"
+        else:
+            method = "GET"
+        response = _httpx.request(method,url,params=query,headers=headers,json=payload if action in ("insert","update","upsert") else None,timeout=20)
+        if response.status_code >= 400:
+            log.warning("[DASHBOARD_GATEWAY] %s %s status=%s",table,action,response.status_code)
+            return jsonify(error="Database request rejected"), 502
+        data = response.json() if response.content and not body.get("head") else []
+        count = None
+        if body.get("count"):
+            rng = response.headers.get("content-range","")
+            if "/" in rng and rng.rsplit("/",1)[1].isdigit():
+                count = int(rng.rsplit("/",1)[1])
+        return jsonify(data=data,count=count)
+    except Exception as exc:
+        log.warning("[DASHBOARD_GATEWAY] %s",type(exc).__name__)
+        return jsonify(error="Dashboard request failed"), 503
+
+
 @_app.route("/api/dashboard/orders", methods=["GET"])
 def dashboard_orders_read():
     """Server-only, allowlisted read endpoint for dashboard orders."""
