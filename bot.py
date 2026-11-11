@@ -13,6 +13,7 @@ import logging
 import threading
 import asyncio
 import json
+import hmac
 import re
 import urllib.error
 import urllib.request
@@ -564,6 +565,18 @@ async def _setting(key: str, fallback: str = "") -> str:
 from flask import Flask, jsonify, request, Response
 
 _app = Flask(__name__)
+
+@_app.after_request
+def _protect_dashboard_responses(response):
+    """Prevent browser/proxy caching of dashboard and admin API responses."""
+    if request.path == "/dashboard" or request.path.startswith("/api/dashboard/"):
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+    return response
+
 _telegram_app: object | None = None
 _telegram_loop: asyncio.AbstractEventLoop | None = None
 
@@ -574,7 +587,7 @@ def _check_dashboard_secret() -> tuple[bool, str]:
     )
     if not DASHBOARD_ADMIN_SECRET:
         return False, "DASHBOARD_ADMIN_SECRET is not configured on server"
-    if not provided or provided != DASHBOARD_ADMIN_SECRET:
+    if not provided or not hmac.compare_digest(provided, DASHBOARD_ADMIN_SECRET):
         return False, "Invalid dashboard admin secret"
     return True, ""
 
