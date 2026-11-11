@@ -25,6 +25,7 @@ from flask import Flask, jsonify, request, send_from_directory, g
 from werkzeug.security import check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from ai_model_mapping import MappingValidationError, validate_mappings, encode_mappings, decode_mappings
+from ai_model_mapping_store import PrivateMappingStore, PrivateMappingError, PrivateMappingConflict
 
 log = logging.getLogger("berry.admin")
 COOKIE = "__Host-berry_admin"
@@ -163,7 +164,7 @@ def overview(products, orders, wallets, now=None):
     }
 
 
-def create_app(config=None, store=None):
+def create_app(config=None, store=None, mapping_store=None):
     app = Flask(__name__, static_folder=None)
     # Render terminates TLS one trusted proxy hop ahead of the container.
     # Keep remote_addr unchanged; never trust client-supplied X-Forwarded-For.
@@ -177,6 +178,9 @@ def create_app(config=None, store=None):
         ADMIN_STATE_PATH=os.getenv("ADMIN_STATE_PATH", "/tmp/berry-admin-state.sqlite3"),
         ADMIN_MODE=os.getenv("ADMIN_MODE", "staging"),
         ADMIN_MODEL_MAPPING_DRAFT_ENABLED=os.getenv("ADMIN_MODEL_MAPPING_DRAFT_ENABLED", "false").lower() == "true",
+        ADMIN_MODEL_MAPPING_PRIVATE_ENABLED=os.getenv("ADMIN_MODEL_MAPPING_PRIVATE_ENABLED", "false").lower() == "true",
+        AI_MAPPING_SUPABASE_URL=os.getenv("AI_MAPPING_SUPABASE_URL", ""),
+        AI_MAPPING_SUPABASE_SERVICE_KEY=os.getenv("AI_MAPPING_SUPABASE_SERVICE_KEY", ""),
         ADMIN_WRITES_ENABLED=os.getenv("ADMIN_WRITES_ENABLED", "false").lower() == "true",
         ADMIN_ISOLATED_DATABASE=os.getenv("ADMIN_ISOLATED_DATABASE", "false").lower() == "true",
         MAX_CONTENT_LENGTH=256 * 1024,
@@ -186,6 +190,20 @@ def create_app(config=None, store=None):
         app.config.update(config)
     database = store or DataStore(app.config["SUPABASE_URL"], app.config["SUPABASE_SERVICE_KEY"], app.config["TENANT_ID"])
     app.extensions["berry_store"] = database
+    private_mapping = mapping_store or PrivateMappingStore(
+        app.config["AI_MAPPING_SUPABASE_URL"], app.config["AI_MAPPING_SUPABASE_SERVICE_KEY"],
+        app.config["TENANT_ID"], business_url=app.config["SUPABASE_URL"])
+    app.extensions["berry_private_mapping"] = private_mapping
+
+    def mapping_private_ready():
+        return (app.config["ADMIN_MODE"] == "staging" and
+                app.config["ADMIN_MODEL_MAPPING_PRIVATE_ENABLED"] and
+                private_mapping.configured())
+
+    def mapping_draft_ready():
+        return (app.config["ADMIN_MODE"] == "staging" and
+                not app.config["ADMIN_MODEL_MAPPING_PRIVATE_ENABLED"] and
+                app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"])
     state = Path(app.config["ADMIN_STATE_PATH"])
     state.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(state) as conn:
@@ -235,8 +253,7 @@ def create_app(config=None, store=None):
             # No Supabase write, no provider job, no customer data mutation.
             draft_write = (request.method == "PUT"
                            and request.path == PREFIX + "/ai/model-mappings"
-                           and app.config["ADMIN_MODE"] == "staging"
-                           and app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"])
+                           and (mapping_draft_ready() or mapping_private_ready()))
             if not draft_write and not (app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]):
                 audit("mutation_blocked", request.method + " " + request.path)
                 return jsonify(error="Tindakan dikunci: staging menggunakan data kedai sebenar. Database ujian berasingan dan RPC audit diperlukan."), 423
@@ -392,29 +409,60 @@ def create_app(config=None, store=None):
 
     @app.get(PREFIX + "/ai/model-mappings")
     def model_mapping_list():
-        """Staging-only preview; never read public bot_settings for private IDs."""
-        if not (app.config["ADMIN_MODE"] == "staging" and app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"]):
-            return jsonify(error="Model mapping draft tidak diaktifkan pada servis ini"), 423
+        """Only staging. Private persistent mode must be on an isolated project."""
+        if app.config["ADMIN_MODEL_MAPPING_PRIVATE_ENABLED"]:
+            if not mapping_private_ready():
+                return jsonify(error="Private staging mapping database tidak dikonfigurasi secara berasingan"), 423
+            try:
+                data = private_mapping.get()
+            except PrivateMappingError:
+                return jsonify(error="Private mapping database belum tersedia; semak konfigurasi"), 503
+            response = jsonify(data["mappings"])
+            response.headers["X-Berry-Mapping-Mode"] = "private-persistent-staging"
+            response.headers["X-Berry-Mapping-Revision"] = str(data["revision"])
+            return response
+        if not mapping_draft_ready():
+            return jsonify(error="Model mapping tidak diaktifkan pada servis ini"), 423
         with sqlite3.connect(state) as conn:
             row = conn.execute(
                 "SELECT payload FROM ai_model_mapping_drafts WHERE tenant_id=?",
                 (app.config["TENANT_ID"],)
             ).fetchone()
         try:
-            return jsonify(decode_mappings(row[0] if row else None))
+            response = jsonify(decode_mappings(row[0] if row else None))
+            response.headers["X-Berry-Mapping-Mode"] = "staging-draft-only"
+            return response
         except MappingValidationError:
             return jsonify(error="Staging draft corrupt; semak storan tempatan"), 503
 
     @app.put(PREFIX + "/ai/model-mappings")
     def model_mapping_save():
-        """Store safe preview mapping locally, NOT in production Supabase."""
-        if not (app.config["ADMIN_MODE"] == "staging" and app.config["ADMIN_MODEL_MAPPING_DRAFT_ENABLED"]):
-            return jsonify(error="Penyimpanan staging draft tidak dibenarkan"), 423
+        """Writes ONLY a local draft or dedicated private staging database."""
+        if not (mapping_draft_ready() or mapping_private_ready()):
+            return jsonify(error="Penyimpanan mapping staging tidak dibenarkan"), 423
         payload = request.get_json(silent=True)
         try:
             models = validate_mappings(payload)
         except MappingValidationError as exc:
             return jsonify(error=str(exc)), 400
+        if app.config["ADMIN_MODEL_MAPPING_PRIVATE_ENABLED"]:
+            try:
+                revision = int(request.headers.get("X-Berry-Mapping-Revision", ""))
+                if revision < 0:
+                    raise ValueError
+            except ValueError:
+                return jsonify(error="Mapping revision diperlukan; refresh dahulu"), 400
+            try:
+                data = private_mapping.put(models, g.idempotency_key, revision)
+            except PrivateMappingConflict:
+                return jsonify(error="Mapping telah diubah. Refresh sebelum cuba semula"), 409
+            except (PrivateMappingError, ValueError):
+                return jsonify(error="Keputusan simpanan tidak pasti; refresh untuk semak sebelum cuba semula"), 503
+            audit("ai_model_mapping_private_saved", "count=" + str(len(models)))
+            response = jsonify(data["mappings"])
+            response.headers["X-Berry-Mapping-Mode"] = "private-persistent-staging"
+            response.headers["X-Berry-Mapping-Revision"] = str(data["revision"])
+            return response
         with sqlite3.connect(state, timeout=10) as conn:
             conn.execute(
                 """INSERT INTO ai_model_mapping_drafts(tenant_id, payload, updated_at)
