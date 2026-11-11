@@ -21,5 +21,15 @@ jobs:
           python-version: '3.11'
       - name: Compile bot without importing or running it
         run: python -m py_compile bot.py
+      - name: Validate dashboard JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('dashboard.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\\s[^>]*)?>([\\s\\S]*?)</script>', html)
+          Path('/tmp/berry-dashboard.js').write_text('\\n'.join(scripts), encoding='utf-8')
+          PY
+          node --check /tmp/berry-dashboard.js
       - name: Payment safety tests
         run: python -m unittest discover -s tests -p 'test_berry_*py' -v
