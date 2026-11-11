@@ -2083,7 +2083,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                 await context.bot.send_message(
                     chat_id=int(result["user_id"]),
                     text=f"🍓 Top Up diluluskan! +{int(Decimal(str(result['amount']))*1250):,} Berry Credits."
-                         f"\\nOrder: {order_id}\\nSemak baki dalam My Wallet.")
+                         f"\nOrder: {order_id}\nSemak baki dalam My Wallet.")
             except Exception as exc:
                 log.warning("[TOPUP] Approval notification failed: %s", type(exc).__name__)
         return {"order": result}
@@ -2786,7 +2786,7 @@ BERRY_TOPUP_PLANS = {
 
 
 async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan_key: str):
-    """Preview plan with a button; checkout disabled until wallet crediting is safe."""
+    """Top-up plan confirmation; server gates payment until migration is ready."""
     plan = BERRY_TOPUP_PLANS.get(plan_key)
     if not plan:
         return
@@ -2798,9 +2798,10 @@ async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE,
         f"Jumlah: RM{amount:.2f}\n"
         f"Berry Credits: {credits:,}\n"
         f"Kadar: RM1 = 1,250 credits\n\n"
-        "🚧 Checkout belum diaktifkan. Tiada caj dibuat. "
-        "Selepas integrasi pembayaran dan auto-credit diuji, "
-        "butang Confirm akan memaparkan QR yang sama seperti Browse Shop.",
+        ("💳 Tekan Confirm & Pay untuk QR Browse Shop. "
+         "Kredit masuk hanya selepas admin mengesahkan bayaran."
+         if _topup_enabled() else
+         "🚧 Checkout belum aktif. Tiada caj dibuat sehingga ujian pembayaran selesai."),
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Confirm & Pay", callback_data=f"ai_topup_checkout:{plan_key}")],
             [InlineKeyboardButton("⬅️ Pilih Plan Lain", callback_data="ai_studio:topup")],
