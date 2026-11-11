@@ -3047,24 +3047,13 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _berry_ai_public_name(tool_key: str) -> str | None:
-    """Fetch only the customer-facing AI display name; never expose fal.ai IDs.
+    """Not wired to Telegram until a private, audited model store exists.
 
-    Failure is nonfatal. Existing menu remains an admin-only preview, and this
-    mapping does not activate billing or AI generation.
+    The earlier prototype read mapping configuration from public.bot_settings,
+    which has public SELECT policies. That is NOT a private provider store.
+    Staging drafts are kept in the isolated admin host SQLite, not the bot.
     """
-    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
-        return None
-    try:
-        from ai_model_mapping import decode_mappings, public_label, SETTING_KEY
-        from urllib.parse import quote
-        rows = await asyncio.to_thread(
-            sb_admin_get, "bot_settings",
-            "select=key,value&key=eq." + quote(SETTING_KEY, safe="") + "&limit=1",
-        )
-        return public_label(decode_mappings(rows[0].get("value") if rows else None), tool_key)
-    except Exception as exc:
-        log.warning("[AI_PUBLIC_NAME] mapping unavailable (%s)", type(exc).__name__)
-        return None
+    return None
 
 
 async def show_ai_studio_section(
