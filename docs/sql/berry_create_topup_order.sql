@@ -1,4 +1,8 @@
 -- STAGING REVIEW FIRST. Requires tenants/orders and wallet schema.
+-- Refuse to build if duplicate active data already exists; never delete it.
+-- Protect legacy shop inserts as well as this RPC.
+CREATE UNIQUE INDEX IF NOT EXISTS berry_orders_one_active_user
+ ON public.orders(tenant_id,user_id) WHERE status IN ('pending','waiting','waiting_approval');
 CREATE TABLE IF NOT EXISTS berry_private.topup_checkout_requests (
  tenant_id uuid NOT NULL, idempotency_key uuid NOT NULL, user_id bigint NOT NULL,
  plan text NOT NULL, order_id text NOT NULL REFERENCES public.orders(id),

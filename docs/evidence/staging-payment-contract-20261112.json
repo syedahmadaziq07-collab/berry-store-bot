@@ -1,8 +1,8 @@
 {
   "scope": "isolated Supabase cirsdvkfkvypprnmyykk; dummy orders and synthetic MYR only",
-  "python_tests": {"passed": 119, "failed": 0},
+  "python_tests": {"passed": 121, "failed": 0},
   "actual_myr_wallet_topup_sql_suite": "PASS",
-  "cases": ["checkout idempotency", "one active order", "ownership conflict", "no approval before receipt", "unauthorized claim denied", "topup credit once", "completed order replay stays closed", "MYR debit replay", "reference conflict", "sub-cent rejected", "overspend rejected", "refund replay", "ledger reconciliation", "public execution revoked"],
+  "cases": ["checkout idempotency", "one active order", "mixed shop/top-up duplicate rejected", "ownership conflict", "no approval before receipt", "unauthorized claim denied", "topup credit once", "completed order replay stays closed", "MYR debit replay", "reference conflict", "sub-cent rejected", "overspend rejected", "refund replay", "ledger reconciliation", "public execution revoked"],
   "parallel_checkout": {"requests": 8, "successful_responses": 8, "orders_created": 1, "result": "PASS"},
   "parallel_approval": {"requests": 8, "successful_responses": 8, "wallet_balance": "5.00", "ledger_entries": 1, "result": "PASS"},
   "telegram_handler_contracts": ["new order QR", "pending order reused", "completed order no QR", "waiting approval no repeat payment", "shop order conflict", "disabled gate"],

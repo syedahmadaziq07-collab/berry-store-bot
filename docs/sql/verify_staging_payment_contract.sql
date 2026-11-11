@@ -12,6 +12,12 @@ BEGIN
  IF r2->'order'->>'id'<>oid OR r2->>'replayed'<>'true' THEN RAISE EXCEPTION 'checkout replay mismatch'; END IF;
  r2:=public.berry_create_topup_order(t,900000004,'creator',k2,'BT'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,24)),'fixture');
  IF r2->'order'->>'id'<>oid OR r2->>'created'<>'false' THEN RAISE EXCEPTION 'multiple active orders'; END IF;
+ -- Legacy shop inserts cannot race past the one-active-order policy.
+ rejected:=false;
+ BEGIN INSERT INTO public.orders(id,tenant_id,user_id,product_id,product_name,quantity,amount,status)
+  VALUES('fixture-shop-'||gen_random_uuid()::text,t,900000004,1,'Fixture shop item',1,5,'pending');
+ EXCEPTION WHEN unique_violation THEN rejected:=true; END;
+ IF NOT rejected THEN RAISE EXCEPTION 'mixed shop/topup duplicate accepted'; END IF;
  rejected:=false;
  BEGIN PERFORM public.berry_create_topup_order(t,900000005,'starter',k,'BT'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,24)),'other');
  EXCEPTION WHEN raise_exception THEN IF SQLERRM='checkout idempotency conflict' THEN rejected:=true; ELSE RAISE; END IF; END;

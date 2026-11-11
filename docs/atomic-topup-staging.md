@@ -8,8 +8,10 @@ write automatically. A deliberate later callback reuses the existing active orde
 
 Completed callbacks do not open another QR, and orders waiting for approval explicitly say
 not to pay again. Existing shop orders block a new top-up checkout. This serializes top-up
-callbacks; the legacy shop order creation path does not yet share this lock, so mixed
-shop/top-up simultaneous checkout still needs a common order reservation policy before launch.
+callbacks. A partial unique index also enforces one active order per tenant/user for legacy
+shop inserts. Mixed shop/top-up races cannot create two active orders. The index refuses
+to build if an environment has duplicates; it never deletes or silently rewrites them.
+Shop checkout stops when its duplicate check cannot be verified.
 
 The wallet ledger replay now also compares the original reference, preventing a key from
 being reused for a different job with the same user/amount/type.
@@ -32,7 +34,7 @@ fixture is retained in staging under tenant `dddddddd-4444-4444-8444-44444444444
 `900000004`; approver `900000099` is also a dummy identity. These are test numbers, not money
 received from a bank or customer transactions. No bank transfer or provider purchase occurred.
 
-119 Python tests pass, including executing the actual Telegram checkout handler body with
+121 Python tests pass, including executing the actual Telegram checkout handler body with
 mocked transport/effects. Live Telegram and receipt/bank validation are still not E2E tested.
 
 ## Release gates
@@ -40,5 +42,5 @@ mocked transport/effects. Live Telegram and receipt/bank validation are still no
 Customer top-up remains disabled. No environment flag was enabled and production is unchanged.
 The checkout SQL requires the private request table and new RPC before the bot change can
 be deployed to a customer service. Real receipt verification, operator authorization,
-concurrent mixed shop/top-up checkout, delivery notifications and full browser/Telegram E2E
+delivery notifications and full browser/Telegram E2E
 remain necessary. A receipt image is not proof of settled bank payment.

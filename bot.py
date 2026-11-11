@@ -2020,7 +2020,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             lambda: sb_get("orders",
                 f"select=id,product_name,amount,status"
                 f"&user_id=eq.{user.id}"
-                f"&status=in.(pending,waiting)"
+                f"&status=in.(pending,waiting,waiting_approval)"
                 f"&limit=1"),
         )
         if existing:
@@ -2047,8 +2047,12 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             track_flow_message(context, active_msg, "active_order")
             return
     except Exception as exc:
-        log.warning(f"Duplicate order check failed, proceeding: {_safe_error(exc)}")
-        # Non-blocking — if check fails, allow order creation to continue
+        log.warning(f"Duplicate order check unavailable: {_safe_error(exc)}")
+        context.user_data.pop(lock_user, None)
+        await context.bot.send_message(chat_id,
+            "⚠️ Belum dapat sahkan order aktif anda. Sila cuba lagi sebentar nanti.",
+            reply_markup=back_shop())
+        return
 
     order_id      = f"ORD{random.randint(10000, 99999)}{user.id}"
     price_to_use  = variant_price if variant_price is not None else p["price"]
