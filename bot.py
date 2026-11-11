@@ -2878,20 +2878,82 @@ async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_T
     if not prompt or len(prompt) > 1500:
         await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 1500 aksara.")
         return True
-    context.user_data.pop("ai_video_flow", None)
+    state["prompt"] = prompt
+    state["stage"] = "await_confirm"
     await update.message.reply_text(
-        "✅ PREVIEW REQUEST\n\n"
+        "✅ SEMAK SEBELUM GENERATE\n\n"
         f"🎬 Model: {state['model']}\n"
         f"📐 Ratio: {state['ratio']}\n"
         "📷 Gambar: diterima\n"
         f"✏️ Prompt: {prompt}\n\n"
-        "🔒 Belum dihantar untuk generation. Tiada caj dikenakan.",
+        "💵 Anggaran caj fal.ai: USD0.50 (5s, 720p).\n"
+        "⚠️ Caj sebenar ditentukan fal.ai. Klik Generate hanya jika setuju.",
         reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Generate (API berbayar)", callback_data="ai_video_generate")],
+            [InlineKeyboardButton("❌ Batalkan", callback_data="ai_video_cancel")],
             [InlineKeyboardButton("🔄 Cuba Lagi", callback_data="ai_video_models")],
             [InlineKeyboardButton("🏠 Home", callback_data="home")],
         ]),
     )
     return True
+
+
+async def generate_ai_video_confirmed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only, explicit paid confirmation. No customer wallet operations."""
+    if not _ai_video_is_admin(update):
+        return
+    query = update.callback_query
+    state = context.user_data.get("ai_video_flow")
+    if not isinstance(state, dict) or state.get("stage") != "await_confirm":
+        await query.message.reply_text("⚠️ Request dah tamat. Sila mula semula.")
+        return
+    if not os.getenv("FAL_KEY"):
+        await query.message.reply_text("⚠️ FAL_KEY belum tersedia pada server.")
+        return
+    # Pop before any await to prevent duplicate clicks/charges.
+    context.user_data.pop("ai_video_flow", None)
+    await query.message.reply_text("⏳ Request dihantar ke fal.ai. Video mungkin ambil beberapa minit.")
+    import tempfile
+    from pathlib import Path
+    try:
+        import fal_client
+        photo = await context.bot.get_file(state["photo_file_id"])
+        image_bytes = bytes(await photo.download_as_bytearray())
+        if len(image_bytes) > 20 * 1024 * 1024:
+            await query.message.reply_text("⚠️ Gambar terlalu besar.")
+            return
+        def _generate():
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "input.jpg"
+                path.write_bytes(image_bytes)
+                image_url = fal_client.upload_file(str(path))
+                return fal_client.subscribe(
+                    "wan/v2.6/image-to-video",
+                    arguments={
+                        "prompt": state["prompt"],
+                        "image_url": image_url,
+                        "duration": "5",
+                        "resolution": "720p",
+                    },
+                )
+        result = await asyncio.wait_for(asyncio.to_thread(_generate), timeout=600)
+        url = ((result or {}).get("video") or {}).get("url")
+        if not url or not url.startswith("https://"):
+            raise ValueError("fal.ai did not return a video URL")
+        await query.message.reply_video(video=url, caption="🎬 Berry AI Studio · Wan 2.6 · 5s")
+    except Exception as exc:
+        log.warning("[FAL_VIDEO] generation or delivery failed: %s", type(exc).__name__)
+        await query.message.reply_text(
+            "❌ Generation/delivery gagal. Semak fal.ai dashboard untuk status caj. "
+            "Jangan retry sebelum sahkan request lama tidak berjaya."
+        )
+
+
+async def cancel_ai_video_generation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await update.callback_query.message.reply_text("✅ Request dibatalkan. Tiada generation dihantar.")
 
 
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3136,6 +3198,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("ai_video_models:"):
             await show_ai_video_models(update, context, data.split(":", 1)[1])
         elif data == "ai_video_ratio":     await show_ai_video_ratio(update, context)
+        elif data == "ai_video_generate":  await generate_ai_video_confirmed(update, context)
+        elif data == "ai_video_cancel":    await cancel_ai_video_generation(update, context)
         elif data.startswith("ai_video_photo:"):
             await request_ai_video_photo(update, context, data.split(":", 1)[1])
         elif data == "myorders":           await my_orders(update, context)
