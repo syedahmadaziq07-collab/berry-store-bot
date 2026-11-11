@@ -22,11 +22,20 @@ class ControlCenterIntegrationTests(unittest.TestCase):
         self.assertNotIn("sb_patch(", handler)
         self.assertNotIn("sb_post(", handler)
 
+    def test_signed_cookie_auth_and_csrf(self):
+        for required in ('URLSafeTimedSerializer', 'max_age=_GEMINI_AUTH_TTL',
+                         'httponly=True', 'secure=True', 'samesite="Strict"',
+                         'X-CSRF-Token', 'hmac.compare_digest',
+                         'def gemini_admin_login():', 'def gemini_admin_me():',
+                         'def gemini_admin_logout():'):
+            self.assertIn(required, BOT)
+        self.assertNotIn('berrystore2026!', BOT)
+
     def test_read_only_list_adapters(self):
         start = BOT.index("def berry_control_center_lists():")
         end = BOT.index('@_app.route("/api/dashboard/orders"', start)
         handler = BOT[start:end]
-        for required in ("_check_dashboard_secret()", "SUPABASE_SERVICE_KEY",
+        for required in ("_gemini_session_guard()", "SUPABASE_SERVICE_KEY",
                          "TENANT_ID", "sb_admin_get(", '"products"',
                          '"orders"', '"users"', "limit=500"):
             self.assertIn(required, handler)
