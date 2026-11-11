@@ -7,6 +7,9 @@ on:
     paths:
       - admin_app.py
       - ai_model_mapping.py
+      - ai_model_mapping_store.py
+      - tests/test_ai_model_mapping_private.py
+      - docs/sql/berry_private_ai_model_mappings.sql
       - frontend/**
       - Dockerfile.admin
       - tests/test_ai_model_mapping_draft.py
@@ -15,6 +18,9 @@ on:
     paths:
       - admin_app.py
       - ai_model_mapping.py
+      - ai_model_mapping_store.py
+      - tests/test_ai_model_mapping_private.py
+      - docs/sql/berry_private_ai_model_mappings.sql
       - frontend/**
       - Dockerfile.admin
       - tests/test_ai_model_mapping_draft.py
@@ -29,9 +35,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements-admin.txt
-      - run: python -m py_compile admin_app.py ai_model_mapping.py
+      - run: python -m py_compile admin_app.py ai_model_mapping.py ai_model_mapping_store.py
       - run: python -m unittest discover -s tests -p 'test_ai_model_mapping_draft.py' -v
       - run: python -m unittest discover -s tests -p 'test_ai_model_mapping.py' -v
+      - run: python -m unittest discover -s tests -p 'test_ai_model_mapping_private.py' -v
   frontend-build:
     runs-on: ubuntu-latest
     defaults:
