@@ -14,7 +14,10 @@ def quote_for_wallet(api_cost_myr, *, extra_cost_myr, confirmed_costs=False):
     if confirmed_costs is not True:
         raise WalletPricingUnavailable("Verified provider and transaction costs required")
     credits = required_credits(api_cost_myr, extra_cost_myr=extra_cost_myr)
-    debit_myr = Decimal(credits) / Decimal(CREDITS_PER_MYR)
+    # Existing wallet RPC accepts cents only. Whole credits and whole cents
+    # coincide every 25 credits (RM0.02); round UP to that common unit.
+    credits = ((credits + 24) // 25) * 25
+    debit_myr = (Decimal(credits) / Decimal(CREDITS_PER_MYR)).quantize(Decimal("0.01"))
     if gross_profit_myr(credits, api_cost_myr, extra_cost_myr=extra_cost_myr) < Decimal("1.00"):
         raise WalletPricingUnavailable("Insufficient margin")
     return {"credits": credits, "wallet_debit_myr": debit_myr}

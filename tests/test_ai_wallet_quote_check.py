@@ -21,7 +21,8 @@ class Tests(unittest.TestCase):
         self.assertTrue(result["eligible_for_reservation"])
         self.assertFalse(result["reservation_created"])
         self.assertFalse(result["generation_authorized"])
-        self.assertEqual(result["credits"], 1313)
+        self.assertEqual(result["credits"], 1325)
+        self.assertEqual(result["wallet_debit_myr"], "1.06")
         self.assertEqual(bridge.calls, 1)
 
     def test_low_balance(self):

@@ -170,7 +170,6 @@ class AdminSecurityTests(unittest.TestCase):
         self.login()
         paths = {'/shop/products': ['products', 'product_variants'], '/orders': ['orders'],
                  '/credentials': ['credentials'], '/shop/categories': ['categories'],
-                 '/ai/tools': ['ai_tools'], '/ai/models': ['ai_models'],
                  '/referrals': ['users'], '/bot-settings': ['bot_settings'],
                  '/customers': ['users', 'orders', 'ai_wallets'],
                  '/wallet': ['ai_wallets', 'ai_wallet_transactions'],
@@ -184,6 +183,15 @@ class AdminSecurityTests(unittest.TestCase):
                     response = self.client.get(API + path, base_url=BASE)
                     self.assertEqual(response.status_code, 503)
                     self.assertEqual(response.json, {'error': 'Schema unavailable'})
+
+    def test_ai_catalogue_fails_closed_without_isolated_configuration(self):
+        self.login()
+        for path in ('/ai/tools', '/ai/models'):
+            with self.subTest(path=path):
+                self.store.calls.clear()
+                response = self.client.get(API + path, base_url=BASE)
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(self.store.calls, [])
 
     def test_recent_orders_are_sorted_and_naive_dates_are_utc(self):
         self.store.rows['orders'].append({'id': 'ORD-2','status': 'pending','amount': 1,'created_at': '2026-11-12T01:00:00'})
