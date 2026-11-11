@@ -25,7 +25,7 @@ begin
    where id = p_order_id and tenant_id = p_tenant_id
    for update;
   if not found then raise exception 'Order not found'; end if;
-  if o.product_id is not null or o.quantity <> 1 or o.user_id <= 0 then
+  if o.product_id is not null or o.quantity <> 1 or o.user_id is null or o.user_id <= 0 then
     raise exception 'Invalid top-up order';
   end if;
   plan := replace(o.product_name, 'Berry Credits Top Up: ', '');
@@ -46,7 +46,7 @@ begin
       select 1 from public.ai_wallet_transactions t
       where t.tenant_id=p_tenant_id and t.user_id=o.user_id
         and t.idempotency_key='berry-topup:'||o.id and t.kind='topup'
-        and t.amount=expected
+        and t.amount=expected and t.reference=o.id
     ) then
       raise exception 'Completed order missing wallet transaction';
     end if;
@@ -57,7 +57,9 @@ begin
       o.id, 'Berry Credits plan: '||plan||' ('||credit_count||' credits)'
     );
     update public.orders set status='completed', approved_by=p_admin_id,
-      updated_at=now() where id=o.id and tenant_id=p_tenant_id;
+      updated_at=now() where id=o.id and tenant_id=p_tenant_id
+        and status='waiting_approval';
+    if not found then raise exception 'Concurrent order state change'; end if;
   else
     raise exception 'Order not awaiting receipt approval';
   end if;
