@@ -46,3 +46,14 @@ Report automation scheduled for approximately 08:00 MYT on 13 November 2026. Sch
 ## Atomic checkout follow-up
 
 Top-up checkout now uses one service-only RPC rather than a read-then-insert race. Its stable Telegram-update key and per-user lock reuse active orders and reject changed ownership. Replayed completed orders never reopen payment, and waiting-approval orders never request another payment. The generic MYR ledger also binds replay to the original reference. Customer checkout flag remains disabled; migrations apply only to isolated staging.
+
+## Latest verified release checkpoint (12 November MYT)
+
+- PRs #38 (durable staging jobs), #39 (atomic checkout/MYR contract) and #40 (provider restart recovery) are merged into staging. All CI workflows on their reviewed heads passed.
+- Application commit 40c5b62107081756f4ba09a08db49aa284e75200 is LIVE on Render deployment dep-dbqa6556e07s73ficc5g.
+- Post-deploy public audit: 12 menu shells and 14 unauthenticated API guards PASS. No error-level logs in the immediate checked post-live interval. This is not authenticated business E2E or a long-duration stability test.
+- Mapping revision 4 still has image/video disabled. No real payment, customer wallet mutation, production deploy or provider spend occurred.
+- 129 Python tests PASS; frontend CI includes its 16 tests, type-check and build. Direct staging SQL verifies both private job lifecycle and the existing MYR wallet/top-up contract.
+- Still IN PROGRESS: full shop fixture coverage, customer bot/job-wallet integration, continuous recovery scheduling and an audited unknown-outcome operator flow. Do not treat the isolated synthetic job wallet as the existing customer wallet.
+- Still BLOCKED for actual external E2E: authenticated staging browser session, dedicated staging Telegram test bot/account, approved provider test budget, independent all-in cost verification.
+- Hourly continuation is active with the staging target today and final GO/NO-GO report scheduled for 13 November at approximately 08:00 MYT. No unattended completion guarantee.
