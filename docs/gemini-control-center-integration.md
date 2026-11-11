@@ -18,3 +18,12 @@ Source artifact: user-provided `berry-store-admin-control-center.zip`. Do not de
 - Do not enable checkout or process real payments.
 
 This branch is intentionally safe to review but **not production ready**.
+
+## Added read-only adapters (draft)
+
+- `GET /api/admin/v1/shop/products` — product summary (up to 500)
+- `GET /api/admin/v1/orders` — order summary without receipt file IDs (up to 500)
+- `GET /api/admin/v1/customers` — customer summary (up to 500)
+- Overview now returns the `kpis`, `revenueTrend`, `categoryRevenue` keys expected by Gemini React. Time-based revenue and wallet liability are placeholders and **must not be presented as verified zeroes**. Fix before production.
+
+These endpoints currently require `X-Dashboard-Secret`. The original Gemini frontend does not send that header; a secure session layer and frontend API integration are still required.
