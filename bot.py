@@ -1007,6 +1007,24 @@ def berry_control_center_module_reads():
         return jsonify(error="AI catalogue unavailable"), 503
 
 
+@_app.route("/api/admin/v1/referrals", methods=["GET"])
+def berry_control_center_referrals():
+    denied = _gemini_session_guard()
+    if denied:
+        return denied
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    try:
+        users = sb_admin_get(
+            "users",
+            "select=id,username,referral_code,referred_by,created_at&limit=500",
+        )
+        return jsonify(users)
+    except Exception as exc:
+        log.warning("[GEMINI_REFERRALS] %s", type(exc).__name__)
+        return jsonify(error="Referrals unavailable"), 503
+
+
 @_app.route("/api/dashboard/orders", methods=["GET"])
 def dashboard_orders_read():
     """Server-only, allowlisted read endpoint for dashboard orders."""
