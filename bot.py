@@ -2585,24 +2585,25 @@ async def show_ai_studio_section(
             [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
         ]
     elif section == "topup":
-        # Display-only preview. Do not create orders, collect payments, or credit wallets.
         text = (
-            "💳 BERRY CREDITS — TOP UP PLANS\\n"
+            "💳 BERRY CREDITS — TOP UP\\n"
             "━━━━━━━━━━━━━━━━━━\\n\\n"
-            "🍓 Starter\\n"
-            "RM5.00 = 6,250 Berry Credits\\n\\n"
-            "⚡ Creator\\n"
-            "RM10.00 = 12,500 Berry Credits\\n\\n"
-            "💎 Pro\\n"
-            "RM20.00 = 25,000 Berry Credits\\n\\n"
-            "👑 Studio\\n"
-            "RM50.00 = 62,500 Berry Credits\\n\\n"
-            "💱 Kadar tetap: RM1 = 1,250 Berry Credits\\n"
-            "1 credit = RM0.0008\\n\\n"
-            "🚧 Paparan pelan sahaja. Pembayaran dan pembelian kredit "
-            "belum diaktifkan; tiada caj dikenakan."
+            "Pilih pakej Berry Credits anda.\\n"
+            "💱 RM1 = 1,250 Berry Credits\\n\\n"
+            "🍓 Starter · RM5 — 6,250 credits\\n"
+            "⚡ Creator · RM10 — 12,500 credits\\n"
+            "💎 Pro · RM20 — 25,000 credits\\n"
+            "👑 Studio · RM50 — 62,500 credits\\n\\n"
+            "🔒 Pembayaran belum dibuka sehingga kredit automatik "
+            "selepas admin approve siap diuji."
         )
-        buttons = [[InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet")]]
+        buttons = [
+            [InlineKeyboardButton("🍓 Starter · RM5", callback_data="ai_topup_plan:starter")],
+            [InlineKeyboardButton("⚡ Creator · RM10", callback_data="ai_topup_plan:creator")],
+            [InlineKeyboardButton("💎 Pro · RM20", callback_data="ai_topup_plan:pro")],
+            [InlineKeyboardButton("👑 Studio · RM50", callback_data="ai_topup_plan:studio")],
+            [InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet")],
+        ]
     elif section == "wallet":
         balance = await _wallet_balance(update.effective_user.id)
         balance_label = balance if balance is not None else "Belum tersedia"
@@ -2729,6 +2730,37 @@ async def show_ai_studio_section(
     await _safe_edit_or_send(
         update.callback_query, text,
         reply_markup=InlineKeyboardMarkup(buttons + [back]),
+    )
+
+
+BERRY_TOPUP_PLANS = {
+    "starter": ("🍓 Starter", 5, 6250),
+    "creator": ("⚡ Creator", 10, 12500),
+    "pro": ("💎 Pro", 20, 25000),
+    "studio": ("👑 Studio", 50, 62500),
+}
+
+
+async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan_key: str):
+    """Preview plan with a button; checkout disabled until wallet crediting is safe."""
+    plan = BERRY_TOPUP_PLANS.get(plan_key)
+    if not plan:
+        return
+    name, amount, credits = plan
+    await _safe_edit_or_send(
+        update.callback_query,
+        f"🧾 PENGESAHAN TOP UP\\n━━━━━━━━━━━━━━━━━━\\n\\n"
+        f"Plan: {name}\\n"
+        f"Jumlah: RM{amount:.2f}\\n"
+        f"Berry Credits: {credits:,}\\n"
+        f"Kadar: RM1 = 1,250 credits\\n\\n"
+        "🚧 Checkout belum diaktifkan. Tiada caj dibuat. "
+        "Selepas integrasi pembayaran dan auto-credit diuji, "
+        "butang Confirm akan memaparkan QR yang sama seperti Browse Shop.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔒 Confirm & Pay (belum aktif)", callback_data="ai_topup_checkout_locked")],
+            [InlineKeyboardButton("⬅️ Pilih Plan Lain", callback_data="ai_studio:topup")],
+        ]),
     )
 
 
@@ -3145,6 +3177,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
         elif data == "ai_video":           await show_ai_video(update, context)
+        elif data.startswith("ai_topup_plan:"):
+            await show_ai_topup_plan(update, context, data.split(":", 1)[1])
+        elif data == "ai_topup_checkout_locked":
+            await q.answer("Checkout belum aktif. Tiada bayaran diterima.", show_alert=True)
         elif data.startswith("ai_studio:"):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
