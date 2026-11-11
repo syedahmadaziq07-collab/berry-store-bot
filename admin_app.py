@@ -24,6 +24,8 @@ import httpx
 from flask import Flask, jsonify, request, send_from_directory, g
 from werkzeug.security import check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
+from ai_model_mapping import (SETTING_KEY, MappingValidationError,
+                              validate_mappings, encode_mappings, decode_mappings)
 
 log = logging.getLogger("berry.admin")
 COOKIE = "__Host-berry_admin"
@@ -95,6 +97,37 @@ class DataStore:
                     raise BackendUnavailable("Dataset melebihi had selamat; aggregation database diperlukan")
         except (httpx.HTTPError, ValueError) as from_exc:
             raise BackendUnavailable("Sambungan database gagal") from from_exc
+
+    def get_ai_model_mappings(self):
+        """Read current tenant mapping without exposing service credentials."""
+        rows = self.read("bot_settings")
+        match = next((row.get("value") for row in rows if row.get("key") == SETTING_KEY), None)
+        try:
+            return decode_mappings(match)
+        except MappingValidationError as exc:
+            raise BackendUnavailable(str(exc)) from exc
+
+    def save_ai_model_mappings(self, mappings):
+        """Write only to an isolated database; route gate enforces this."""
+        if not self.configured():
+            raise BackendUnavailable("Sambungan database belum tersedia")
+        raw = encode_mappings(mappings)
+        try:
+            response = self.client.post(
+                f"{self.url}/rest/v1/bot_settings",
+                headers={**self.headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+                params={"on_conflict": "tenant_id,key"},
+                json={"tenant_id": self.tenant, "key": SETTING_KEY, "value": raw,
+                      "description": "Private provider model mapping for Berry AI Studio"},
+            )
+            if response.status_code not in (200, 201):
+                raise BackendUnavailable("Database menolak perubahan model mapping")
+            rows = response.json()
+            if not isinstance(rows, list) or len(rows) != 1 or rows[0].get("value") != raw:
+                raise BackendUnavailable("Pengesahan model mapping gagal")
+            return validate_mappings(mappings)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise BackendUnavailable("Simpanan model mapping gagal; semak database sebelum cuba lagi") from exc
 
     def mutate(self, operation, resource_id, payload, actor, key):
         if not self.configured():
@@ -380,6 +413,23 @@ def create_app(config=None, store=None):
     @app.get(PREFIX + "/ai/models")
     def ai_catalogue():
         return jsonify(database.read("ai_tools" if request.path.endswith("tools") else "ai_models"))
+
+    @app.get(PREFIX + "/ai/model-mappings")
+    def model_mapping_list():
+        return jsonify(database.get_ai_model_mappings())
+
+    @app.put(PREFIX + "/ai/model-mappings")
+    def model_mapping_save():
+        # /protect enforces admin session, CSRF, idempotency key and an
+        # isolated database. Writes to the production tenant are never allowed.
+        payload = request.get_json(silent=True)
+        try:
+            models = validate_mappings(payload)
+        except MappingValidationError as exc:
+            return jsonify(error=str(exc)), 400
+        result = database.save_ai_model_mappings(models)
+        audit("ai_model_mapping_updated", "count=" + str(len(result)))
+        return jsonify(result)
 
     @app.get(PREFIX + "/broadcast")
     def broadcasts():
