@@ -1,11 +1,12 @@
 # Berry Store soft launch tracker
 
-Updated 12 November 2026 MYT. Target: morning 13 November 2026 MYT.
+Updated 12 November 2026 MYT. Owner target: staging today, 12 November; final report before 08:00 13 November MYT.
 Current customer launch decision: **NO-GO**. Production is unchanged.
 
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
-| Backend regression suite | PASS | 93 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
+| Backend regression suite | PASS | 107 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
+| Durable staging job lifecycle | PASS | Separate synthetic MYR cent wallet and immutable quote/ledger. Actual SQL rollback suite passes claim-once, request binding, definitive-failure refunds, ambiguous-outcome hold and ledger reconciliation. Worker tests cover concurrent submits/deliveries and restart/retry safety. External calls disabled by default. Not wired into customer bot. |
 | Frontend | PASS | 16 tests, TypeScript check and production asset build. |
 | Public staging routes/auth guards | PASS | 12 menu shells and 14 unauthenticated API guards; evidence/soft-launch-public-audit-20261112.json. |
 | Wallet quote precision | PASS | Quotes now use common unit of 25 credits = RM0.02; avoids RPC rejecting sub-cent amounts. 1,001 cost cases tested. |

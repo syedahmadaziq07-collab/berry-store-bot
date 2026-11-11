@@ -54,11 +54,7 @@ class AIJobService:
         callback in an HTTP handler. A timeout yields UNKNOWN, not an automatic
         second provider submission or a blind refund.
         """
-        if not callable(verify_reservation) or not reservation_id:
-            raise AIJobNotReady("Durable wallet reservation verification required")
-        current = self.quote(quote.tool_key)
-        if current != quote:
-            raise AIJobNotReady("Model or price changed; request a new quote")
-        if verify_reservation(reservation_id, quote) is not True:
-            raise AIJobNotReady("Wallet reservation not confirmed")
-        return self.provider.submit(quote.provider_model_id, arguments)
+        # A boolean callback cannot atomically consume the right to submit.
+        # Repeated calls with the same reservation could otherwise bill twice.
+        # Use StagingJobWorker's durable claim for isolated staging tests instead.
+        raise AIJobNotReady("Legacy callback submission disabled; durable atomic claim required")

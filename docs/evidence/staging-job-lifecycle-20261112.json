@@ -1,0 +1,12 @@
+{
+  "scope": "isolated Supabase staging synthetic MYR cent wallets only",
+  "python_tests": {"passed": 107, "failed": 0},
+  "actual_database_sql_suite": "PASS",
+  "database_cases": ["atomic debit and ledger", "replay without second debit", "changed payload rejected", "submission claim once", "cross-job provider result rejected", "delivery claim once", "delivered refund forbidden", "definitive failure refund once", "pre-submit cancellation refund once", "unknown submission no retry/refund", "unknown delivery no resend", "ledger reconciliation", "anon/authenticated execute revoked"],
+  "sql_test_data": "rolled back",
+  "provider": "mocked; no paid calls",
+  "telegram": "mocked; no live sends",
+  "customer_e2e": "BLOCKED",
+  "net_profit_verified": false,
+  "production_ready": false
+}
