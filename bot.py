@@ -861,7 +861,16 @@ from telegram.ext import (
 
 # ─── UI Helpers ───────────────────────────────────────────────────────────────
 
-def main_kb():
+def main_kb(user_id: int | None = None):
+    # Preview AI Video only to this tenant's admin until generation/payment are ready.
+    if ADMIN_ID and user_id == ADMIN_ID:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
+             InlineKeyboardButton("🎬 AI Video", callback_data="ai_video")],
+            [InlineKeyboardButton("📦 My Orders", callback_data="myorders"),
+             InlineKeyboardButton("👥 Referral", callback_data="referral")],
+            [InlineKeyboardButton("💬 Support", callback_data="support")],
+        ])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
          InlineKeyboardButton("📦 My Orders",   callback_data="myorders")],
@@ -930,6 +939,7 @@ async def _send_join_message(update: Update):
 # ─── /start ───────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("ai_video_flow", None)
     user = update.effective_user
     log.info(f"[START] received /start")
     log.info(f"[START] user_id={user.id}")
@@ -1011,7 +1021,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Total Users: {total_users}\n"
             f"• Total Sold: {total_sold} pcs\n\n"
             f"Tekan butang di bawah untuk mula!",
-            reply_markup=main_kb(),
+            reply_markup=main_kb(update.effective_user.id),
         )
         log.info(f"[START] welcome_sent=true")
 
@@ -1061,6 +1071,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Shop ─────────────────────────────────────────────────────────────────────
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("ai_video_flow", None)
     if not await _check_membership(context.bot, update.effective_user.id):
         await _send_join_message(update)
         return
@@ -1829,6 +1840,8 @@ async def handle_paid(update: Update, context: ContextTypes.DEFAULT_TYPE, order_
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _block_if_expired(update, context):
         return
+    if await accept_ai_video_photo(update, context):
+        return
     order_id = context.user_data.get("pending_receipt")
     if not order_id:
         return
@@ -1877,7 +1890,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _receipt_msg = await _setting('receipt_received_msg', '✅ Resit diterima!')
     await update.message.reply_text(
         f"{_receipt_msg}\nOrder ID: {order_id}\nAdmin akan sahkan pembayaran anda.",
-        reply_markup=main_kb(),
+        reply_markup=main_kb(update.effective_user.id),
     )
     try:
         await context.bot.send_photo(
@@ -2398,7 +2411,227 @@ async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=back_home())
 
 
+def _ai_video_is_admin(update: Update) -> bool:
+    """Require the configured store admin for every preview action."""
+    return bool(ADMIN_ID and update.effective_user and update.effective_user.id == ADMIN_ID)
+
+
+def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("⬅️ Kembali", callback_data=callback),
+    ]])
+
+
+async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Simple, guided entry point; do not overwhelm first-time users."""
+    if not _ai_video_is_admin(update):
+        await _safe_edit_or_send(
+            update.callback_query, "🚧 AI Video belum dibuka kepada pelanggan.",
+            reply_markup=back_home(),
+        )
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🍓 BERRY AI STUDIO\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🎬 Cipta video AI dalam 3 langkah:\n\n"
+        "1️⃣ Pilih jenis video\n"
+        "2️⃣ Pilih durasi & model\n"
+        "3️⃣ Semak harga, kemudian cipta\n\n"
+        "Pilih cara anda nak mula. 👇\n\n"
+        "🔒 Admin preview — tiada caj atau video dijana.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_duration")],
+            [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
+            [InlineKeyboardButton("🏠 Kembali ke Berry Store", callback_data="home")],
+        ]),
+    )
+
+
+async def show_ai_video_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Do not offer an unsupported text-to-video generation flow."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await _safe_edit_or_send(
+        update.callback_query,
+        "✍️ TEKS → VIDEO\n\n"
+        "Feature ini sedang dirancang.\n"
+        "Buat masa ni, cuba Gambar → Video dahulu.",
+        reply_markup=_ai_video_back_button("ai_video"),
+    )
+
+
+async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Group models by duration before showing individual options or prices."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await _safe_edit_or_send(
+        update.callback_query,
+        "📷 GAMBAR → VIDEO\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 1/3 — Pilih durasi\n\n"
+        "Nak video sepanjang berapa saat?\n\n"
+        "✅ 15 saat tersedia untuk preview.\n"
+        "Durasi lain belum tersedia.\n\n"
+        "💡 Harga dalam RM akan dipaparkan pada pilihan model "
+        "selepas harga sebenar ditetapkan.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚡ 8–10 saat (akan datang)", callback_data="ai_video_unavailable:short")],
+            [InlineKeyboardButton("🎬 15 saat (preview)", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("🎞️ 30 saat (akan datang)", callback_data="ai_video_unavailable:long")],
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video")],
+        ]),
+    )
+
+
+async def show_ai_video_unavailable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set clear expectations for durations with no verified integration."""
+    if not _ai_video_is_admin(update):
+        return
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🚧 Durasi ini belum tersedia dalam Berry AI Studio.\n\n"
+        "Model dan harga akan diaktifkan selepas API provider disahkan.",
+        reply_markup=_ai_video_back_button("ai_video_duration"),
+    )
+
+
+async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE, duration: str = "15"):
+    """Show only matching models, not a wall of servers and mixed pricing."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    if duration != "15":
+        await show_ai_video_unavailable(update, context)
+        return
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🤖 PILIH MODEL\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 2/3 — Video 15 saat\n\n"
+        "🔥 Gemini Omni Flash\n"
+        "• Durasi: 15 saat\n"
+        "• Kualiti: 720p\n"
+        "• Audio: tersedia\n"
+        "• Input: 1 gambar + prompt\n"
+        "• Harga: belum ditetapkan (RM)\n\n"
+        "Model lain akan disenaraikan mengikut durasi "
+        "apabila API dan harga disahkan.\n\n"
+        "🔒 Demo sahaja. Tiada caj.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔥 Pilih Gemini Omni Flash", callback_data="ai_video_ratio")],
+            [InlineKeyboardButton("⬅️ Tukar Durasi", callback_data="ai_video_duration")],
+        ]),
+    )
+
+
+async def show_ai_video_ratio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Last configuration screen before photo and prompt inputs."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🎬 GEMINI OMNI FLASH\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 3/3 — Tetapan Video\n\n"
+        "⏱ Durasi: 15 saat\n"
+        "📺 Resolution: 720p\n"
+        "🔊 Audio: tersedia\n"
+        "💰 Harga: belum ditetapkan\n\n"
+        "📷 Sediakan 1 gambar dan prompt.\n"
+        "📐 Pilih aspect ratio:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🖥️ Landscape · 16:9", callback_data="ai_video_photo:16:9")],
+            [InlineKeyboardButton("📱 Portrait · 9:16", callback_data="ai_video_photo:9:16")],
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_models:15")],
+        ]),
+    )
+
+
+async def request_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_TYPE, ratio: str):
+    """Start an ephemeral preview session without writing to the database."""
+    if not _ai_video_is_admin(update):
+        return
+    if ratio not in ("16:9", "9:16"):
+        return
+    if context.user_data.get("pending_receipt"):
+        await _safe_edit_or_send(
+            update.callback_query,
+            "⚠️ Ada proses penghantaran resit yang belum selesai. "
+            "Selesaikan atau batalkan order tersebut dahulu.",
+            reply_markup=_ai_video_back_button("ai_video_ratio"),
+        )
+        return
+    context.user_data["ai_video_flow"] = {
+        "stage": "await_photo",
+        "model": "Gemini Omni Flash (15s)",
+        "ratio": ratio,
+    }
+    await _safe_edit_or_send(
+        update.callback_query,
+        f"🔥 Gemini Omni Flash (15s) ({ratio})\n\n"
+        "📷 Hantar SATU gambar rujukan untuk mula.\n"
+        "Kemudian bot akan minta prompt.\n\n"
+        "⚠️ Preview sahaja — video belum akan dijana.",
+        reply_markup=_ai_video_back_button("ai_video_ratio"),
+    )
+
+
+async def accept_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Return True only if the photo was consumed by the AI Studio preview."""
+    if not _ai_video_is_admin(update):
+        return False
+    state = context.user_data.get("ai_video_flow")
+    if not isinstance(state, dict) or state.get("stage") != "await_photo":
+        return False
+    # Receipt processing has precedence; do not consume payment evidence.
+    if context.user_data.get("pending_receipt"):
+        return False
+    state["photo_file_id"] = update.message.photo[-1].file_id
+    state["stage"] = "await_prompt"
+    await update.message.reply_text(
+        f"✅ Gambar diterima! Ratio: {state['ratio']}\n\n"
+        "✏️ Sekarang hantar prompt untuk video.\n"
+        "Contoh: Cinematic sunrise, slow camera pan, birds singing.\n\n"
+        "⚠️ Ini preview; gambar tidak dihantar ke AI provider.",
+        reply_markup=_ai_video_back_button("ai_video_ratio"),
+    )
+    return True
+
+
+async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Render a harmless summary; actual generation is intentionally disabled."""
+    if not _ai_video_is_admin(update):
+        return False
+    state = context.user_data.get("ai_video_flow")
+    if not isinstance(state, dict) or state.get("stage") != "await_prompt":
+        return False
+    prompt = (update.message.text or "").strip()
+    if not prompt or len(prompt) > 1500:
+        await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 1500 aksara.")
+        return True
+    context.user_data.pop("ai_video_flow", None)
+    await update.message.reply_text(
+        "✅ PREVIEW REQUEST\n\n"
+        f"🎬 Model: {state['model']}\n"
+        f"📐 Ratio: {state['ratio']}\n"
+        "📷 Gambar: diterima\n"
+        f"✏️ Prompt: {prompt}\n\n"
+        "🔒 Belum dihantar untuk generation. Tiada caj dikenakan.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Cuba Lagi", callback_data="ai_video_models")],
+            [InlineKeyboardButton("🏠 Home", callback_data="home")],
+        ]),
+    )
+    return True
+
+
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("ai_video_flow", None)
     user = update.effective_user
     total_users = total_sold = 0
 
@@ -2415,7 +2648,7 @@ async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 Account\n• ID: {user.id}\n• Username: @{user.username or 'tiada'}\n\n"
         f"📊 Store Stats\n• Total Users: {total_users}\n• Total Sold: {total_sold} pcs\n\n"
         f"Tekan butang di bawah untuk mula!",
-        reply_markup=main_kb())
+        reply_markup=main_kb(update.effective_user.id))
 
 # ─── Admin Helper ─────────────────────────────────────────────────────────────
 
@@ -2628,6 +2861,17 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
+        elif data == "ai_video":           await show_ai_video(update, context)
+        elif data == "ai_video_text":      await show_ai_video_text(update, context)
+        elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
+        elif data.startswith("ai_video_unavailable:"):
+            await show_ai_video_unavailable(update, context)
+        elif data == "ai_video_models":    await show_ai_video_models(update, context)
+        elif data.startswith("ai_video_models:"):
+            await show_ai_video_models(update, context, data.split(":", 1)[1])
+        elif data == "ai_video_ratio":     await show_ai_video_ratio(update, context)
+        elif data.startswith("ai_video_photo:"):
+            await request_ai_video_photo(update, context, data.split(":", 1)[1])
         elif data == "myorders":           await my_orders(update, context)
         elif data == "referral":           await show_referral(update, context)
         elif data == "support":            await show_support(update, context)
@@ -2870,14 +3114,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Reply keyboard: "🏠 Home" button ──────────────────────────────────────
     if text == "🏠 Home":
+        context.user_data.pop("ai_video_flow", None)
         await update.message.reply_text(
             f"👋 Hi {update.effective_user.first_name}!\nWelcome to Berry Store.",
             reply_markup=ReplyKeyboardRemove(),
         )
         await update.message.reply_text(
             "Pilih menu di bawah:",
-            reply_markup=main_kb(),
+            reply_markup=main_kb(update.effective_user.id),
         )
+        return
+
+    if await accept_ai_video_prompt(update, context):
         return
 
     # ── Reply keyboard: number selects a product ───────────────────────────────
