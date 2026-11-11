@@ -2423,10 +2423,10 @@ def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
 
 
 async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Simple, guided entry point; do not overwhelm first-time users."""
+    """Admin-only AI Studio hub, with clear sections and a preview balance."""
     if not _ai_video_is_admin(update):
         await _safe_edit_or_send(
-            update.callback_query, "🚧 AI Video belum dibuka kepada pelanggan.",
+            update.callback_query, "🚧 AI Studio belum dibuka kepada pelanggan.",
             reply_markup=back_home(),
         )
         return
@@ -2434,18 +2434,144 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _safe_edit_or_send(
         update.callback_query,
         "🍓 BERRY AI STUDIO\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🎬 Cipta video AI dalam 3 langkah:\n\n"
-        "1️⃣ Pilih jenis video\n"
-        "2️⃣ Pilih durasi & model\n"
-        "3️⃣ Semak harga, kemudian cipta\n\n"
-        "Pilih cara anda nak mula. 👇\n\n"
-        "🔒 Admin preview — tiada caj atau video dijana.",
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "✨ Welcome to Berry AI Studio!\n\n"
+        "💰 Your Balance: RM0.00 (DEMO)\n"
+        "Wallet belum aktif — ini bukan baki sebenar.\n\n"
+        "What would you like to create today? 👇\n\n"
+        "🔒 Admin preview — tiada video dijana atau caj.",
         reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 Video Studio", callback_data="ai_studio:video"),
+             InlineKeyboardButton("🖼️ Image Studio", callback_data="ai_studio:image")],
+            [InlineKeyboardButton("✨ Transform Photo", callback_data="ai_studio:transform"),
+             InlineKeyboardButton("🎙️ Voice Studio", callback_data="ai_studio:voice")],
+            [InlineKeyboardButton("⬆️ Enhance Video", callback_data="ai_studio:enhance"),
+             InlineKeyboardButton("🎞️ Storyboard", callback_data="ai_studio:storyboard")],
+            [InlineKeyboardButton("💳 Top Up", callback_data="ai_studio:topup"),
+             InlineKeyboardButton("📁 My Creations", callback_data="ai_studio:history")],
+            [InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet"),
+             InlineKeyboardButton("🎁 Referral", callback_data="ai_studio:referral")],
+            [InlineKeyboardButton("📝 Prompt Templates", callback_data="ai_studio:templates"),
+             InlineKeyboardButton("📖 Guide", callback_data="ai_studio:guide")],
+            [InlineKeyboardButton("👤 Account", callback_data="ai_studio:account"),
+             InlineKeyboardButton("💬 Support", callback_data="ai_studio:support")],
+            [InlineKeyboardButton("🧰 More Tools", callback_data="ai_studio:tools")],
+            [InlineKeyboardButton("🏠 Back to Berry Store", callback_data="home")],
+        ]),
+    )
+
+
+async def show_ai_studio_section(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, section: str,
+):
+    """Keep unfinished services informative, without pretending to charge or run AI."""
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    back = [InlineKeyboardButton("⬅️ Back to AI Studio", callback_data="ai_video")]
+
+    if section == "video":
+        text = (
+            "🎬 VIDEO STUDIO\n━━━━━━━━━━━━━━━━━━\n"
+            "Hasilkan video AI langkah demi langkah.\n\n"
+            "Pilih jenis input:"
+        )
+        buttons = [
             [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_duration")],
             [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
-            [InlineKeyboardButton("🏠 Kembali ke Berry Store", callback_data="home")],
-        ]),
+        ]
+    elif section == "wallet":
+        text = (
+            "💰 MY WALLET\n━━━━━━━━━━━━━━━━━━\n"
+            "Your Balance: RM0.00 (DEMO)\n\n"
+            "Wallet, top up dan sejarah transaksi belum aktif.\n"
+            "RM0.00 ini bukan baki sebenar."
+        )
+        buttons = [
+            [InlineKeyboardButton("💳 Top Up (akan datang)", callback_data="ai_studio:topup")],
+        ]
+    elif section == "account":
+        user = update.effective_user
+        text = (
+            "👤 ACCOUNT\n━━━━━━━━━━━━━━━━━━\n"
+            f"Telegram ID: {user.id}\n"
+            f"Username: @{user.username or 'tiada'}\n\n"
+            "Wallet dan generation history belum aktif."
+        )
+        buttons = [
+            [InlineKeyboardButton("💰 My Wallet", callback_data="ai_studio:wallet"),
+             InlineKeyboardButton("📁 My Creations", callback_data="ai_studio:history")],
+        ]
+    elif section == "templates":
+        text = (
+            "📝 PROMPT TEMPLATES\n━━━━━━━━━━━━━━━━━━\n"
+            "Cuba inspirasi prompt video ini:\n\n"
+            "🌅 Cinematic sunrise over a beach, slow camera pan, soft waves.\n\n"
+            "🏙️ Night city skyline in the rain, realistic lighting, smooth zoom.\n\n"
+            "Salin dan ubah ikut idea anda. Generation masih belum aktif."
+        )
+        buttons = []
+    elif section == "guide":
+        text = (
+            "📖 QUICK GUIDE\n━━━━━━━━━━━━━━━━━━\n"
+            "1️⃣ Pilih Video Studio.\n"
+            "2️⃣ Pilih Gambar → Video dan durasi.\n"
+            "3️⃣ Pilih model dan ratio.\n"
+            "4️⃣ Hantar gambar, kemudian prompt.\n\n"
+            "⚠️ Bot masih preview — tiada video akan dijana atau caj dikenakan."
+        )
+        buttons = []
+    elif section == "tools":
+        text = (
+            "🧰 MORE TOOLS\n━━━━━━━━━━━━━━━━━━\n"
+            "Alat tambahan sedang dirancang. Pilih untuk lihat status:"
+        )
+        buttons = [
+            [InlineKeyboardButton("📺 YouTube Clipper", callback_data="ai_studio:youtube"),
+             InlineKeyboardButton("📥 TikTok / Instagram", callback_data="ai_studio:downloader")],
+            [InlineKeyboardButton("🎉 Weekly Check-in", callback_data="ai_studio:checkin"),
+             InlineKeyboardButton("🏆 Leaderboard", callback_data="ai_studio:leaderboard")],
+            [InlineKeyboardButton("🌐 Language", callback_data="ai_studio:language"),
+             InlineKeyboardButton("💬 Join Group", callback_data="ai_studio:group")],
+        ]
+    elif section == "support":
+        await show_support(update, context)
+        return
+    else:
+        titles = {
+            "image": "🖼️ IMAGE STUDIO",
+            "transform": "✨ TRANSFORM PHOTO",
+            "voice": "🎙️ VOICE STUDIO",
+            "enhance": "⬆️ ENHANCE VIDEO",
+            "storyboard": "🎞️ STORYBOARD",
+            "topup": "💳 TOP UP",
+            "history": "📁 MY CREATIONS",
+            "referral": "🎁 REFERRAL",
+            "youtube": "📺 YOUTUBE CLIPPER",
+            "downloader": "📥 TIKTOK / INSTAGRAM DOWNLOADER",
+            "checkin": "🎉 WEEKLY CHECK-IN",
+            "leaderboard": "🏆 LEADERBOARD",
+            "language": "🌐 LANGUAGE",
+            "group": "💬 JOIN GROUP",
+        }
+        if section not in titles:
+            await _safe_edit_or_send(
+                update.callback_query,
+                "⚠️ Menu tidak ditemui.",
+                reply_markup=InlineKeyboardMarkup([back]),
+            )
+            return
+        text = (
+            f"{titles[section]}\n━━━━━━━━━━━━━━━━━━\n\n"
+            "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
+            "Ia akan diaktifkan selepas sistem berkaitan siap.\n\n"
+            "🔒 Tiada caj dikenakan."
+        )
+        buttons = []
+
+    await _safe_edit_or_send(
+        update.callback_query, text,
+        reply_markup=InlineKeyboardMarkup(buttons + [back]),
     )
 
 
@@ -2862,6 +2988,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
         elif data == "ai_video":           await show_ai_video(update, context)
+        elif data.startswith("ai_studio:"):
+            await show_ai_studio_section(update, context, data.split(":", 1)[1])
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
         elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
         elif data.startswith("ai_video_unavailable:"):
