@@ -9,6 +9,7 @@ on:
       - tests/test_berry_payment_release_gates.py
       - tests/test_berry_topup_contract.py
       - tests/test_berry_dashboard_orders_proxy.py
+      - tests/test_berry_dashboard_server_migration.py
   workflow_dispatch:
 jobs:
   static-checks:
