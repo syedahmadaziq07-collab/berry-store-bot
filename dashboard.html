@@ -1835,7 +1835,7 @@ function periodRange() {
 // ====================================================
 function openConnect() {
   document.getElementById('cfgUrl').value = localStorage.getItem('bs_url') || '';
-  document.getElementById('cfgKey').value = localStorage.getItem('bs_key') || '';
+  document.getElementById('cfgKey').value = '';
   document.getElementById('cfgDashSecret').value = localStorage.getItem('bs_dash_secret') || '';
   document.getElementById('cfgErr').textContent = '';
   document.getElementById('connectOverlay').classList.add('open');
@@ -1870,8 +1870,9 @@ async function doConnect() {
     const { error } = await sb.from('products').select('id', { count: 'exact', head: true });
     if (error) throw error;
     localStorage.setItem('bs_url', url);
-    localStorage.setItem('bs_key', key);
-    localStorage.setItem('bs_dash_secret', dashSecret);
+    // Never persist privileged Supabase credentials in browser storage.
+    localStorage.removeItem('bs_key');
+    localStorage.removeItem('bs_dash_secret');
     setConn(true);
     closeOverlay('connectOverlay');
     toast('Connected successfully' + (role === 'service_role' ? ' (service_role)' : ''));
@@ -3648,34 +3649,11 @@ document.querySelectorAll('.overlay').forEach(o=>{
   // Register service worker
   registerServiceWorker();
 
-  // Restore from localStorage
-  const savedUrl = localStorage.getItem('bs_url');
-  const savedKey = localStorage.getItem('bs_key');
-  _dashSecret = localStorage.getItem('bs_dash_secret') || '';
-  if (savedUrl && savedKey) {
-    try {
-      sb = supabase.createClient(savedUrl, savedKey, { auth: { persistSession: false, autoRefreshToken: false } });
-      if (TENANT_ID) {
-        const _origFrom = sb.from.bind(sb);
-        const _tenantTables = new Set(['products','product_variants','orders','credentials','users','bot_settings','push_subscriptions','rental_payments']);
-        sb.from = function(table) {
-          let q = _origFrom(table);
-          if (_tenantTables.has(table)) q = q.eq('tenant_id', TENANT_ID);
-          return q;
-        };
-      }
-      _sbUrl = savedUrl;
-      _sbKey = savedKey;
-      setConn(true);
-      startRefresh();
-      // Start realtime listeners if notifications enabled
-      startOrderWatcher();
-    } catch(_) {
-      openConnect();
-    }
-  } else {
-    openConnect();
-  }
+  // Clear credentials stored by legacy dashboard releases.
+  // Full server-side dashboard migration is still required before production use.
+  localStorage.removeItem('bs_key');
+  localStorage.removeItem('bs_dash_secret');
+  openConnect();
 })();
 </script>
 </body>
