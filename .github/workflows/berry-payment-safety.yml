@@ -25,10 +25,9 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
           html = Path('dashboard.html').read_text(encoding='utf-8')
-          scripts = re.findall(r'<script(?:\\s[^>]*)?>([\\s\\S]*?)</script>', html)
-          Path('/tmp/berry-dashboard.js').write_text('\\n'.join(scripts), encoding='utf-8')
+          script = html.split('<script>')[-1].split('</script>')[0]
+          Path('/tmp/berry-dashboard.js').write_text(script, encoding='utf-8')
           PY
           node --check /tmp/berry-dashboard.js
       - name: Payment safety tests
