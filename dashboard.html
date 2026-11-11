@@ -1484,20 +1484,11 @@ button:active{transform:scale(.97)}
 <div class="overlay" id="connectOverlay">
   <div class="connect-card">
     <h2><span style="font-size:1.2rem">&#9881;</span> Connect to Supabase</h2>
-    <p>Enter your Supabase project credentials to access the dashboard.</p>
-    <div class="cf">
-      <label>Supabase URL</label>
-      <input id="cfgUrl" type="text" placeholder="https://xxxx.supabase.co"/>
-    </div>
-    <div class="cf">
-      <label>Service Role Key <span style="color:var(--danger);font-weight:700">*</span></label>
-      <input id="cfgKey" type="password" placeholder="eyJhbGci... (service_role key only)"/>
-      <div style="font-size:.72rem;color:var(--danger);margin-top:.35rem"><strong>Security warning:</strong> This legacy connection puts a privileged Supabase key in your browser and localStorage. Do not use it on shared devices or distribute this dashboard URL as an admin login. A server-side authenticated connection is planned; do not enter a new privileged key here unless you understand the risk.</div>
-    </div>
+    <p>Connect to the Berry Store backend. Supabase credentials stay on the server.</p>
     <div class="cf">
       <label>Dashboard Admin Secret <span style="color:var(--danger);font-weight:700">*</span></label>
       <input id="cfgDashSecret" type="password" placeholder="DASHBOARD_ADMIN_SECRET value from Render env"/>
-      <div style="font-size:.72rem;color:var(--text-xs);margin-top:.35rem">Used only for secure approve/reject/receipt API routes.</div>
+      <div style="font-size:.72rem;color:var(--text-xs);margin-top:.35rem">Used for all authenticated dashboard API requests. Never share this secret.</div>
     </div>
     <div id="cfgErr" style="font-size:.82rem;color:var(--danger);margin-top:.3rem"></div>
     <button class="btn-primary btn-pill" onclick="doConnect()" style="margin-top:.5rem">Connect</button>
@@ -1834,8 +1825,6 @@ function periodRange() {
 // CONNECT
 // ====================================================
 function openConnect() {
-  document.getElementById('cfgUrl').value = '';
-  document.getElementById('cfgKey').value = '';
   document.getElementById('cfgDashSecret').value = '';
   document.getElementById('cfgErr').textContent = '';
   document.getElementById('connectOverlay').classList.add('open');
