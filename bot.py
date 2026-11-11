@@ -835,7 +835,10 @@ def gemini_admin_login():
             return jsonify(error="Too many attempts. Try again later."), 429
         attempts.append(now)
         _GEMINI_LOGIN_ATTEMPTS[ip] = attempts
-    password = (request.get_json(silent=True) or {}).get("password", "")
+    login_payload = request.get_json(silent=True)
+    if not isinstance(login_payload, dict):
+        return jsonify(error="Invalid login"), 401
+    password = login_payload.get("password", "")
     if not isinstance(password, str) or not DASHBOARD_ADMIN_SECRET or len(DASHBOARD_ADMIN_SECRET) < 24:
         return jsonify(error="Invalid login"), 401
     if not hmac.compare_digest(password, DASHBOARD_ADMIN_SECRET):
