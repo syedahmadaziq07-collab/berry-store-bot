@@ -5,7 +5,7 @@
 -- NO payment gateway or automatic top-up is enabled by this migration.
 
 CREATE TABLE IF NOT EXISTS public.ai_wallets (
-    tenant_id TEXT NOT NULL CHECK (length(trim(tenant_id)) > 0),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id),
     user_id BIGINT NOT NULL CHECK (user_id > 0),
     currency TEXT NOT NULL DEFAULT 'MYR' CHECK (currency = 'MYR'),
     balance NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.ai_wallets (
 
 CREATE TABLE IF NOT EXISTS public.ai_wallet_transactions (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    tenant_id TEXT NOT NULL CHECK (length(trim(tenant_id)) > 0),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id),
     user_id BIGINT NOT NULL CHECK (user_id > 0),
     kind TEXT NOT NULL CHECK (kind IN ('topup', 'debit', 'refund', 'adjustment')),
     amount NUMERIC(12,2) NOT NULL CHECK (amount <> 0),
@@ -48,7 +48,7 @@ GRANT SELECT ON TABLE public.ai_wallets, public.ai_wallet_transactions TO servic
 -- Only server-side trusted code may mutate a wallet, via ONE atomic ledger operation.
 -- Never call this RPC from a browser or Telegram client.
 CREATE OR REPLACE FUNCTION public.ai_wallet_apply_transaction(
-    p_tenant_id TEXT,
+    p_tenant_id UUID,
     p_user_id BIGINT,
     p_amount NUMERIC,
     p_kind TEXT,
@@ -70,8 +70,7 @@ BEGIN
     IF auth.role() IS DISTINCT FROM 'service_role' THEN
         RAISE EXCEPTION 'Unauthorized wallet operation';
     END IF;
-    IF p_tenant_id IS NULL OR trim(p_tenant_id) = ''
-       OR p_user_id IS NULL OR p_user_id <= 0 THEN
+    IF p_tenant_id IS NULL OR p_user_id IS NULL OR p_user_id <= 0 THEN
         RAISE EXCEPTION 'Invalid tenant or user';
     END IF;
     IF p_amount IS NULL OR p_amount = 0
@@ -140,8 +139,8 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.ai_wallet_apply_transaction(
-    TEXT, BIGINT, NUMERIC, TEXT, TEXT, TEXT, TEXT
+    UUID, BIGINT, NUMERIC, TEXT, TEXT, TEXT, TEXT
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.ai_wallet_apply_transaction(
-    TEXT, BIGINT, NUMERIC, TEXT, TEXT, TEXT, TEXT
+    UUID, BIGINT, NUMERIC, TEXT, TEXT, TEXT, TEXT
 ) TO service_role;
