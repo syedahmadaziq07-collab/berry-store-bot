@@ -784,6 +784,40 @@ def dashboard_table_gateway():
         return jsonify(error="Dashboard request failed"), 503
 
 
+@_app.route("/api/admin/v1/dashboard/overview", methods=["GET"])
+def berry_control_center_overview():
+    """Read-only bridge for the Gemini control-center UI.
+
+    This endpoint never exposes Supabase credentials and does not mutate
+    orders, wallets, or payment status.
+    """
+    ok, err = _check_dashboard_secret()
+    if not ok:
+        return jsonify(error=err), 401
+    if not TENANT_ID or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="Admin backend unavailable"), 503
+    try:
+        products = sb_admin_get("products", "select=id,is_active,stock&limit=500")
+        orders = sb_admin_get("orders", "select=id,status,amount,created_at&limit=500")
+        users = sb_admin_get("users", "select=id&limit=500")
+        from decimal import Decimal
+        completed = [o for o in orders if o.get("status") in ("completed", "approved")]
+        pending = [o for o in orders if o.get("status") in ("pending", "waiting_approval")]
+        revenue = sum((Decimal(str(o.get("amount") or 0)) for o in completed), Decimal(0))
+        return jsonify(
+            totalRevenue=float(revenue),
+            totalOrders=len(orders),
+            activeProducts=sum(1 for p in products if p.get("is_active") is True),
+            totalCustomers=len(users),
+            pendingOrders=len(pending),
+            completedOrders=len(completed),
+            dataLimited=(len(products)>=500 or len(orders)>=500 or len(users)>=500),
+        )
+    except Exception as exc:
+        log.warning("[CONTROL_CENTER_OVERVIEW] %s", type(exc).__name__)
+        return jsonify(error="Dashboard overview unavailable"), 503
+
+
 @_app.route("/api/dashboard/orders", methods=["GET"])
 def dashboard_orders_read():
     """Server-only, allowlisted read endpoint for dashboard orders."""
