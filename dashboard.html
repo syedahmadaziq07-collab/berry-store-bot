@@ -1941,6 +1941,40 @@ function drawSpark(id, data, color) {
 // ====================================================
 // DASHBOARD
 // ====================================================
+
+// Orders are fetched through the authenticated server endpoint, never Supabase browser REST.
+function orderQuery() {
+  const params = new URLSearchParams();
+  const filters = [];
+  const builder = {
+    select(cols, opts={}) {
+      params.set('select', cols);
+      if (opts.count === 'exact') params.set('count', 'exact');
+      if (opts.head) params.set('head', 'true');
+      return this;
+    },
+    eq(k,v) { filters.push([k,'eq',v]); return this; },
+    gt(k,v) { filters.push([k,'gt',v]); return this; },
+    gte(k,v) { filters.push([k,'gte',v]); return this; },
+    lte(k,v) { filters.push([k,'lte',v]); return this; },
+    in(k,v) { filters.push([k,'in',v.join(',')]); return this; },
+    order(k,opts={}) { params.set('order',k+'.'+(opts.ascending===false?'desc':'asc')); return this; },
+    limit(n) { params.set('limit',String(n)); return this; },
+    then(resolve,reject) {
+      params.set('filters',JSON.stringify(filters));
+      const url = '/api/dashboard/orders?' + params.toString();
+      const promise = fetch(url,{headers:{'X-Dashboard-Secret':_dashSecret}})
+        .then(async r => {
+          const result = await r.json();
+          if (!r.ok) return {data:null,count:null,error:new Error(result.error||'Orders unavailable')};
+          return {data:result.data,count:result.count,error:null};
+        }).catch(e=>({data:null,count:null,error:e}));
+      return promise.then(resolve,reject);
+    }
+  };
+  return builder;
+}
+
 async function loadDashboard() {
   if (!sb) return;
   try {
@@ -1952,9 +1986,9 @@ async function loadDashboard() {
 
     const [uRes, oRes, pendRes] = await Promise.all([
       sb.from('users').select('id',{count:'exact',head:true}),
-      sb.from('orders').select('amount,status,created_at,product_name')
+      orderQuery().select('amount,status,created_at,product_name')
         .gte('created_at', pw0+'T00:00:00').order('created_at'),
-      sb.from('orders').select('id',{count:'exact',head:true}).in('status',['pending','waiting_approval','waiting']),
+      orderQuery().select('id',{count:'exact',head:true}).in('status',['pending','waiting_approval','waiting']),
     ]);
 
     const totalUsers = uRes.count ?? 0;
@@ -2106,7 +2140,7 @@ async function loadPendingApprovals() {
   if (!wrap || !countEl) return;
   wrap.innerHTML = '<div class="qa-item" style="grid-column:1/-1;color:var(--text-s)"><span class="spin"></span>Loading pending approvals...</div>';
   try {
-    const { data, error } = await sb.from('orders')
+    const { data, error } = await orderQuery()
       .select('id,user_id,username,product_name,amount,status,created_at,receipt_file_id')
       .in('status', ['waiting_approval', 'waiting'])
       .order('created_at', { ascending: false })
@@ -2263,7 +2297,7 @@ async function loadOrders() {
 
   try {
     const range = ordDateRange();
-    let q = sb.from('orders')
+    let q = orderQuery()
       .select('id,user_id,username,product_id,product_name,quantity,amount,status,created_at,credentials_sent,variant_id')
       .order('created_at', { ascending: false })
       .limit(500);
@@ -2676,7 +2710,7 @@ async function loadSales() {
   const tb = document.getElementById('salBody');
   tb.innerHTML = '<tr class="empty-r"><td colspan="4"><span class="spin"></span>Loading...</td></tr>';
   try {
-    const {data,error} = await sb.from('orders')
+    const {data,error} = await orderQuery()
       .select('id,product_name,amount,status,created_at')
       .gte('created_at', from+'T00:00:00')
       .lte('created_at', to+'T23:59:59')
@@ -3442,7 +3476,7 @@ const _orderStatusCache = {};
 async function seedOrderStatusCache() {
   if (!sb) return;
   try {
-    const { data } = await sb.from('orders').select('id,status,created_at').order('created_at', { ascending:false }).limit(50);
+    const { data } = await orderQuery().select('id,status,created_at').order('created_at', { ascending:false }).limit(50);
     if (data) {
       data.forEach(o => { _orderStatusCache[o.id] = o.status; });
       if (data[0] && !_latestOrderCreatedAt) _latestOrderCreatedAt = data[0].created_at;
@@ -3460,7 +3494,7 @@ function startOrderWatcher() {
 async function pollNewOrders() {
   if (!sb) return;
   try {
-    let q = sb.from('orders').select('id,username,product_name,status,created_at,amount').order('created_at', { ascending:true }).limit(25);
+    let q = orderQuery().select('id,username,product_name,status,created_at,amount').order('created_at', { ascending:true }).limit(25);
     if (_latestOrderCreatedAt) q = q.gt('created_at', _latestOrderCreatedAt);
     const { data, error } = await q;
     if (error) return;
