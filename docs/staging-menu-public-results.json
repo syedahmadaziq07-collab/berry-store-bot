@@ -1,0 +1,233 @@
+{
+  "checked_at_utc": "2026-11-11T10:11:57.048686+00:00",
+  "origin": "https://berry-gemini-admin-staging.onrender.com",
+  "scope": "Unauthenticated staging HTTP checks only; this is not authenticated browser E2E.",
+  "menus": [
+    {
+      "menu": "dashboard",
+      "route": "/dashboard",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "dashboard/overview",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "shop",
+      "route": "/dashboard/shop",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "shop/products",
+          "http_status": 401,
+          "result": "PASS"
+        },
+        {
+          "endpoint": "shop/categories",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "orders",
+      "route": "/dashboard/orders",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "orders",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "credentials",
+      "route": "/dashboard/credentials",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "credentials",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "customers",
+      "route": "/dashboard/customers",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "customers",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "ai-studio",
+      "route": "/dashboard/ai-studio",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "ai/tools",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "ai-models",
+      "route": "/dashboard/ai-models",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "ai/models",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "wallets",
+      "route": "/dashboard/wallets",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "wallet",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "bot-settings",
+      "route": "/dashboard/bot-settings",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "bot-settings",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "broadcast",
+      "route": "/dashboard/broadcast",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "broadcast",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "referrals",
+      "route": "/dashboard/referrals",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "referrals",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    },
+    {
+      "menu": "monitoring",
+      "route": "/dashboard/monitoring",
+      "html_result": "PASS",
+      "html_http_status": 200,
+      "compiled_scripts": [
+        "/assets/index-C-0PQXpK.js"
+      ],
+      "unauthenticated_api_guards": [
+        {
+          "endpoint": "system/health",
+          "http_status": 401,
+          "result": "PASS"
+        },
+        {
+          "endpoint": "system/audit-logs",
+          "http_status": 401,
+          "result": "PASS"
+        }
+      ],
+      "authenticated_browser_e2e": "BLOCKED",
+      "blocker": "Owner staging session not available. No business data or authenticated page was inspected."
+    }
+  ]
+}

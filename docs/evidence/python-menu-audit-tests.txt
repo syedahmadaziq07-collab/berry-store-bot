@@ -1,0 +1,59 @@
+test_all_connected_read_contracts_and_missing_schema_failures (test_admin_app.AdminSecurityTests.test_all_connected_read_contracts_and_missing_schema_failures) ... ok
+test_all_mutations_locked_on_shared_database (test_admin_app.AdminSecurityTests.test_all_mutations_locked_on_shared_database) ... ok
+test_catalog_mutation_allowlist_ignores_tenant_injection (test_admin_app.AdminSecurityTests.test_catalog_mutation_allowlist_ignores_tenant_injection) ... ok
+test_csrf_and_origin_protection (test_admin_app.AdminSecurityTests.test_csrf_and_origin_protection) ... ok
+test_database_errors_are_visible_without_fake_success (test_admin_app.AdminSecurityTests.test_database_errors_are_visible_without_fake_success) ... ok
+test_every_admin_read_requires_session (test_admin_app.AdminSecurityTests.test_every_admin_read_requires_session) ... ok
+test_health_identifies_missing_server_configuration_without_secrets (test_admin_app.AdminSecurityTests.test_health_identifies_missing_server_configuration_without_secrets) ... ok
+test_identity_cannot_be_changed_by_query_parameter (test_admin_app.AdminSecurityTests.test_identity_cannot_be_changed_by_query_parameter) ... ok
+test_invalid_database_date_returns_visible_error (test_admin_app.AdminSecurityTests.test_invalid_database_date_returns_visible_error) ... ok
+test_invalid_product_cannot_reach_database (test_admin_app.AdminSecurityTests.test_invalid_product_cannot_reach_database) ... ok
+test_liveness_and_security_headers (test_admin_app.AdminSecurityTests.test_liveness_and_security_headers) ... ok
+test_login_cookie_flags_and_no_password_in_response (test_admin_app.AdminSecurityTests.test_login_cookie_flags_and_no_password_in_response) ... ok
+test_login_payload_types_do_not_crash (test_admin_app.AdminSecurityTests.test_login_payload_types_do_not_crash) ... ok
+test_login_rate_limit_survives_app_restart (test_admin_app.AdminSecurityTests.test_login_rate_limit_survives_app_restart) ... ok
+test_logout_revokes_replayed_session (test_admin_app.AdminSecurityTests.test_logout_revokes_replayed_session) ... ok
+test_read_adapters_return_real_field_contract (test_admin_app.AdminSecurityTests.test_read_adapters_return_real_field_contract) ... ok
+test_recent_orders_are_sorted_and_naive_dates_are_utc (test_admin_app.AdminSecurityTests.test_recent_orders_are_sorted_and_naive_dates_are_utc) ... ok
+test_secrets_not_returned (test_admin_app.AdminSecurityTests.test_secrets_not_returned) ... ok
+test_writes_need_isolation_and_idempotency (test_admin_app.AdminSecurityTests.test_writes_need_isolation_and_idempotency) ... ok
+test_analytics_uses_decimal_and_malaysia_day_boundary (test_admin_app.DataStoreTests.test_analytics_uses_decimal_and_malaysia_day_boundary) ... ok
+test_error_response_does_not_expose_service_key (test_admin_app.DataStoreTests.test_error_response_does_not_expose_service_key) ... database read failed: table=users status=403
+ok
+test_fail_closed_on_bad_tenant_url_or_table (test_admin_app.DataStoreTests.test_fail_closed_on_bad_tenant_url_or_table) ... ok
+test_pagination_and_tenant_scoping (test_admin_app.DataStoreTests.test_pagination_and_tenant_scoping) ... ok
+test_transaction_transport_error_is_sanitized_and_retry_aware (test_admin_app.DataStoreTests.test_transaction_transport_error_is_sanitized_and_retry_aware) ... ok
+test_unknown_transaction_result_is_not_success (test_admin_app.DataStoreTests.test_unknown_transaction_result_is_not_success) ... ok
+test_unsafe_supabase_url_configuration_fails_closed (test_admin_app.DataStoreTests.test_unsafe_supabase_url_configuration_fails_closed) ... ok
+test_bot_parses (test_berry_control_center_integration.ControlCenterIntegrationTests.test_bot_parses) ... ok
+test_extra_adapters_never_return_credential_passwords (test_berry_control_center_integration.ControlCenterIntegrationTests.test_extra_adapters_never_return_credential_passwords) ... ok
+test_overview_requires_admin_secret_and_server_key (test_berry_control_center_integration.ControlCenterIntegrationTests.test_overview_requires_admin_secret_and_server_key) ... ok
+test_overview_returns_gemini_kpi_contract (test_berry_control_center_integration.ControlCenterIntegrationTests.test_overview_returns_gemini_kpi_contract) ... ok
+test_read_only_list_adapters (test_berry_control_center_integration.ControlCenterIntegrationTests.test_read_only_list_adapters) ... ok
+test_referral_directory_is_read_only (test_berry_control_center_integration.ControlCenterIntegrationTests.test_referral_directory_is_read_only) ... ok
+test_signed_cookie_auth_and_csrf (test_berry_control_center_integration.ControlCenterIntegrationTests.test_signed_cookie_auth_and_csrf) ... ok
+test_wallet_reads_are_authenticated_and_read_only (test_berry_control_center_integration.ControlCenterIntegrationTests.test_wallet_reads_are_authenticated_and_read_only) ... ok
+test_no_direct_orders_queries_in_dashboard (test_berry_dashboard_orders_proxy.OrdersDashboardSecurity.test_no_direct_orders_queries_in_dashboard) ... ok
+test_proxy_requires_secret_and_server_key (test_berry_dashboard_orders_proxy.OrdersDashboardSecurity.test_proxy_requires_secret_and_server_key) ... ok
+test_python_parses (test_berry_dashboard_orders_proxy.OrdersDashboardSecurity.test_python_parses) ... ok
+test_bot_compiles (test_berry_dashboard_server_migration.DashboardMigrationTests.test_bot_compiles) ... ok
+test_browser_has_no_supabase_client_or_key (test_berry_dashboard_server_migration.DashboardMigrationTests.test_browser_has_no_supabase_client_or_key) ... ok
+test_legacy_order_proxy_remains (test_berry_dashboard_server_migration.DashboardMigrationTests.test_legacy_order_proxy_remains) ... ok
+test_server_only_gateway (test_berry_dashboard_server_migration.DashboardMigrationTests.test_server_only_gateway) ... ok
+test_write_table_permissions (test_berry_dashboard_server_migration.DashboardMigrationTests.test_write_table_permissions) ... ok
+test_approval_idempotency (test_berry_payment_release_gates.PaymentReleaseGates.test_approval_idempotency) ... ok
+test_bot_parses (test_berry_payment_release_gates.PaymentReleaseGates.test_bot_parses) ... ok
+test_feature_flag_defaults_off (test_berry_payment_release_gates.PaymentReleaseGates.test_feature_flag_defaults_off) ... ok
+test_lockdown_denies_public (test_berry_payment_release_gates.PaymentReleaseGates.test_lockdown_denies_public) ... ok
+test_orders_never_use_anon_key (test_berry_payment_release_gates.PaymentReleaseGates.test_orders_never_use_anon_key) ... ok
+test_approval_atomic_sql (test_berry_topup_contract.BerryTopupContractTests.test_approval_atomic_sql) ... ok
+test_bot_syntax (test_berry_topup_contract.BerryTopupContractTests.test_bot_syntax) ... ok
+test_credit_mapping (test_berry_topup_contract.BerryTopupContractTests.test_credit_mapping) ... ok
+test_feature_flag_off_by_default (test_berry_topup_contract.BerryTopupContractTests.test_feature_flag_off_by_default) ... ok
+test_qr_reused (test_berry_topup_contract.BerryTopupContractTests.test_qr_reused) ... ok
+test_receipt_support (test_berry_topup_contract.BerryTopupContractTests.test_receipt_support) ... ok
+
+----------------------------------------------------------------------
+Ran 53 tests in 0.651s
+
+OK

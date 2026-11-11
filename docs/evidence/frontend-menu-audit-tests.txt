@@ -1,0 +1,28 @@
+
+> berry-store-admin-control-center@0.0.0 test
+> node --import tsx --test src/utils/*.test.ts
+
+✔ Each menu declares its backend dependencies and supports a deep link (1.530358ms)
+✔ One disconnected module does not discard successful modules (7.159039ms)
+✔ Server errors remain errors rather than verified empty rows (2.076798ms)
+✔ Expired authentication is distinguishable from empty store data (1.902649ms)
+✔ Malformed JSON and broken wallet/analytics contracts fail independently (2.873208ms)
+✔ All reads use same-origin cookies and propagate cancellation (1.247288ms)
+✔ CSV escapes quotes, commas and embedded newlines (1.260928ms)
+✔ Untrusted formula cells are rendered as text in spreadsheet applications (0.367745ms)
+✔ Orders export uses safe CSV encoding for every user-controlled column (0.326063ms)
+✔ Ambiguous or failed transaction retains its retry key, while new payloads get new keys (1.170014ms)
+✔ Verified success or rejection releases the key for a later deliberate action (0.317371ms)
+✔ Order status state machine prevents duplicate completion and illegal transitions (1.246447ms)
+✔ Wallet transaction ledger enforces strict direction and balance integrity (0.437779ms)
+✔ Inventory health correctly calculates alerts and out of stock levels (1.170535ms)
+✔ Dashboard KPI aggregates correctly calculate revenues and counts (1.186027ms)
+✔ formatMYR formats Malaysian Ringgit cleanly (17.469537ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 247.916617

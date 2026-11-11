@@ -1,5 +1,7 @@
 # Berry Store Gemini — staging readiness report
 
+> Follow-up audit: see [staging-menu-audit.md](staging-menu-audit.md) for the latest deployed fixes and PASS/FAIL/BLOCKED matrix. Earlier counts and screenshots below describe the initial integration session.
+
 Date: 11 November 2026 (Malaysia). Decision: **NOT READY FOR PRODUCTION; definition of done is not met.**
 
 ## Delivered and deployed
