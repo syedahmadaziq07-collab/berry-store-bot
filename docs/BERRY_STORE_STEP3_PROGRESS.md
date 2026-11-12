@@ -30,6 +30,36 @@ sendPhoto/document image delivery with acknowledgment/unknown handling (I11).
   transport, zero network/wallet/paid calls.
 - CI: `.github/workflows/step3-image-consent.yml` (py_compile + both suites).
 
+## Update 1 — SQL tickets, parameter-bound offers, lifecycle wiring (commit 2)
+- `docs/sql/berry_image_consent.sql` (I04): durable `berry_private.ai_image_tickets`
+  table + `public.berry_image_checkout` RPC mirroring the verified video
+  pattern (service-role only, RLS, advisory ticket lock, prepare idempotent
+  replay check, owner mismatch, cancel-before-confirm, expiry ≤15 min,
+  tool_key='image' enforced). **CANDIDATE ONLY — not applied to any database**;
+  `confirm` on a pending ticket is fail-closed (`image job reservation not yet
+  enabled`) until job wiring is approved — it never silently skips the debit.
+- `docs/sql/verify_image_consent.sql`: isolated rollback-only verification
+  script (CI ephemeral pattern): idempotent prepare, stolen-callback and
+  cancelled-ticket rejection, fail-closed confirm, replay conflict, ACL
+  denial. Not executed against live Supabase.
+- `telegram_image_offer_builder.py` (I03): `VerifiedImageOfferBuilder` builds
+  frozen offers from a reviewed server catalog — model, aspect (1:1/16:9/9:16/
+  4:3/3:4), count 1–4, integer-cent pricing scaled by count with margin floor
+  ≥100 cents, expiry ≤900 s; invalid catalogs/aspects/expiry rejected
+  fail-closed. Callable interface for the flow.
+- `telegram_image_flow.py` upgraded: prepare persists through the durable
+  store checkout adapter (mirroring video `TelegramVideoFlow`), confirm checks
+  the pending state and requires enabled worker + budget, cancel routes
+  through checkout. All transitions via `store.checkout` — no direct state.
+- Tests: `test_telegram_image_flow.py` expanded to 14 cases (concurrent
+  confirm ×8, replay idempotency, cancel-before-confirm, owner mismatch,
+  expired quote, price scaling/margin floor, catalog validation, identity
+  gating) + 6 delivery cases = 20/20 PASS locally, zero network/wallet/paid
+  calls. staging_job_worker suite still 22/22 (no regression).
+- Remaining: image job reservation RPC wiring (needs approved runtime gate),
+  ephemeral-Postgres CI job for `verify_image_consent.sql`, Telegram handler
+  entry points. Still NO-GO; no migrations applied, no deployment.
+
 ## Acceptance criteria (I02/I04/I11) and remaining blockers
 - I02 prompt input: CODE COMPLETE (validated prompt + frozen ticket). Real
   Telegram input acceptance is a live E2E gate — BLOCKED on STEP 2 owner gates.
