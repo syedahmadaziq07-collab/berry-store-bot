@@ -3072,10 +3072,14 @@ async def show_ai_studio_section(
         balance = await _wallet_balance(update.effective_user.id)
         # The underlying wallet RPC stores MYR, not credits.
         # Convert only for display; do not change wallet accounting units.
+        # S01 fix: exact Decimal conversion preserves fractional credits
+        # (e.g. RM4.99 -> 6,237.5) instead of int-truncating to 6,237.
         balance_label = balance if balance is not None else "Belum tersedia"
         if balance is not None:
             try:
-                balance_label = f"{int(Decimal(balance.replace('RM','').replace(',',''))*1250):,} Berry Credits ({balance})"
+                credits = Decimal(balance.replace('RM','').replace(',','')) * 1250
+                credits_label = f"{credits:,.2f}".rstrip("0").rstrip(".")
+                balance_label = f"{credits_label} Berry Credits ({balance})"
             except (ValueError, InvalidOperation):
                 pass
         status = (

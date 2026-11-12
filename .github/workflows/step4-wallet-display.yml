@@ -1,0 +1,25 @@
+name: step4 wallet display
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bot.py'
+      - 'tests/test_step4_wallet_display.py'
+      - '.github/workflows/step4-wallet-display.yml'
+  pull_request:
+    paths:
+      - 'bot.py'
+      - 'tests/test_step4_wallet_display.py'
+      - '.github/workflows/step4-wallet-display.yml'
+  workflow_dispatch:
+jobs:
+  wallet-display:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m py_compile bot.py
+      - name: Verify exact balance display contract
+        run: python -m unittest discover -s tests -p test_step4_wallet_display.py -v
