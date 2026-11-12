@@ -169,3 +169,20 @@ Other gates remain: authorized Telegram test identity, isolated wallet runtime c
 parameter-bound max billing units/costs, FX/fees/net margin, actual Telegram/provider E2E and
 production backup/rotation/release approval. Safe engineering remains, so this is PARTIAL, not
 100% complete. No paid test authorized in STEP2. Next bounded task may proceed independently.
+
+## Current checkpoint —13 November00:45MYT (supersedes credential-format blocker)
+PR60 fixed plural billing units; PR61 added required billable-duration bounds. PR59 was refreshed
+against latest stagingfe994788 to preserve both, then merged/deployed asd4627501 after all3 CI PASS.
+Live deploymentdep-dbquq06k1f9s73fe247g now verifies pricing GET200 for FLUX/Wan/MiniMax.
+MiniMax metadata is0.0175 USD/second, not a10-second price or guaranteed maximum. No net-margin claim.
+GET https://api.fal.ai/v1/account/billing?expand=credits returns403. Exact balance and account identity
+are never logged. Official docs require billing:usage:read; this request does not establish model
+inference entitlement or sufficient funds. A403 does not mean zero balance. No permission change.
+Source: https://fal.ai/docs/platform-apis/v1/account/billing .
+Owner-access action: use https://fal.ai/dashboard/usage-billing/billing in the authorized account,
+or authorize an appropriately scoped billing read through secure configuration. Never send keys in
+chat or replace the working inference key with a billing-only key. No purchase/top-up requested.
+Separate release gates remain: guaranteed billed-duration/rate applicability, verified settlement
+FX/fees/OPEX, controlled Telegram identity/E2E, isolated wallet runtime and production safety approval.
+233 regression cases PASS;12 PostgreSQL tests skipped locally.3 CI PASS;12 public shells/14 auth
+boundaries PASS. These do not prove provider video generation, Telegram delivery or customer readiness.
