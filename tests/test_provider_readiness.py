@@ -42,3 +42,10 @@ class ReadinessTests(unittest.TestCase):
         self.assertIn('credential_unavailable',emit.call_args.args[0])
         staging_startup_probe({'RENDER_SERVICE_ID':'production','AI_MAPPING_SUPABASE_URL':STAGING_DATABASE,'FAL_KEY':'fixture'},factory,emit)
         factory.assert_not_called()
+
+    def test_transport_diagnostics_do_not_leak_exception_or_key(self):
+        for exc,kind in [(httpx.ReadTimeout('secret-fixture'),'timeout'),(httpx.LocalProtocolError('secret-fixture'),'local_request_rejected'),(httpx.ConnectError('secret-fixture'),'transport_error')]:
+            client=Mock();client.get.side_effect=exc
+            result=pricing_probe('secret-fixture',client)
+            self.assertTrue(all(r['error_kind']==kind for r in result))
+            self.assertNotIn('secret-fixture',json.dumps(result))

@@ -42,8 +42,16 @@ def pricing_probe(key,client):
                 if not price.is_finite() or price<0 or price>100000 or row.get('currency')!='USD' or row.get('unit') not in ('image','megapixel','second','video','request','video_second'):
                     raise ValueError()
                 item.update(status='pricing_read_verified',unit_price=str(price),unit=row['unit'],currency='USD')
+        except httpx.TimeoutException:
+            item['error_kind']='timeout'
+        except httpx.LocalProtocolError:
+            item['error_kind']='local_request_rejected'
+        except httpx.RequestError:
+            item['error_kind']='transport_error'
+        except (TypeError,AttributeError):
+            item['error_kind']='client_or_response_contract'
         except Exception:
-            item['status']='unverified' # Never log provider response or exception text.
+            item['error_kind']='invalid_response' # Never log provider response or exception text.
         results.append(item)
     return results
 
