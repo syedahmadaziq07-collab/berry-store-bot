@@ -38,3 +38,11 @@ Official read-only pricing API documented in prior provider audit: `GET https://
 5. Run regression, isolated SQL and CI; produce reviewable PR(s) against staging with precise PASS/BLOCKED evidence.
 
 No production deploy, customer activation, wallet/order mutation or paid generation is authorized by this document. Prior test cap RM5 total and <=5 paid generations remains an upper limit, not authorization to spend. Production release needs separate approval.
+
+
+## Public official fal.ai verification — 2026-11-12
+
+- **Selected**: `minimax/h3-max-turbo/text-to-video`, resolution `480P`, requested `duration=10`, `prompt_expansion_mode=balanced`, safety checker enabled. Official fal.ai API schema explicitly supports 480P and duration input. Official fal comparison documents 10s 480p text-to-video as a supported configuration.
+- **Published non-promo rate**: US$0.025/output-second at 480p; US$0.25 for exactly 10 billed seconds. The launch discount ended 2026-09-14. Sources: https://fal.ai/pricing ; https://fal.ai/minimax-h3-max ; https://fal.ai/models/minimax/h3-max-turbo/text-to-video/api .
+- **IMPORTANT**: API schema states output can run ~0.7 seconds longer than requested. At 10.7 billed seconds, illustrative cost US$0.2675; at illustrative USD/MYR 4.60, RM1.2305 before fees, taxes, FX spread, retries and failure allocation. RM2.50 provisional retail yields RM1.2695 BEFORE those overheads; **cannot yet certify RM1 NET**. If billed duration rounds up or other costs apply, update reserve accordingly. Never use promotional/free-playground rates as customer cost.
+- **Unresolved**: authenticated FAL_KEY pricing/entitlement, exact billed duration and invoice units, all-in margin, CI coverage of final mapping, staging runtime worker + queue E2E. Staging Render deploy `b6a4cf8930eca4be1b9b6e74962344f633824291` is live and logs show `fal_key_present=true` only. Draft PR #51 code is NOT in staging. PR #52 reconciliation remains unmerged. **Fail closed** until resolved.
