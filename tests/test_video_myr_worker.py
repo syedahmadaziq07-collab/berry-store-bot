@@ -97,6 +97,63 @@ class VideoTests(unittest.TestCase):
         self.make().deliver(JOB)
         self.delivery.send.assert_called_once()
         self.assertEqual(self.store.job['state'],'delivery_unknown')
+    def test_gate_unknown_marker_write_failure_prevents_any_post(self):
+        # PR #75 gate: durable submission_unknown must commit BEFORE the POST.
+        # If that write fails, no provider POST happens at all.
+        original = self.store.action
+        def action(job, op, payload=None):
+            if op in ("queued", "submission_unknown"):
+                raise JobError("DB temporarily unavailable")
+            return original(job, op, payload)
+        self.store.action = action
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+        self.assertEqual(self.store.job["state"], "submitting")
+        self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+
+    def test_gate_malformed_response_holds_without_retry(self):
+        self.provider.submit.return_value = {"no_request_id": True}
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_called_once()
+        self.assertEqual(self.store.job["state"], "submission_unknown")
+        # Restart: a second submit performs no POST (claim refused, job held).
+        out = self.make().submit(JOB, ARGS)
+        self.assertEqual(out["state"], "submission_unknown")
+        self.provider.submit.assert_called_once()
+
+    def test_gate_non_dict_response_holds_without_retry(self):
+        self.provider.submit.return_value = "fixture-request-id"
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_called_once()
+        self.assertEqual(self.store.job["state"], "submission_unknown")
+
+    def test_gate_restart_after_unknown_never_posts_again(self):
+        # Simulate crash after POST with response lost: state persisted as
+        # submission_unknown. A restarted worker must never POST again.
+        self.worker.submit(JOB, ARGS)
+        self.assertEqual(self.store.job["state"], "queued")
+        # Force unknown state as if the queued write was lost after the POST.
+        self.store.job["state"] = "submission_unknown"
+        out = self.make().submit(JOB, ARGS)
+        self.assertEqual(out["state"], "submission_unknown")
+        self.provider.submit.assert_called_once()
+
+    def test_gate_correlation_tags_still_required_before_post(self):
+        claim = self.store.action
+        def action(job, op, payload=None):
+            out = claim(job, op, payload)
+            if op == "claim_submit":
+                out["submission_tags"] = {"berry_job": str(uuid4())}
+            return out
+        self.store.action = action
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+
     def test_rpc_targets_real_wallet_lifecycle(self):
         seen=[]
         def handler(r):

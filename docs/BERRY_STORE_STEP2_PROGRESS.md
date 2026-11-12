@@ -50,6 +50,29 @@
   test_step2_no_retry_protocol.py 6/6 OK. Python 3.13, no network/DB/paid calls.
 - Still NO-GO for paid generation; no migration, wallet write, or deploy.
 
+## 2026-11-12 update 3 — gate wired into MyrVideoWorker + Postgres fixtures
+- `video_myr_worker.MyrVideoWorker.submit` now routes the provider POST through
+  `WorkerSubmissionGate` (same PR #75 protocol as StagingJobWorker): durable
+  `submission_unknown` before POST, exactly one POST, response bound to
+  `provider_request_id`, validated by `queue_urls`, correlation tags checked
+  before the POST, and any failure held without retry or automatic refund.
+- New worker regression tests (`test_video_myr_worker.py`, +5): failed
+  durable-marker write prevents any POST; malformed and non-dict provider
+  responses hold in `submission_unknown` with no second POST; crash after POST
+  (state forced to `submission_unknown`) never re-POSTs on restart; correlation
+  tag mismatch blocks before POST. 17/17 OK.
+- New isolated PostgreSQL 16 fixtures (`test_step2_postgres_rollback.py`, +3,
+  CI-only with `BERRY_STEP2_LOCAL_POSTGRES=1`): durable unknown marker
+  persisted before POST with claim/re-claim fencing; crash-after-POST binds
+  the response exactly once; wallet single debit with refund-attempt blocked
+  by CHECK constraint and no double debit on re-claim.
+- `.github/workflows/step2-postgres-rollback.yml` now also runs the four
+  no-retry gate worker suites in CI on the same job.
+- Local verification: video_myr 17/17, staging worker 22/22, all step2 63/63
+  (15 skipped require ephemeral Postgres — run in CI). Python 3.13, no
+  network/DB/paid calls.
+- Still NO-GO for paid generation; no migration, wallet write, or deploy.
+
 ## 2026-11-12 update — no-retry gate wired toward worker integration
 - New `step2_submission_gate.py`: single sanctioned path from a submittable job
   to one provider POST, enforcing the PR #75 state machine (durable

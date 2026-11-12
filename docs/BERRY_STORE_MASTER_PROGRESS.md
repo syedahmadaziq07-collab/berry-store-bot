@@ -17,6 +17,8 @@ tests, PRs, CI and deployment evidence only — no unverified claims.
 
 | 2026-11-12 | feat/step2-no-retry-worker-integration-20261112 | (this push) | `StagingJobWorker.submit` POST now routed through `WorkerSubmissionGate`: durable `submission_unknown` before POST, single POST, response binding, fail-closed hold. Safety upgraded: failed durable-marker write now prevents any POST. | worker 22/22, step2 60/60, video_myr 12/12, no_retry 6/6 OK locally | pending |
 
+| 2026-11-12 | feat/step2-no-retry-worker-integration-20261112 | (this push) | `MyrVideoWorker.submit` routed through `WorkerSubmissionGate` (+5 regression tests); +3 ephemeral PostgreSQL 16 CI fixtures for durable-unknown-before-POST fencing, crash-after-POST single binding, wallet single debit/no auto refund; CI workflow extended to run all four gate suites. | video_myr 17/17, staging 22/22, step2 63/63 local (15 CI-only skips) | pending |
+
 PR creation: `gh` CLI not installed and no GitHub API token in this environment.
 PR target branch: `deploy/berry-ai-private-mapping-staging-20261111`.
 Open PR from: https://github.com/syedahmadaziq07-collab/berry-store-bot/pull/new/feat/step2-no-retry-worker-integration-20261112
