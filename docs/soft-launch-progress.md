@@ -233,20 +233,16 @@ Business database_match=false remains unchanged; isolated mapping_match=true sco
 BLOCKED: maximum billable units, account inference access/balance, FX/fees and RM1 NET still unverified.
 Next: staging CI/review/deploy, inspect sanitized validation reason, then fix confirmed contract mismatch.
 
-## 2026-11-12 STEP2 confirmed pricing parser root cause
-PASS PR58 bb981887:190 tests,3 CI43208001476/43208001673/43208001604.
-Merged staging5c114cdd, deploy dep-dbqq1cd6e07s73fuvej0;11:19:37Z actual sanitized logs:
-all3 HTTP200 fail specifically billing_unit_unsupported. Other row validations passed.
-Root cause: local six-unit enum contradicts provider's documented provider-specific string units.
-Fix: validate bounded printable billing label, preserve it exactly, never assume unit semantics;
-pricing_read_verified explicitly carries cost_ceiling_verified=false. No generation price enabled.
-193 regression tests PASS. Added GET-only account balance probe, emitting boolean only; model
-inference permission and sufficient-budget status remain unverified. Official account billing
-requires billing:usage:read; a403 must stay blocked, never expand key permissions automatically.
-Four actual isolated SQL suites rerun PASS: lifecycle, consent, reconciliation, recovery fairness.
-All fixtures rolled back; after tests jobs0,budget_grants0,reconciliation_cases0. No customer data.
-IN PROGRESS: review/CI/deploy contract correction, actual provider unit/balance result and public checks.
-BLOCKED: MiniMax10s480P output-duration billing ceiling, account fees/FX, RM1 NET, controlled runtime.
-Sources: https://fal.ai/docs/platform-apis/v1/models/pricing
-https://fal.ai/docs/platform-apis/v1/account/billing
-https://fal.ai/models/minimax/h3-max-turbo/text-to-video/api
+## 13 November 2026 — bounded staging continuation
+PASS state audit: staging fe994788 includes PR60 plural billing-unit fix and PR61 cost-bound helper.
+Render remains LIVE44102547/dep-dbqqbaifngtc738checg; no in-flight deploy. PR76 worker integration
+and PR79 production candidate remain open; neither overwritten or merged by this iteration.
+IN PROGRESS PR59 refreshed onto latest staging: remove superseded parser changes, preserve PR60/61,
+and retain only GET /v1/account/billing?expand=credits. Output is positive-balance boolean and HTTP
+status; never username, exact balance, secrets or raw response. Pricing permission does not imply
+billing-read permission, inference entitlement or adequate budget. No automatic permission changes.
+PASS245 tests discovered:233 pass,12 PostgreSQL-dependent tests skipped locally (not counted PASS).
+BLOCKED unchanged: hard billable-duration ceiling, FX/fees/OPEX evidence, RM1 net margin, controlled
+Telegram/provider E2E and isolated business-wallet runtime. No generation, grants, payments or SQL
+migration performed. PR70 proposal remains unapplied. Customer activation and production prohibited.
+NEXT: review/CI PR59, staging-only deploy, sanitized account result and public behavior checks.

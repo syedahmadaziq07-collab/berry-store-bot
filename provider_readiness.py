@@ -27,6 +27,24 @@ def minimum_sale_cents(provider_usd_bound, fx_myr_per_usd_bound, fixed_myr_bound
     except (InvalidOperation,ValueError,TypeError,OverflowError):
         raise ValueError('Verified finite cost bounds required') from None
 
+def minimum_video_sale_cents(unit_usd_per_second, max_billable_seconds,
+                             fx_myr_per_usd_bound, fixed_myr_bound, sale_fee_fraction):
+    """Require a separately verified maximum billed duration, not requested duration.
+
+    Caller must verify rate applicability, maximum billable seconds, FX and fees.
+    Authenticated unit-price metadata alone never certifies this calculation.
+    """
+    try:
+        unit = Decimal(str(unit_usd_per_second))
+        seconds = Decimal(str(max_billable_seconds))
+        if not unit.is_finite() or not seconds.is_finite() or unit <= 0 or seconds <= 0:
+            raise ValueError()
+        return minimum_sale_cents(unit * seconds, fx_myr_per_usd_bound,
+                                  fixed_myr_bound, sale_fee_fraction)
+    except (InvalidOperation, ValueError, TypeError, OverflowError):
+        raise ValueError('Verified finite cost bounds required') from None
+
+
 class PricingContractError(ValueError):
     """Constant diagnostic codes only; never include provider data or exceptions."""
 
@@ -35,7 +53,7 @@ def parse_pricing(payload, model):
     """Validate the published pricing envelope before reading a bounded price row.
 
     A pricing read is not a maximum inference cost or model-access proof.
-    Provider billing-unit labels are metadata, never a verified quantity or cost cap.
+    Unrecognized billing units remain blocked rather than guessed.
     """
     if not isinstance(payload, dict):
         raise PricingContractError('envelope_not_object')
@@ -61,14 +79,10 @@ def parse_pricing(payload, model):
         raise PricingContractError('price_value_invalid')
     if row.get('currency') != 'USD':
         raise PricingContractError('currency_unsupported')
-    unit = row.get('unit')
-    # fal's published schema permits provider-specific units, not a six-value enum.
-    # Preserve the label exactly: never silently equate e.g. GPU seconds with video seconds.
-    # Only this bounded billing field is emitted; all other response data is discarded.
-    if not isinstance(unit, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9 ._()/\-]{0,63}', unit):
-        raise PricingContractError('billing_unit_invalid')
+    if row.get('unit') not in ('image', 'images', 'megapixel', 'megapixels', 'second', 'seconds', 'video', 'videos', 'request', 'requests', 'video_second'):
+        raise PricingContractError('billing_unit_unsupported')
     return {'status': 'pricing_read_verified', 'unit_price': str(price),
-            'unit': unit, 'currency': 'USD', 'cost_ceiling_verified': False}
+            'unit': row['unit'], 'currency': 'USD'}
 
 def pricing_probe(key,client):
     # Environment secrets can acquire a trailing newline on secure paste. Normalize only

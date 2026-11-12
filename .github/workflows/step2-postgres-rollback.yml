@@ -1,0 +1,35 @@
+name: STEP 2 isolated PostgreSQL rollback tests
+on:
+  pull_request:
+    paths:
+      - 'tests/test_step2_postgres_rollback.py'
+      - '.github/workflows/step2-postgres-rollback.yml'
+      - 'docs/sql/step2_video_unknown_recovery_staging_*.sql'
+  workflow_dispatch:
+jobs:
+  rollback-only:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: step2_test
+          POSTGRES_PASSWORD: step2_test
+          POSTGRES_DB: step2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U step2_test -d step2_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'psycopg[binary]>=3.1,<4'
+      - name: Run isolated PostgreSQL rollback-only fixtures
+        env:
+          BERRY_STEP2_LOCAL_POSTGRES: '1'
+        run: python -m unittest discover -s tests -p test_step2_postgres_rollback.py -v

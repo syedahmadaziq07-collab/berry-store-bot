@@ -75,7 +75,7 @@ class ReadinessTests(unittest.TestCase):
                                      ('unit_price', 'NaN', 'price_value_invalid'),
                                      ('unit_price', -1, 'price_value_invalid'),
                                      ('currency', 'sensitive-fixture', 'currency_unsupported'),
-                                     ('unit', 'sensitive-fixture\n', 'billing_unit_invalid')]:
+                                     ('unit', 'sensitive-fixture', 'billing_unit_unsupported')]:
             cases.append(({'prices': [dict(valid, **{field: value})]}, reason))
         for payload, reason in cases:
             client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=json.dumps(payload), headers={'Content-Type': 'application/json'})))
@@ -85,26 +85,35 @@ class ReadinessTests(unittest.TestCase):
             self.assertNotIn('sensitive-fixture', json.dumps(result))
             self.assertNotIn('fixture-key', json.dumps(result))
 
+    def test_official_plural_billing_units_are_accepted_without_conversion(self):
+        # Public fal.ai pricing uses plural labels (e.g. seconds and megapixels).
+        # Keep the provider's exact unit; this is not a verified per-generation cap.
+        for unit in ('seconds', 'megapixels', 'images', 'videos', 'requests'):
+            row = {'endpoint_id': MODELS[0], 'unit_price': '0.025',
+                   'unit': unit, 'currency': 'USD'}
+            parsed = parse_pricing({'prices': [row]}, MODELS[0])
+            self.assertEqual(parsed['status'], 'pricing_read_verified')
+            self.assertEqual(parsed['unit'], unit)
+            self.assertEqual(parsed['unit_price'], '0.025')
+        with self.assertRaisesRegex(PricingContractError, 'billing_unit_unsupported'):
+            parse_pricing({'prices': [{'endpoint_id': MODELS[0],
+                'unit_price': 0.025, 'unit': 'unknown-unit', 'currency': 'USD'}]}, MODELS[0])
+
+    def test_video_margin_requires_explicit_max_billable_seconds(self):
+        # Fixture values only; never treat 10 requested seconds as a billing cap.
+        self.assertEqual(minimum_video_sale_cents('.0175', '11', '5', '.2', '.05'),
+                         minimum_sale_cents('.1925', '5', '.2', '.05'))
+        for bad in (None, 0, -1, 'NaN', 'Infinity'):
+            with self.assertRaises(ValueError):
+                minimum_video_sale_cents('.0175', bad, '5', '.2', '.05')
+        with self.assertRaises(ValueError):
+            minimum_video_sale_cents(None, '11', '5', '.2', '.05')
+
     def test_http_200_non_json_body_is_not_pricing(self):
         client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text='<html>sensitive-fixture</html>')))
         result = pricing_probe('fixture-key', client)
         self.assertTrue(all(r['validation_error'] == 'body_not_json' for r in result))
         self.assertNotIn('sensitive-fixture', json.dumps(result))
-
-    def test_provider_specific_billing_labels_are_not_cost_ceilings(self):
-        for unit in ('megapixels', 'video seconds', 'GPU seconds', 'seconds', '1'):
-            row = {'endpoint_id': MODELS[0], 'unit_price': .025, 'unit': unit, 'currency': 'USD'}
-            if unit == '1':
-                with self.assertRaises(PricingContractError):
-                    parse_pricing({'prices': [row]}, MODELS[0])
-                continue
-            result = parse_pricing({'prices': [row]}, MODELS[0])
-            self.assertEqual(result['unit'], unit)
-            self.assertEqual(result['status'], 'pricing_read_verified')
-            self.assertFalse(result['cost_ceiling_verified'])
-        for unit in ('', 'a' * 65, '<script>', 'second\n', None, {}, 2):
-            with self.assertRaises(PricingContractError):
-                parse_pricing({'prices': [dict(row, unit=unit)]}, MODELS[0])
 
     def test_account_balance_probe_redacts_and_never_generates(self):
         seen = []
@@ -132,3 +141,21 @@ class ReadinessTests(unittest.TestCase):
         result = account_balance_probe('bad key', client)
         client.get.assert_not_called()
         self.assertEqual(result['error_kind'], 'credential_format_invalid')
+
+    def test_staging_startup_account_probe_scope_and_redaction(self):
+        seen = []
+        output = []
+        def transport(req):
+            seen.append(req)
+            if req.url.path.endswith('/billing'):
+                return httpx.Response(200, json={'username': 'private-fixture', 'credits': {'current_balance': 0, 'currency': 'USD'}})
+            return httpx.Response(200, json={'prices': [{'endpoint_id': req.url.params['endpoint_id'], 'unit_price': .1, 'unit': 'seconds', 'currency': 'USD'}]})
+        staging_startup_probe({'RENDER_SERVICE_ID': STAGING_SERVICE, 'AI_MAPPING_SUPABASE_URL': STAGING_DATABASE, 'FAL_KEY': 'fixture-key'},
+            lambda: httpx.Client(transport=httpx.MockTransport(transport)), lambda text, **kw: output.append(text))
+        self.assertEqual(len(seen), 4)
+        self.assertTrue(all(r.method == 'GET' and r.url.host == 'api.fal.ai' for r in seen))
+        account = json.loads(output[-1].split(' ', 1)[1])
+        self.assertEqual(account['status'], 'balance_read_verified')
+        self.assertFalse(account['positive_balance'])
+        self.assertNotIn('private-fixture', str(output))
+        self.assertNotIn('fixture-key', str(output))

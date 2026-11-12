@@ -1,0 +1,18 @@
+name: STEP 2 trusted recovery gate
+on:
+  pull_request:
+    paths:
+      - 'step2_sql_recovery_model.py'
+      - 'tests/test_step2_trusted_recovery_gate.py'
+      - '.github/workflows/step2-trusted-recovery-gate.yml'
+  workflow_dispatch:
+jobs:
+  recovery-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run trusted recovery gate regression tests
+        run: python -m unittest discover -s tests -p test_step2_trusted_recovery_gate.py -v
