@@ -168,5 +168,62 @@ class VideoFlowWiringTests(unittest.TestCase):
             self.assertNotIn(forbidden, body)
 
 
+class ImageFlowInstallerTests(unittest.TestCase):
+    """_install_image_flow: gated installer for the AI Image Studio."""
+
+    def test_installer_exists_and_is_gated(self):
+        start = BOT.index("def _install_image_flow")
+        end = BOT.index("def _ai_image_prompt", start)
+        body = BOT[start:end]
+        self.assertIn("_image_studio_enabled()", body)
+        self.assertIn("_image_studio_test_user()", body)
+        self.assertIn("TENANT_ID and SUPABASE_SERVICE_KEY", body)
+
+    def test_installer_uses_inert_worker_fail_closed(self):
+        start = BOT.index("def _install_image_flow")
+        end = BOT.index("def _ai_image_prompt", start)
+        body = BOT[start:end]
+        self.assertIn("allow_external = False", body)
+        self.assertIn("budget_id = None", body)
+        self.assertIn('JobError("image job reservation not yet enabled")', body)
+
+    def test_installer_rejects_ticket_owner_mismatch_and_replay(self):
+        start = BOT.index("def _install_image_flow")
+        end = BOT.index("def _ai_image_prompt", start)
+        body = BOT[start:end]
+        self.assertIn("ticket owner mismatch", body)
+        self.assertIn("ticket replay conflict", body)
+
+    def test_installer_uses_reviewed_catalog_json_env(self):
+        start = BOT.index("def _install_image_flow")
+        end = BOT.index("def _ai_image_prompt", start)
+        body = BOT[start:end]
+        self.assertIn("BERRY_IMAGE_CATALOG_JSON", body)
+        # No quotes when the reviewed catalog is absent.
+        self.assertIn("consent-only", body)
+
+    def test_installer_never_constructs_provider(self):
+        start = BOT.index("def _install_image_flow")
+        end = BOT.index("def _ai_image_prompt", start)
+        body = BOT[start:end]
+        self.assertNotIn("FalProvider(", body)
+        self.assertNotIn("provider.submit", body)
+        # delivery token never logged
+        self.assertNotIn('log.info(f"{token', body)
+
+    def test_installer_called_in_build_app_protected(self):
+        call = BOT.index("_install_image_flow(app)", BOT.index("def build_app"))
+        window = BOT[call - 100:call + 100]
+        self.assertIn("try:", window)
+        self.assertIn("except Exception:", window)
+
+    def test_image_prompt_text_routes_to_real_flow_prepare(self):
+        start = BOT.index("async def _ai_image_prompt_text")
+        end = BOT.index("async def _ai_image_confirm", start)
+        body = BOT[start:end]
+        self.assertIn("flow.prepare(user.id, update.update_id, prompt)", body)
+        self.assertIn("return False", body)
+
+
 if __name__ == "__main__":
     unittest.main()

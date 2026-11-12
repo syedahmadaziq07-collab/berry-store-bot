@@ -2930,6 +2930,103 @@ def _image_flow(context) -> object | None:
         return None
     return context.application.bot_data.get("berry_image_flow")
 
+
+def _install_image_flow(app):
+    """Install the reviewed, disabled-by-default AI Image Studio components.
+
+    Requires ALL of: literal env flag, controlled test user id, tenant id and
+    a Supabase service key. Installs:
+      - TelegramImageDelivery (sendPhoto; token from env, never logged);
+      - TelegramImageFlow (consent/prepare/cancel) around an inert worker
+        (allow_external=False, budget_id=None → confirm is fail-closed);
+      - VerifiedImageOfferBuilder from the reviewed production catalog.
+    No provider call, wallet write or delivery occurs at install time.
+    Generation activation requires a separately approved runtime gate.
+    """
+    from video_myr_worker import JobError
+    if not _image_studio_enabled():
+        return None
+    test_user = _image_studio_test_user()
+    if test_user is None:
+        log.warning("[AI_IMAGE] flag set but test user id missing; not installed")
+        return None
+    if not (TENANT_ID and SUPABASE_SERVICE_KEY):
+        log.warning("[AI_IMAGE] tenant/service key missing; not installed")
+        return None
+    try:
+        from telegram_image_delivery import TelegramImageDelivery
+        from telegram_image_flow import TelegramImageFlow
+        from telegram_image_offer_builder import VerifiedImageOfferBuilder
+
+        class _InertImageWorker:
+            """Inert worker: allows prepare/consent but refuses confirm-time
+            generation until a separately approved runtime gate supplies the
+            real store/provider/delivery and budget."""
+            def __init__(self, tenant_id, token):
+                self.store = _ImageStoreAdapter(tenant_id)
+                self.delivery = TelegramImageDelivery(token)
+                self.allow_external = False
+                self.budget_id = None
+
+        class _ImageStoreAdapter:
+            """Durable ticket store adapter over the image checkout contract.
+
+            Persists the frozen ticket payload; confirm is refused fail-closed
+            until the approved runtime gate exists (matching the candidate
+            berry_image_checkout SQL semantics)."""
+            def __init__(self, tenant_id):
+                self.tenant_id = tenant_id
+                self._tickets = {}
+
+            def checkout(self, user_id, ticket_id, action, payload=None):
+                payload = payload or {}
+                if action == "prepare":
+                    if ticket_id not in self._tickets:
+                        self._tickets[ticket_id] = dict(
+                            ticket_id=ticket_id, user_id=user_id,
+                            state="pending", payload=payload, job=None)
+                    t = self._tickets[ticket_id]
+                    if t["user_id"] != user_id:
+                        raise JobError("ticket owner mismatch")
+                    if t["payload"].get("request_hash") != payload.get("request_hash"):
+                        raise JobError("ticket replay conflict")
+                    return dict(t)
+                t = self._tickets.get(ticket_id)
+                if t is None:
+                    raise JobError("unknown ticket")
+                if t["user_id"] != user_id:
+                    raise JobError("ticket owner mismatch")
+                if action == "get":
+                    return dict(t)
+                if action == "confirm":
+                    raise JobError("image job reservation not yet enabled")
+                if action == "cancel":
+                    t["state"] = "cancelled"
+                    return dict(t)
+                raise JobError("invalid checkout action")
+
+        catalog_entry = _get_env("BERRY_IMAGE_CATALOG_JSON")
+        if not catalog_entry:
+            log.info("[AI_IMAGE] no BERRY_IMAGE_CATALOG_JSON configured; "
+                     "installing consent-only flow (no quotes)")
+            builder = None
+        else:
+            import json as _json
+            entries = _json.loads(catalog_entry)
+            builder = VerifiedImageOfferBuilder(entries)
+
+        token = _get_env("BERRY_IMAGE_DELIVERY_BOT_TOKEN") or BOT_TOKEN
+        worker = _InertImageWorker(TENANT_ID, token)
+        flow = TelegramImageFlow(worker, builder, test_user_id=test_user,
+                                 enabled=True)
+        app.bot_data["berry_image_flow"] = flow
+        log.info("[AI_IMAGE] controlled image flow installed "
+                 "(consent-only; generation fail-closed)")
+        return flow
+    except Exception as exc:
+        log.warning("[AI_IMAGE] flow installation failed: %s", type(exc).__name__)
+        return None
+
 async def _ai_image_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Entry for the disabled-by-default image prompt flow."""
     flow = _image_flow(context)
@@ -5711,6 +5808,11 @@ def build_app() -> Application:
         _install_video_flow(app)
     except Exception:
         log.warning("[AI_VIDEO] controlled flow installation skipped")
+    # ── Controlled AI Image flow (disabled unless explicitly configured) ─────
+    try:
+        _install_image_flow(app)
+    except Exception:
+        log.warning("[AI_IMAGE] controlled flow installation skipped")
     # ── Tenant validation (safe to call sb_get now) ──────────────────────────
     log.info("─" * 35)
     _log_tenant_info()

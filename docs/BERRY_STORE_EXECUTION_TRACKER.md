@@ -41,6 +41,16 @@ admin-control-center wujud sebagai rujukan keselamatan (bukan langkah bernombor)
   (menjawab "belum diaktifkan" apabila pintu ditutup), pasang dalam
   `build_app` (dilindungi try/except). Ujian integrasi +10 → 23/23;
   suite penuh **230 ujian, 0 ralat bukan-Windows**.
+- `feat/prod-step2-completion-20261112` @ (kini): **STEP 3 — pemasang AI
+  Image Studio lengkap** — `_install_image_flow(app)` dipanggil dalam
+  `build_app` (dilindungi try/except): delivery sendPhoto (token env, tiada
+  log rahsia), flow persetujuan sekitar worker lengai
+  (`allow_external=False`, `budget_id=None` → confirm gagal-tutup
+  "reservation not yet enabled"), store adapter dengan fencing
+  pemilik/replay, katalog reviewed melalui `BERRY_IMAGE_CATALOG_JSON`
+  (konsen-sahaja apabila tiada). SQL persetujuan imej kandidat + ujian
+  PG16 efemeral (12, CI) dibawa dari PR #77. Ujian integrasi +8 → 30/30.
+- Suite penuh **249 ujian, 0 ralat bukan-Windows**.
 - `docs/ROADMAP_BLOCKER.md` dicipta: STEP 5–12 tidak didefinisikan dalam
   mana-mana bukti repositori (senarai bukti carian lengkap direkodkan);
   tidak direka-reka; perlu input pemilik.
