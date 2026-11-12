@@ -130,10 +130,15 @@ class FullFunctionCloneTests(unittest.TestCase):
             self.admin.execute("SELECT set_config('request.jwt.claims','{\"role\":\"service_role\"}',false)")
 
     def test_wallet_stub_blocks_reserve(self):
+        # Remove the pre-seeded reserved job so this call reaches the wallet stub.
+        self.admin.execute(
+            "DELETE FROM berry_private.ai_video_jobs WHERE tenant_id=%s AND job_id=%s",
+            (TENANT, self.job),
+        )
         quote={"debit_cents":500,"all_in_cost_cents":300,"credits":6250,
                "tool_key":"video","provider_model_id":"fal-ai/wan",
                "cost_reference":"fake","mapping_revision":1}
-        with self.assertRaises(psycopg.Error):
+        with self.assertRaisesRegex(psycopg.Error, "wallet fixture forbidden"):
             self.call("reserve",{"user_id":99,"request_hash":"a"*64,
                 "arguments":{},"quote":quote})
 
