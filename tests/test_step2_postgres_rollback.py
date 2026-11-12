@@ -75,6 +75,21 @@ class PostgreSQLRollbackTests(unittest.TestCase):
         self.assertEqual(self.db.execute(sql,("mock_1",)).fetchone(),("a",))
         self.assertIsNone(self.db.execute(sql,("mock_2",)).fetchone())
 
+    def test_concurrent_transaction_advisory_lock(self):
+        # Two independent transactions; no shared wallet or fixture writes.
+        other = psycopg.connect(DSN)
+        try:
+            self.assertTrue(self.db.execute(
+                "SELECT pg_try_advisory_xact_lock(700112)").fetchone()[0])
+            self.assertFalse(other.execute(
+                "SELECT pg_try_advisory_xact_lock(700112)").fetchone()[0])
+            self.db.rollback()
+            self.assertTrue(other.execute(
+                "SELECT pg_try_advisory_xact_lock(700112)").fetchone()[0])
+        finally:
+            other.rollback()
+            other.close()
+
     def test_migration_fingerprint_and_inverse_replace(self):
         migration = (ROOT/"docs/sql/step2_video_unknown_recovery_staging_proposed.sql").read_text()
         rollback = (ROOT/"docs/sql/step2_video_unknown_recovery_staging_rollback.sql").read_text()
