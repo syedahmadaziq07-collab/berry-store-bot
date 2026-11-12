@@ -176,3 +176,9 @@ Recovery startup/shutdown now tested against duplicate tasks and orphaned in-fli
 IN PROGRESS PR/CI/staging migration/deploy and authenticated read-only pricing GET observation.
 BLOCKED exact cost/FX/fees/RM1 NET/account balance and authorized Telegram identity. Customer flags
 remain disabled; Image lifecycle still missing. Production/orders/customer wallets untouched.
+
+STEP2 milestone PASS: PR50 merged5294c1a after6 CI PASS, deployed staging dep-dbqkm6qfngtc73ft8q30
+LIVE13:14:49MYT. Isolated reconciliation migration installed; lifecycle/consent/reconciliation SQL
+suites PASS afterinstall;0 jobs/cases/grants. PR52 closed as superseded old WIP, branch retained.
+IN PROGRESS follow-up recovery fairness and pricing-gate diagnostics. Provider probe emitted no
+pricing result, so authenticated access remains UNVERIFIED (not assumed rejected). RM0.
