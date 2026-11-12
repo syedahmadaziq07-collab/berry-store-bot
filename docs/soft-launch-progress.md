@@ -165,3 +165,14 @@ Next milestone STEP2/12: close P0 reconciliation/runtime/provider-cost gaps; Ima
 STEP1 follow-up source audit: production80655e2 still drops pending updates and has raw early HTTP
 exception logging; staging fix is not deployed production. Actual production topup flag value is
 unverified, not assumedOFF. Recovery fairness/thread shutdown are open verification gaps.
+
+## STEP 2/12 — reconciliation and provider readiness
+
+PARTIAL/NO-GO. See docs/step2-provider-runtime-readiness.md. PASS184 backend +1 pinned Telegram
+markup; three actual isolated SQL rollback suites (lifecycle, consent, reconciliation). First new
+SQL run FAIL PostgreSQL regex repetition bound; corrected and all reruns PASS. No fixture data
+retained, RM0/0 paid generations. Correlated operator reconciliation adds no refund/resubmit action.
+Recovery startup/shutdown now tested against duplicate tasks and orphaned in-flight thread.
+IN PROGRESS PR/CI/staging migration/deploy and authenticated read-only pricing GET observation.
+BLOCKED exact cost/FX/fees/RM1 NET/account balance and authorized Telegram identity. Customer flags
+remain disabled; Image lifecycle still missing. Production/orders/customer wallets untouched.

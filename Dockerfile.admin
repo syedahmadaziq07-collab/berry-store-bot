@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 COPY requirements-admin.txt ./
 RUN pip install --no-cache-dir -r requirements-admin.txt && useradd --uid 10001 --create-home berry
-COPY admin_app.py ./
+COPY admin_app.py provider_readiness.py video_reconciliation.py ./
 COPY ai_model_mapping.py ./
 COPY ai_model_mapping_store.py ./
 COPY ai_job_service.py staging_job_worker.py fal_provider.py berry_credit_pricing.py ai_wallet_pricing_adapter.py ai_wallet_quote_check.py telegram_wallet_bridge.py ./

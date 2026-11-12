@@ -103,25 +103,36 @@ class TelegramVideoFlow:
 
 
 async def start_video_recovery(application):
+    existing=application.bot_data.get('berry_video_recovery_task')
+    if existing is not None and not existing.done():
+        return
     flow=application.bot_data.get('berry_video_flow')
     if flow is None or not flow.enabled:
         return
     flow.authorize(flow.test_user_id)
     if not flow.worker.allow_external:
         return
+    stop=asyncio.Event()
+    application.bot_data['berry_video_recovery_stop']=stop
     async def loop():
-        while True:
+        while not stop.is_set():
             try:
                 await asyncio.to_thread(flow.recover_once)
             except Exception:
-                pass  # No raw HTTP exceptions/tokens; durable state is retained.
-            await asyncio.sleep(15)
+                pass  # Durable jobs retained; never log raw provider exceptions.
+            try:
+                await asyncio.wait_for(stop.wait(),timeout=15)
+            except asyncio.TimeoutError:
+                pass
     application.bot_data['berry_video_recovery_task']=asyncio.create_task(loop())
 
 
 async def stop_video_recovery(application):
-    task=application.bot_data.pop('berry_video_recovery_task',None)
+    task=application.bot_data.get('berry_video_recovery_task')
+    stop=application.bot_data.get('berry_video_recovery_stop')
+    if stop: stop.set()
     if task:
-        task.cancel()
-        try: await task
-        except asyncio.CancelledError: pass
+        # Cancelling to_thread does not stop its thread. Drain the current pass instead.
+        await asyncio.shield(task)
+        application.bot_data.pop('berry_video_recovery_task',None)
+        application.bot_data.pop('berry_video_recovery_stop',None)
