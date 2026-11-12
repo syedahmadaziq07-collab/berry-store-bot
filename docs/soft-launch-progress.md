@@ -83,9 +83,9 @@ PASS: actual isolated SQL lifecycle and consent rollback suites: ticket ownershi
 duplicate confirm/debit, refund once, overspend rollback, unknown holds, budget caps and audit.
 No customer wallet/order writes. Candidate uses public.ai_wallets / existing MYR RPC; synthetic
 staging wallets remain separate and are not substituted. All candidate DDL/fixtures rolled back.
-PASS: 70 focused production-candidate checks including actual PTB20.7 markup contract. Initial
+PASS: 71 focused production-candidate checks including actual PTB20.7 markup contract. Initial
 host CI failure due missing Telegram UI test dependency fixed with separate pinned UI contract.
-Full staging backend regression: 166 tests PASS. CI, packaging/deploy and post-deploy guards still IN PROGRESS. PR45 head 04025000 has all six CI PASS; its production PR remains draft and unmerged.
+Full staging backend regression: 167 tests PASS. CI, packaging/deploy and post-deploy guards still IN PROGRESS. PR45 head 04025000 has all six CI PASS; its production PR remains draft and unmerged.
 
 BLOCKED: authenticated dashboard session and controlled Telegram/provider access; verified model
 maximum cost, FX/fees and RM1 NET; production backup/rotation/migration/real E2E/owner rollout approval.

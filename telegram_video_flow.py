@@ -57,7 +57,7 @@ class TelegramVideoFlow:
                  'expires_at':datetime.fromtimestamp(offer.verified_until,timezone.utc).isoformat(),
                  'label':offer.label,'settings_label':offer.settings_label,'prompt':prompt.strip(),'ratio':ratio}
         result=self.worker.store.checkout(user_id,ticket,'prepare',payload)
-        return dict(result,balance_myr=str(balance),balance_credits=int(balance*1250))
+        return dict(result,balance_myr=str(balance),balance_credits=f"{balance*1250:,.2f}".rstrip("0").rstrip("."))
 
     def _refresh_exact_cost(self, user_id, payload):
         # Restart recovery can refresh costs only for the same frozen provider/settings/price.

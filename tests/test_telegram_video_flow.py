@@ -76,6 +76,10 @@ class FlowTests(unittest.TestCase):
             {'prompt':p,'aspect_ratio':r},int(time.time())+300))
         self.flow=TelegramVideoFlow(self.worker,self.builder,test_user_id=USER,enabled=True)
         self.ticket=self.flow.prepare(USER,123,'hello')['ticket_id']
+    def test_odd_cent_balance_keeps_fractional_credits(self):
+        self.store.money=Decimal('4.99')
+        ticket=self.flow.prepare(USER,125,'precision')
+        self.assertEqual(ticket['balance_credits'],'6,237.5')
     def test_prepare_never_debits_or_submits(self):
         self.assertEqual(self.store.money,5);self.assertEqual(self.store.debits,0)
         self.provider.submit.assert_not_called()
