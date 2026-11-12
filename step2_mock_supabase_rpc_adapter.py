@@ -8,6 +8,7 @@ Therefore this adapter NEVER calls provider.submit. Fail closed.
 """
 from uuid import UUID
 from step2_offline_queue_contract import classify_queue_status
+from step2_sql_recovery_model import Job, RecoveryRejected, bind_with_provider_verification
 
 
 class AdapterBlocked(RuntimeError):
@@ -64,3 +65,36 @@ class MockRpcVideoAdapter:
         except Exception:
             return "needs_manual_reconciliation"
         return decision.action
+
+    def recovery_preflight(self, tenant, job, request_id, trusted_verifier):
+        """Read-only preflight; deliberately never calls queued or provider.submit.
+
+        This is not a live reconciliation path: provider correlation and SQL
+        authorization remain unimplemented. A provider status HTTP 200 alone
+        must not be treated as independent correlation proof.
+        """
+        state = self._call(tenant, job, "get", {})
+        if state.get("state") != "submission_unknown":
+            raise AdapterBlocked("recovery_state_not_unknown")
+        request_hash = state.get("request_hash")
+        if not isinstance(request_hash, str) or not request_hash:
+            raise AdapterBlocked("missing_persisted_request_hash")
+        try:
+            proposal = bind_with_provider_verification(
+                Job(
+                    state="submission_unknown",
+                    request_hash=request_hash,
+                    provider_request_id=state.get("provider_request_id"),
+                ),
+                request_id=request_id,
+                recovery_request_hash=request_hash,
+                verify_provider_request=trusted_verifier,
+            )
+        except RecoveryRejected:
+            raise AdapterBlocked("trusted_recovery_preflight_rejected") from None
+        return {
+            "decision": "operator_review_required",
+            "request_id": proposal.provider_request_id,
+            "state": proposal.state,
+            "write_performed": False,
+        }
