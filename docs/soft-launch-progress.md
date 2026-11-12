@@ -187,3 +187,8 @@ STEP2 PASS additional: PR53 mergedbe80ee39,4/4 CI, fairness migration installed 
 SQL suites PASS. LIVE dep-dbqko8qjnfac73906h60 at13:18:53MYT. Probe gate service_match=true,
 database_match=false; no authentication result. Do not enable wallet runtime from service identity.
 IN PROGRESS scope pricing GET to isolated AI mapping config, without altering business DB/settings.
+
+STEP2 PASS PR54 deployed47f12cb0/dep-dbqkpkrbc2fs73dm9leg at13:22:07MYT,3/3 CI.
+Actual AI mapping scope verified true. Authenticated read-only price attempts for FLUX/Wan/MiniMax
+all UNVERIFIED with no HTTP status; do not infer invalid credentials. Diagnostic follow-up pending.
+Mapping revision4 still0 enabled flags. SQL safety source/staging verified, real runtime/E2E blocked.

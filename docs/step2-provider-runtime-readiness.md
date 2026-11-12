@@ -123,3 +123,13 @@ not an authenticated parameter-bound cap. Source https://fal.ai/models/minimax/h
 and https://fal.ai/minimax-h3-max . Existing actual mapping remains Wan disabled; selected MiniMax
 not silently activated or priced. PR51 decision remains draft; its duplicate pricing utility is not
 needed for deployed sanitized probe. No owner screenshot of prices is required for Work research.
+
+## Authenticated read attempt from verified staging AI scope
+
+PR54 headfd58fb7 all3 CI PASS, merged47f12cb0; LIVE dep-dbqkpkrbc2fs73dm9leg05:22:07Z.
+Gate observed service_match=true,mapping_match=true,business database_match=false. At05:22:00Z
+all3 fixed-model pricing attempts returned sanitized status unverified with no HTTP status captured.
+This is not evidence of invalid key, denied account access or price. Additional constant error-kind
+diagnostics (never exception strings) are being validated to distinguish transport from malformed
+response.186 backend tests expected after diagnostic test; CI/deploy pending. Mapping revision4
+still0 enabled flags; no runtime/checkout activation, grants, provider inference or budget spending.
