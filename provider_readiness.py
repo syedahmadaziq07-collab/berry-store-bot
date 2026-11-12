@@ -8,7 +8,7 @@ import os
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import httpx
 
-MODELS=('fal-ai/flux/schnell','fal-ai/wan/v2.2-a14b/text-to-video')
+MODELS=('fal-ai/flux/schnell','fal-ai/wan/v2.2-a14b/text-to-video','minimax/h3-max-turbo/text-to-video')
 STAGING_SERVICE='srv-dbq2g9mk1f9s73de0u50'
 STAGING_DATABASE='https://cirsdvkfkvypprnmyykk.supabase.co'
 

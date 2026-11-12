@@ -19,7 +19,7 @@ Sources:
 
 FAL_KEY name presence was verified on staging in STEP1, not validity/balance. A staging-service
 and isolated-database restricted startup probe now performs only authenticated GET pricing
-for the two fixed models. Credential stays inside runtime; no raw response/error/headers logged.
+for the two current mappings and owner-selected MiniMax candidate. Credential stays inside runtime; no raw response/error/headers logged.
 Probe success means pricing read permission only, not inference access or sufficient balance.
 IN PROGRESS: actual probe result after reviewed staging deployment. No POST inference supported
 by this probe. Account concurrency is not inferred from public defaults or pricing responses.
@@ -81,3 +81,11 @@ Backup restore, secret rotation and controlled real E2E remain separate release 
 
 Owner bank reconciliation and production rollout approvals remain outstanding but are not blockers
 for this isolated staging change. GPT WORK owns remaining runtime/coverage/cost-source engineering.
+
+## Concurrent work coordination
+
+PR51 f4a3fb4 records owner-selected MiniMax H3 Max Turbo text-to-video candidate,10s/480P.
+It is not the existing Wan mapping. Added candidate to fixed read-only pricing probe; no mapping
+activation or retail update. PR52 points to original d215ebea WIP and is superseded by PR50,
+which fixes its PostgreSQL regex issue and adds actual SQL/regression validation. Do not merge52.
+PR51 remains independently reviewable; its draft retail and public rates are not verified net margin.

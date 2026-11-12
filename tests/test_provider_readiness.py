@@ -11,7 +11,7 @@ class ReadinessTests(unittest.TestCase):
             seen.append(req)
             return httpx.Response(200,json={'prices':[{'endpoint_id':req.url.params['endpoint_id'],'unit_price':0.1,'unit':'image','currency':'USD','secret':'fixture-key'}]})
         result=pricing_probe('fixture-key',httpx.Client(transport=httpx.MockTransport(transport)))
-        self.assertEqual(len(seen),2)
+        self.assertEqual(len(seen),len(MODELS))
         self.assertTrue(all(r.method=='GET' and r.url.host=='api.fal.ai' and r.url.path=='/v1/models/pricing' for r in seen))
         self.assertNotIn('fixture-key',json.dumps(result))
         self.assertTrue(all(r['status']=='pricing_read_verified' for r in result))
