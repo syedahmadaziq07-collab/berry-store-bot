@@ -2,7 +2,7 @@
 -- Runs ONLY in an ephemeral/isolated database (CI pattern of
 -- verify_video_consent.sql). Never executed against live Supabase.
 BEGIN;
-SELECT set_config('request.jwt.claims','{"role":"service_role"}}',true);
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 DO $$
 DECLARE t uuid:=gen_random_uuid(); ticket uuid:=gen_random_uuid();
  ticket2 uuid:=gen_random_uuid(); ticket3 uuid:=gen_random_uuid();

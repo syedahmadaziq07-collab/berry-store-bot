@@ -60,6 +60,27 @@ sendPhoto/document image delivery with acknowledgment/unknown handling (I11).
   ephemeral-Postgres CI job for `verify_image_consent.sql`, Telegram handler
   entry points. Still NO-GO; no migrations applied, no deployment.
 
+## Update 2 — ephemeral PostgreSQL 16 CI evidence (commit 3)
+- Fixed JSON typo (`}}` → `}`) in `docs/sql/verify_image_consent.sql`.
+- New `tests/test_step3_image_consent_postgres.py` (12 cases): installs the
+  candidate DDL in an isolated schema (roles DDL for service_role/anon/
+  authenticated) and verifies — prepare idempotent (single row), replay with
+  changed payload rejected, owner mismatch rejected, non-image tool_key
+  rejected, invalid request_hash rejected, past expiry rejected, confirm
+  fail-closed (`image job reservation not yet enabled`), cancel-then-confirm
+  rejected, expired-ticket confirm rejected, **concurrent prepare ×4 → single
+  row** (advisory lock), **wallet isolation** (no wallet table/function exists
+  — debit structurally impossible), anon ACL EXECUTE denied.
+- `.github/workflows/step3-image-consent.yml` gains an `image-consent-postgres`
+  job (postgres:16 service, psycopg 3, `BERRY_STEP3_LOCAL_POSTGRES=1`),
+  mirroring the step2-postgres-rollback pattern. 12 tests skipped locally
+  (no local Postgres) — real evidence comes from CI only.
+- Fail-closed review of builder/checkout adapter: VerifiedImageOfferBuilder
+  rejects bad catalog/aspects/expiry/margin-floor; checkout enforces tool_key,
+  request_hash format, expiry window, owner, replay, service-role JWT claim;
+  confirm refuses pending tickets until job wiring is approved (never a
+  silent debit skip). No issues remaining in the reviewed modules.
+
 ## Acceptance criteria (I02/I04/I11) and remaining blockers
 - I02 prompt input: CODE COMPLETE (validated prompt + frozen ticket). Real
   Telegram input acceptance is a live E2E gate — BLOCKED on STEP 2 owner gates.
