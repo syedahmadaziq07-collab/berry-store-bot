@@ -1,0 +1,37 @@
+name: Production video MYR safety
+on:
+  pull_request:
+    paths:
+      - bot.py
+      - tests/test_telegram_restart_safety.py
+      - telegram_video_flow.py
+      - telegram_video_handlers.py
+      - tests/test_telegram_video_flow.py
+      - tests/telegram_markup_contract.py
+      - docs/sql/verify_video_consent.sql
+      - video_myr_worker.py
+      - telegram_video_delivery.py
+      - fal_provider.py
+      - docs/sql/berry_video_myr_lifecycle.sql
+      - docs/sql/verify_video_myr_lifecycle.sql
+      - tests/test_video_myr_worker.py
+      - tests/test_telegram_video_delivery.py
+      - tests/test_fal_provider.py
+      - .github/workflows/video-myr-safety.yml
+  workflow_dispatch:
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'python-telegram-bot==20.7' 'httpx==0.25.2'
+      - run: python -m py_compile bot.py video_myr_worker.py telegram_video_delivery.py telegram_video_flow.py telegram_video_handlers.py fal_provider.py
+      - run: python -m unittest discover -s tests -p 'test_*video*.py' -v
+      - run: python -m unittest discover -s tests -p 'telegram_markup_contract.py' -v
+      - run: python -m unittest discover -s tests -p 'test_fal_provider.py' -v
+      - run: python -m unittest discover -s tests -p 'test_telegram_restart_safety.py' -v
+      - run: python -m unittest discover -s tests -p 'test_topup_checkout.py' -v
+      - run: python -m unittest discover -s tests -p 'test_berry_*py' -v
