@@ -207,4 +207,66 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.berry_video_recoverable_jobs(uuid,int) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.berry_video_recoverable_jobs(uuid,int) TO service_role;
+-- Durable consent: preview never debits; confirm/cancel share a ticket lock.
+CREATE TABLE berry_private.ai_video_tickets (
+ tenant_id uuid NOT NULL REFERENCES public.tenants(id), ticket_id uuid NOT NULL,
+ user_id bigint NOT NULL CHECK(user_id>0), payload jsonb NOT NULL,
+ expires_at timestamptz NOT NULL, state text NOT NULL DEFAULT 'pending'
+  CHECK(state IN ('pending','confirmed','cancelled')),
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(tenant_id,ticket_id)
+);
+ALTER TABLE berry_private.ai_video_tickets ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON berry_private.ai_video_tickets FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE ON berry_private.ai_video_tickets TO service_role;
+CREATE FUNCTION public.berry_video_checkout(p_tenant uuid,p_user bigint,p_ticket uuid,p_action text,p_payload jsonb DEFAULT '{}'::jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
+DECLARE t berry_private.ai_video_tickets%ROWTYPE; j jsonb; e timestamptz;
+BEGIN
+ IF current_user NOT IN ('service_role','postgres') OR
+ coalesce(current_setting('request.jwt.claims',true),'{}')::jsonb->>'role' IS DISTINCT FROM 'service_role' THEN
+  RAISE EXCEPTION 'server role required' USING ERRCODE='42501'; END IF;
+ IF p_tenant IS NULL OR p_user IS NULL OR p_user<=0 OR p_ticket IS NULL
+ OR p_action IS NULL OR p_action NOT IN ('prepare','get','confirm','cancel') THEN RAISE EXCEPTION 'invalid checkout'; END IF;
+ PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('berry-video-ticket:'||p_tenant::text||':'||p_ticket::text,0));
+ SELECT * INTO t FROM berry_private.ai_video_tickets WHERE tenant_id=p_tenant AND ticket_id=p_ticket FOR UPDATE;
+ IF t.ticket_id IS NOT NULL AND t.user_id<>p_user THEN RAISE EXCEPTION 'ticket owner mismatch'; END IF;
+ IF p_action='prepare' THEN
+  IF p_payload->>'user_id' IS DISTINCT FROM p_user::text OR jsonb_typeof(p_payload->'arguments') IS DISTINCT FROM 'object'
+   OR jsonb_typeof(p_payload->'quote') IS DISTINCT FROM 'object' OR p_payload->>'request_hash' IS NULL
+   OR p_payload->>'request_hash' !~ '^[0-9a-f]{64}$' THEN RAISE EXCEPTION 'invalid ticket payload'; END IF;
+  IF t.ticket_id IS NOT NULL THEN
+   IF t.payload-'expires_at' <> p_payload-'expires_at' THEN RAISE EXCEPTION 'ticket replay conflict'; END IF;
+  ELSE
+   e:=(p_payload->>'expires_at')::timestamptz;
+   IF e IS NULL OR e<=now() OR e>now()+interval '15 minutes' THEN RAISE EXCEPTION 'invalid quote expiry'; END IF;
+   INSERT INTO berry_private.ai_video_tickets(tenant_id,ticket_id,user_id,payload,expires_at)
+    VALUES(p_tenant,p_ticket,p_user,p_payload,e) RETURNING * INTO t;
+  END IF;
+ ELSIF t.ticket_id IS NULL THEN RAISE EXCEPTION 'unknown ticket';
+ ELSIF p_action='confirm' THEN
+  IF t.state='cancelled' THEN RAISE EXCEPTION 'ticket cancelled'; END IF;
+  IF t.state='pending' THEN
+   IF t.expires_at<=now() THEN RAISE EXCEPTION 'quote expired'; END IF;
+   j:=public.berry_video_job(p_tenant,p_ticket,'reserve',t.payload);
+   UPDATE berry_private.ai_video_tickets SET state='confirmed' WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+   t.state:='confirmed';
+  ELSE j:=public.berry_video_job(p_tenant,p_ticket,'get'); END IF;
+ ELSIF p_action='cancel' THEN
+  IF t.state='confirmed' THEN
+   j:=public.berry_video_job(p_tenant,p_ticket,'get');
+   IF j->>'state'='reserved' THEN
+    j:=public.berry_video_job(p_tenant,p_ticket,'refund_before_submit');
+    UPDATE berry_private.ai_video_tickets SET state='cancelled' WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+    t.state:='cancelled';
+   END IF;
+  ELSE
+   UPDATE berry_private.ai_video_tickets SET state='cancelled' WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+   t.state:='cancelled';
+  END IF;
+ END IF;
+ RETURN jsonb_build_object('ticket_id',t.ticket_id,'user_id',t.user_id,'state',t.state,'payload',t.payload,'job',j);
+END $$;
+REVOKE ALL ON FUNCTION public.berry_video_checkout(uuid,bigint,uuid,text,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.berry_video_checkout(uuid,bigint,uuid,text,jsonb) TO service_role;
+
 COMMIT;

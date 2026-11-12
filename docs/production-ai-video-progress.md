@@ -22,10 +22,12 @@ no customer order/wallet mutation, no paid provider or Telegram request in this 
 | Budget guard | PASS | Actual SQL asserts consumed cost/count do not repeat, exhausted grant cannot claim, max RM5/5 constraints, service worker cannot expand grant. No grant created outside rollback fixture. Unknown outcomes retain full worst-case reserved budget. |
 | Audit evidence | PASS | Failure evidence and bound request/budget/delivery metadata saved in private append-only-for-worker event table. Terminal provider failure needs matching request plus evidence. No automatic unknown resolution. |
 | Telegram transport | PASS | Automated tests verify sendVideo acknowledgment/recipient, URL restriction, negative ACK and redacted error. NOT real Telegram delivery. |
-| Unit regression | PASS | 55 local tests: 16 worker/delivery + 4 provider + 27 payment + 6 topup + 2 restart safety checks. An initial local provider-test failure (SOCKS environment at constructor) was fixed by lazy client initialization; rerun PASS. |
+| Unit regression | PASS | 69 local tests: 30 worker/delivery/consent + 4 provider + 27 payment + 6 topup + 2 restart safety checks. An initial local provider-test failure (SOCKS environment at constructor) was fixed by lazy client initialization; rerun PASS. |
 | Startup queued-update preservation | PASS | Source patch removes early import-time Telegram close/deleteWebhook calls and preserves pending updates on webhook removal/polling restart. Two source safety checks PASS. Not deployed or live-restart validated. |
 | Production migration | BLOCKED | Verify recoverable backup, schema compatibility and explicit high-risk migration confirmation. Source is not executed in production. No duplicate order disposition required by this candidate; checkout PR44 remains independently blocked. |
-| Bot menu/confirmation and continuous worker runtime | IN PROGRESS | New worker is not imported/enabled by bot. Customer callback identity, durable confirmation binding, pricing expiry, controlled startup still required. Bounded recovery listing/loop implemented with stop event, deduplication, failure isolation and no automatic unknown recovery; no scheduler is started. |
+| Telegram Confirm/Cancel integration | PASS | Actual bot callback router delegates to controller. SQL-backed user-bound tickets freeze prompt/model/price with expiry; preview does not debit, Confirm invokes atomic job/debit, Cancel refunds only while reserved. Actual isolated SQL consent suite PASS; 14 controller/handler tests PASS including concurrent callbacks, ownership, receipt precedence, changed costs, timeout/restart and delivery. External traffic mocked in automated tests, not live E2E. |
+| Controlled runtime and recovery | IN PROGRESS | build_app accepts an explicit reviewed controller; normal startup has no controller and stays disabled. Post-init/post-shutdown recovery hooks wired; no daemon started. Real runtime startup, shutdown and dedicated Telegram identity still require controlled validation. |
+| Definitive provider failure | PASS | fal queue documentation confirms COMPLETED error/error_type denotes failure. Poller verifies stored request ID before atomic refund; nonterminal errors, mismatched IDs and network errors hold without refund. Automated regression PASS; no real terminal failure exercised. |
 | Live provider costs / RM1 NET | BLOCKED | Public model page did not expose a parameter-bound price in retrieved content. No quote invented. Need account-authorized price, FX/fees/tax/retry/operating allocation and existing balance verification. The SQL arithmetic threshold is not independent net-margin proof. |
 | Real E2E | BLOCKED | Authorized controlled Telegram identity/runtime and provider access without reading secrets, real cost bound and security/rotation gates not established. RM5 budget alone does not authorize bank payment or customer wallet edits. |
 | Security / rollout | BLOCKED | Exposed-key secure rotation and production security signoff incomplete. No launch or activation. |
@@ -41,6 +43,16 @@ retain jobs/events and ledger; revert app only after handling in-flight jobs. Ne
 entries or drop audit tables blindly. Existing unknown submissions/deliveries require audited
 reconciliation; neither automatic resubmit nor blind refund is implemented.
 
-NEXT ACTION: review candidate and CI; wire authenticated Telegram confirm/cancel to durable MYR
-jobs while gates remain disabled. Complete real cost/access/rotation/test-identity gates before
+NEXT ACTION: review updated PR45/CI and validate disabled integration in staging. Confirm/Cancel now call durable MYR jobs; real provider cost/account and runtime acceptance remain gated. Complete real cost/access/rotation/test-identity gates before
 seeding any budget grant or issuing paid request. Reconciliation stays BLOCKED pending owner evidence.
+
+## Confirmation milestone — 12 November MYT
+
+CODE COMPLETE for controlled text-to-video consent integration; not customer launch complete.
+Actual isolated SQL ticket suite PASS: preview/no debit, owner binding, cancel-before-confirm,
+confirm debit once, cancel-before-submit refund once, expired quote denial and ACLs. Candidate
+DDL and all fixtures rolled back. Legacy photo preview remains a preview, not an accepted live
+image-to-video route. No production changes or paid calls. PR45 must stay DRAFT until integration
+review, current CI and remaining runtime/cost/security/E2E gates are satisfied.
+
+Official protocol reference: https://fal.ai/docs/documentation/model-apis/inference/queue

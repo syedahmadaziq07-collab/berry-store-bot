@@ -2954,6 +2954,20 @@ def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
 
 
 async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    flow = context.application.bot_data.get("berry_video_flow")
+    if flow is not None:
+        try:
+            from telegram_video_handlers import runtime
+            runtime(update, context)
+        except Exception:
+            await update.callback_query.message.reply_text("🔒 AI Video belum tersedia untuk akaun ini.")
+            return
+        await _safe_edit_or_send(update.callback_query,
+            "🎬 AI VIDEO\nMasukkan prompt. Model, tetapan dan harga sebenar dipaparkan sebelum Confirm.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✍️ Teks → Video", callback_data="ai_video_text")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="home")]]))
+        return
     """Admin-only AI Studio hub, with clear sections and a preview balance."""
     if not _ai_video_is_admin(update):
         await _safe_edit_or_send(
@@ -3337,8 +3351,26 @@ async def _store_topup_receipt(update, context, oid: str, file_id: str, as_docum
                                      caption=caption, reply_markup=buttons)
 
 
+async def _live_video_callback(update, context, action, ticket):
+    from telegram_video_handlers import consent_callback
+    try:
+        await consent_callback(update, context, action, ticket)
+    except Exception:
+        # Never echo provider/Telegram HTTP errors or retry an outbound operation here.
+        await update.callback_query.message.reply_text(
+            "⚠️ Tindakan belum dapat disahkan. Gunakan ticket yang sama; jangan buat request baharu. "
+            "Status job dan wallet akan disemak sebelum tindakan seterusnya.")
+
+
 async def show_ai_video_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Do not offer an unsupported text-to-video generation flow."""
+    if context.application.bot_data.get("berry_video_flow") is not None:
+        from telegram_video_handlers import request_prompt
+        try:
+            await request_prompt(update, context)
+        except Exception:
+            await update.callback_query.message.reply_text("🔒 AI Video belum tersedia untuk akaun ini. Tiada caj dikenakan.")
+        return
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
@@ -3493,6 +3525,13 @@ async def accept_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Render a harmless summary; actual generation is intentionally disabled."""
+    if context.user_data.get("ai_video_flow", {}).get("stage") == "live_prompt":
+        from telegram_video_handlers import prepare_prompt
+        try:
+            return await prepare_prompt(update, context)
+        except Exception:
+            await update.message.reply_text("⚠️ Quote belum dapat disahkan. Tiada generation dihantar; cuba semula selepas harga/baki disahkan.")
+            return True
     if not _ai_video_is_admin(update):
         return False
     state = context.user_data.get("ai_video_flow")
@@ -3758,6 +3797,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("Checkout belum aktif. Tiada bayaran diterima.", show_alert=True)
         elif data.startswith("ai_studio:"):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
+        elif data.startswith("ai_video_confirm:"):
+            await _live_video_callback(update, context, "confirm", data.split(":", 1)[1])
+        elif data.startswith("ai_video_cancel:"):
+            await _live_video_callback(update, context, "cancel", data.split(":", 1)[1])
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
         elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
         elif data.startswith("ai_video_unavailable:"):
@@ -5450,8 +5493,13 @@ async def cmd_activatetenant(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
 
 
-def build_app() -> Application:
-    app = Application.builder().token(BOT_TOKEN).build()
+def build_app(video_flow=None) -> Application:
+    from telegram_video_flow import start_video_recovery, stop_video_recovery
+    app = (Application.builder().token(BOT_TOKEN)
+           .post_init(start_video_recovery).post_shutdown(stop_video_recovery).build())
+    if video_flow is not None:
+        video_flow.authorize(video_flow.test_user_id)
+        app.bot_data["berry_video_flow"] = video_flow
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     app.add_handler(CommandHandler("admin",       cmd_admin))

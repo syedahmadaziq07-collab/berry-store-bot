@@ -120,6 +120,48 @@ class MyrVideoJobStore:
         except (httpx.HTTPError, ValueError, TypeError):
             raise JobError("Job result unavailable; reconcile durable state before retrying") from None
 
+    def checkout(self, user_id, ticket_id, action, payload=None):
+        if type(user_id) is not int or user_id <= 0:
+            raise JobError("Invalid Telegram identity")
+        ticket_id = str(UUID(ticket_id))
+        if self._client is None:
+            self._client = httpx.Client(timeout=15, follow_redirects=False)
+        try:
+            r = self._client.post(self._url + "/rest/v1/rpc/berry_video_checkout",
+                headers={"apikey": self._key, "Authorization": "Bearer " + self._key},
+                json={"p_tenant": self.tenant_id, "p_user": user_id, "p_ticket": ticket_id,
+                      "p_action": action, "p_payload": payload or {}})
+            r.raise_for_status()
+            data = r.json()
+            if (not isinstance(data, dict) or data.get("ticket_id") != ticket_id
+                    or data.get("user_id") != user_id):
+                raise ValueError()
+            return data
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise JobError("Consent result unavailable; retry the same ticket only") from None
+
+    def balance(self, user_id):
+        from decimal import Decimal
+        if type(user_id) is not int or user_id <= 0:
+            raise JobError("Invalid Telegram identity")
+        if self._client is None:
+            self._client = httpx.Client(timeout=15, follow_redirects=False)
+        try:
+            r = self._client.get(self._url + "/rest/v1/ai_wallets",
+                headers={"apikey": self._key, "Authorization": "Bearer " + self._key},
+                params={"tenant_id": "eq."+self.tenant_id, "user_id": "eq."+str(user_id),
+                        "select": "balance", "limit": "1"})
+            r.raise_for_status()
+            rows = r.json()
+            if not isinstance(rows, list) or len(rows)>1:
+                raise ValueError()
+            balance = Decimal(str(rows[0]["balance"] if rows else "0"))
+            if not balance.is_finite() or balance<0 or balance*100 != int(balance*100):
+                raise ValueError()
+            return balance
+        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            raise JobError("Verified MYR balance unavailable") from None
+
     def recoverable(self, limit=20):
         if type(limit) is not int or not 1 <= limit <= 20:
             raise JobError("Invalid recovery limit")
@@ -205,7 +247,13 @@ class MyrVideoWorker:
             if status.get("request_id") != job["provider_request_id"]:
                 raise JobError("Provider status request mismatch")
             if status.get("error") or status.get("error_type"):
-                raise JobError("Provider failure requires definitive reconciliation")
+                if status.get("status") != "COMPLETED":
+                    raise JobError("Nonterminal provider error held for reconciliation")
+                # fal documents error/error_type on COMPLETED as a failed request.
+                # Bind to the stored request; never persist raw provider error text.
+                kind = re.sub(r"[^A-Za-z0-9_.-]", "_", str(status.get("error_type") or "provider_error"))[:80]
+                return self.provider_failed(job_id, job["provider_request_id"],
+                    "fal COMPLETED failure; error_type=" + kind)
             if status.get("status") in ("IN_QUEUE", "IN_PROGRESS"):
                 return job
             if status.get("status") != "COMPLETED":
