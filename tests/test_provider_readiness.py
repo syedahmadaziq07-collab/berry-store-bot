@@ -32,3 +32,13 @@ class ReadinessTests(unittest.TestCase):
         for bad in ('NaN','Infinity','-1','0'):
             with self.assertRaises(ValueError):minimum_sale_cents(bad,5,0,0)
         with self.assertRaises(ValueError):minimum_sale_cents(1,5,0,1)
+
+    def test_isolated_mapping_scopes_probe_without_business_database_access(self):
+        factory=Mock();factory.return_value.__enter__=Mock(return_value=Mock())
+        factory.return_value.__exit__=Mock(return_value=False)
+        emit=Mock()
+        staging_startup_probe({'RENDER_SERVICE_ID':STAGING_SERVICE,'AI_MAPPING_SUPABASE_URL':STAGING_DATABASE},factory,emit)
+        factory.assert_not_called() # No key: no request even with verified mapping scope.
+        self.assertIn('credential_unavailable',emit.call_args.args[0])
+        staging_startup_probe({'RENDER_SERVICE_ID':'production','AI_MAPPING_SUPABASE_URL':STAGING_DATABASE,'FAL_KEY':'fixture'},factory,emit)
+        factory.assert_not_called()

@@ -182,3 +182,8 @@ LIVE13:14:49MYT. Isolated reconciliation migration installed; lifecycle/consent/
 suites PASS afterinstall;0 jobs/cases/grants. PR52 closed as superseded old WIP, branch retained.
 IN PROGRESS follow-up recovery fairness and pricing-gate diagnostics. Provider probe emitted no
 pricing result, so authenticated access remains UNVERIFIED (not assumed rejected). RM0.
+
+STEP2 PASS additional: PR53 mergedbe80ee39,4/4 CI, fairness migration installed isolated and all4
+SQL suites PASS. LIVE dep-dbqko8qjnfac73906h60 at13:18:53MYT. Probe gate service_match=true,
+database_match=false; no authentication result. Do not enable wallet runtime from service identity.
+IN PROGRESS scope pricing GET to isolated AI mapping config, without altering business DB/settings.

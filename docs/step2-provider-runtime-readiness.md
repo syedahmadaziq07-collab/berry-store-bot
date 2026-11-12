@@ -104,3 +104,22 @@ without overlap; unknown jobs excluded and money/state unchanged. Initial fixtur
 wallet FK and failed; added isolated zero-balance wallet fixture, rerun PASS. All rolled back.
 Candidate adds last_recovery_scan_at and rotates scanned jobs with FOR UPDATE SKIP LOCKED;
 claim-once submission remains separate. Persistence/CI pending. No external side effects.
+
+## Recovery fairness installed; pricing scope diagnosis
+
+PR53 head335a429 all4 CI PASS; mergedbe80ee39. Isolated fairness migration installed and all4
+SQL suites PASS (fairness/lifecycle/consent/reconciliation).0 jobs/cases/grants retained. Staging
+be80ee39 LIVE dep-dbqko8qjnfac73906h60 at05:18:53Z.185 backend tests now PASS after probe scope test.
+Runtime gate observed service_match=true,database_match=false. Business URL identity is not
+exported, changed, or presumed production. Controlled wallet runtime stays blocked until its own
+isolation is verified. Pricing probe uses no database; fix its scope to accept the existing isolated
+AI_MAPPING_SUPABASE_URL, still requiring exact staging Render service. No wallet/controller guard
+changed. Deployment/result of that fix pending; do not claim authenticated account access yet.
+
+MiniMax candidate official schema reconfirmed: duration10,resolution480P,prompt_expansion_mode
+balanced,safety enabled; optional audio omitted. Provider notes approximate0.7s output overrun,
+so duration10 alone is NOT a hard billing maximum. Public rate$0.025/output-second is a reference,
+not an authenticated parameter-bound cap. Source https://fal.ai/models/minimax/h3-max-turbo/text-to-video/api
+and https://fal.ai/minimax-h3-max . Existing actual mapping remains Wan disabled; selected MiniMax
+not silently activated or priced. PR51 decision remains draft; its duplicate pricing utility is not
+needed for deployed sanitized probe. No owner screenshot of prices is required for Work research.
