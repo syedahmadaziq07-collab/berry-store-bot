@@ -3296,35 +3296,27 @@ async def checkout_ai_topup(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     # One active order per user, matching existing Browse Shop policy.
     try:
         def create():
-            active = sb_admin_get("orders",
-                f"select=id,product_name,status&user_id=eq.{user.id}"
-                "&status=in.(pending,waiting,waiting_approval)&limit=1")
-            if active:
-                return active[0], False
-            import secrets
-            oid = "BT" + secrets.token_hex(12).upper()
-            rows = sb_admin_post("orders", {
-                "id": oid, "user_id": user.id, "username": user.username or "",
-                "product_id": None, "product_name": f"Berry Credits Top Up: {key}",
-                "quantity": 1, "amount": plan[1], "status": "pending",
-            })
-            if not rows:
-                raise RuntimeError("Order insert returned no rows")
-            return rows[0], True
+            from topup_checkout import create_topup_order
+            return create_topup_order(_httpx, SUPABASE_URL, SUPABASE_SERVICE_KEY,
+                TENANT_ID, user.id, user.username or "", key, update.update_id)
         order, created = await _run_supabase("ai_topup.checkout", create, attempts=1)
     except Exception as exc:
         log.warning("[TOPUP] checkout unavailable: %s", type(exc).__name__)
         await update.callback_query.message.reply_text("⚠️ Gagal buat order. Cuba lagi.")
+        return
+    if order.get("status") not in ("pending", "waiting", "waiting_approval"):
+        await update.callback_query.message.reply_text(
+            "ℹ️ Order ini sudah selesai atau ditutup. Tiada order baharu dibuat.")
+        return
+    if order.get("status") == "waiting_approval":
+        await update.callback_query.message.reply_text(
+            "ℹ️ Resit order ini sudah diterima dan sedang menunggu semakan admin. Tak perlu bayar sekali lagi.")
         return
     if not created and not _topup_plan_for_order(order):
         await update.callback_query.message.reply_text(
             "⚠️ Anda ada order Browse Shop yang belum selesai. "
             "Selesaikan atau batalkan dahulu.")
         return
-    if not created:
-        rows = await _run_supabase("ai_topup.order", lambda: sb_admin_get(
-            "orders", f"select=*&id=eq.{order['id']}&limit=1"), attempts=1)
-        order = rows[0]
     await send_payment_page(context, update.effective_chat.id, user.id, order, order["id"])
 
 
