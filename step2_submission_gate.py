@@ -2,8 +2,8 @@
 
 This module is the ONLY sanctioned path from a reserved/submitting job to an
 outbound provider POST. It enforces, in order:
-  1. Durable SUBMISSION_UNKNOWN marker committed BEFORE any network call.
-  2. Exactly one POST authorization per job (generation-fenced).
+  1. Durable atomic submitting claim committed BEFORE any network call.
+  2. Exactly one POST authorization per job (database claim fenced).
   3. Response binding strictly to that single prior POST.
   4. On restart, poll existing request or operator hold — never a new POST.
 
@@ -16,9 +16,10 @@ from step2_no_retry_protocol import Attempt, State, SubmissionBlocked, record_re
 class WorkerSubmissionGate:
     """Applies the PR #75 state machine to a worker submit/poll cycle.
 
-    The worker supplies a `claim_fn` that must durably persist the
-    SUBMISSION_UNKNOWN marker (raising on failure) and return the committed
-    Attempt snapshot. The gate then authorizes exactly one POST.
+    The worker supplies a `claim_fn` backed by an exclusive committed
+    submitting claim (raising on failure). SQL submitting already blocks
+    retry after restart; the in-memory protocol marks the attempt unknown
+    before POST without changing the database receipt-binding state. The gate then authorizes exactly one POST.
     """
 
     def __init__(self, claim_fn, post_fn):

@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'tests/test_step2_full_function_clone.py'
+      - 'video_myr_worker.py'
+      - 'step2_submission_gate.py'
+      - 'step2_no_retry_protocol.py'
       - 'tests/fixtures/step2_*.sql'
       - '.github/workflows/step2-full-function-clone.yml'
       - 'docs/sql/step2_video_unknown_recovery_staging_*.sql'
@@ -29,7 +32,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install 'psycopg[binary]>=3.1,<4'
+      - run: python -m pip install 'psycopg[binary]>=3.1,<4' 'httpx==0.25.2'
       - name: Compile staging function snapshot and run isolated integration tests
         env:
           BERRY_STEP2_EPHEMERAL_CLONE: '1'

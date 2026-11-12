@@ -303,3 +303,16 @@ installed SQL. No RPC guard weakened, no schema changed, no paid call, wallet/or
 NEXT GPT WORK: reconcile durable submitting-claim fencing with response binding and audited ambiguous
 recovery, then test worker against actual installed-function contract before merge/deploy. Owner is
 not asked to bypass this engineering gate. STEP2 PARTIAL/customer NO-GO; other blockers unchanged.
+
+## 13 November — PR76 durable claim / SQL compatibility repair
+PASS worker receipt binding now retains the committed atomic submitting claim before POST.
+Observed ambiguous failures attempt submission_unknown; a failed marker write retains the original
+no-retry fence. Lost queued acknowledgements preserve the pollable receipt under existing SQL guards.
+PASS 296 local tests discovered:277 passed,19 PostgreSQL-dependent skipped, not counted PASS.
+PASS stricter worker fixture rejects normal unknown-to-queued; claim failures/invalid claims never POST.
+IN PROGRESS four new actual-function PostgreSQL worker integration cases: normal receipt, timeout,
+write outage, and lost acknowledgement; CI executes these with inert provider and wallet-denying stub.
+These are SQL compatibility tests, NOT paid provider/Telegram E2E or proof of customer wallet debit.
+No SQL migration or weakening of audited reconciliation. No production, customer data or paid calls.
+BLOCKED merge/deploy pending current CI and full candidate review. STEP2 PARTIAL; customer NO-GO.
+NEXT verify PostgreSQL CI, review remaining candidate modules, then staging-only release if safe.

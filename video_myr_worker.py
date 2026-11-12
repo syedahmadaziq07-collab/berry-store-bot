@@ -237,16 +237,16 @@ class MyrVideoWorker:
                          "berry_tenant": self.store.tenant_id}
         if tags != expected_tags:
             raise JobError("Durable submission correlation unavailable")
-        # PR #75 integration: the WorkerSubmissionGate is the sole path to the
-        # provider POST. claim_fn durably persists submission_unknown BEFORE
-        # the network call; the gate allows exactly one POST and binds the
-        # response to it. Any failure leaves the job held, never retried.
+        # The committed atomic claim is the durable no-retry fence. SQL only
+        # accepts a normal receipt from submitting; unknown outcomes require
+        # audited reconciliation. Never move to unknown before a normal POST.
         from step2_no_retry_protocol import Attempt, State
         from step2_submission_gate import WorkerSubmissionGate
         post_response = {}
 
-        def durable_unknown():
-            self.store.action(job_id, "submission_unknown")
+        def durable_claim():
+            if claim.get("state") != "submitting":
+                raise JobError("Invalid durable submission claim")
             return Attempt(State.SUBMITTING, generation=0)
 
         def provider_post():
@@ -254,13 +254,11 @@ class MyrVideoWorker:
             post_response = self.provider.submit(q["provider_model_id"], arguments, correlation=tags)
             return post_response
 
-        gate = WorkerSubmissionGate(durable_unknown, provider_post)
+        gate = WorkerSubmissionGate(durable_claim, provider_post)
         try:
             bound = gate.submit(Attempt(State.SUBMITTING, generation=0))
         except Exception:
-            # Fail-closed: POST error/timeout, malformed response, or a failed
-            # durable-unknown commit all leave the job held; never a second
-            # POST, never an automatic refund.
+            self._hold_submission(job_id)
             raise JobError("Submission outcome unknown; no retry or refund performed") from None
         try:
             request_id = bound.provider_request_id
@@ -268,9 +266,17 @@ class MyrVideoWorker:
                                   post_response["status_url"], post_response["response_url"])
             return self.store.action(job_id, "queued", recovery)
         except Exception:
-            # Even a failure recording the successful HTTP response is ambiguous.
-            # Persisted 'submission_unknown' (written before the POST) blocks replay.
+            self._hold_submission(job_id)
             raise JobError("Submission outcome unknown; no retry or refund performed") from None
+
+    def _hold_submission(self, job_id):
+        try:
+            self.store.action(job_id, "submission_unknown")
+        except Exception:
+            # The original committed submitting claim still blocks replay if
+            # this write fails. If queued committed but its acknowledgement was
+            # lost, SQL rejects this transition and recovery polls that receipt.
+            pass
 
     def poll(self, job_id):
         """Resume a queued job after restart using GETs, never another submission.

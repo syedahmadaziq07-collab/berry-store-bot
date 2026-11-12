@@ -30,8 +30,13 @@ class Store:
                 self.job['submission_tags']={'berry_job':job_id,'berry_hash':self.job['request_hash'],'berry_tenant':self.tenant_id}
                 self.claim_budget=payload['budget_id']
                 claimed=True
-            elif action=='queued': self.job.update(payload,state='queued')
-            elif action in ('submission_unknown','delivery_unknown'): self.job['state']=action
+            elif action=='queued':
+                if self.job['state'] != 'submitting': raise JobError('invalid queued transition')
+                self.job.update(payload,state='queued')
+            elif action == 'submission_unknown':
+                if self.job['state'] not in ('submitting','submission_unknown'): raise JobError('invalid unknown transition')
+                self.job['state']=action
+            elif action == 'delivery_unknown': self.job['state']=action
             elif action=='succeed': self.job.update(payload,state='succeeded')
             elif action=='claim_delivery' and self.job['state']=='succeeded':
                 self.job['state']='delivering'; claimed=True
@@ -97,9 +102,27 @@ class VideoTests(unittest.TestCase):
         self.make().deliver(JOB)
         self.delivery.send.assert_called_once()
         self.assertEqual(self.store.job['state'],'delivery_unknown')
-    def test_gate_unknown_marker_write_failure_prevents_any_post(self):
-        # PR #75 gate: durable submission_unknown must commit BEFORE the POST.
-        # If that write fails, no provider POST happens at all.
+    def test_failed_claim_never_posts(self):
+        original = self.store.action
+        def action(job, op, payload=None):
+            if op == 'claim_submit': raise JobError('claim unavailable')
+            return original(job, op, payload)
+        self.store.action = action
+        with self.assertRaises(JobError): self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+        self.assertEqual(self.store.job['state'], 'reserved')
+
+    def test_invalid_claim_state_never_posts(self):
+        original = self.store.action
+        def action(job, op, payload=None):
+            result = original(job, op, payload)
+            if op == 'claim_submit': result['state'] = 'submission_unknown'
+            return result
+        self.store.action = action
+        with self.assertRaises(JobError): self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+
+    def test_response_persistence_failure_still_blocks_resubmission(self):
         original = self.store.action
         def action(job, op, payload=None):
             if op in ("queued", "submission_unknown"):
@@ -108,10 +131,10 @@ class VideoTests(unittest.TestCase):
         self.store.action = action
         with self.assertRaises(JobError):
             self.worker.submit(JOB, ARGS)
-        self.provider.submit.assert_not_called()
+        self.provider.submit.assert_called_once()
         self.assertEqual(self.store.job["state"], "submitting")
         self.worker.submit(JOB, ARGS)
-        self.provider.submit.assert_not_called()
+        self.provider.submit.assert_called_once()
 
     def test_gate_malformed_response_holds_without_retry(self):
         self.provider.submit.return_value = {"no_request_id": True}
