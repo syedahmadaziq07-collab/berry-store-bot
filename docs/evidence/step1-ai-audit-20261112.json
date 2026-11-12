@@ -1,0 +1,520 @@
+{
+  "milestone": "STEP 1/12",
+  "audit_result": "PASS",
+  "audit_coverage": {
+    "audited": 32,
+    "expected": 32
+  },
+  "checked_at_utc": "2026-11-12T04:09:42.585140+00:00",
+  "source_staging": "b6a4cf8930eca4be1b9b6e74962344f633824291",
+  "main": "e8712cbde28f70eae79adfa761d465226a97f167",
+  "production_application": "80655e2d6a2f4678ece9a115a4b9d3a75b42a435",
+  "staging_deploy": "dep-dbqjjgec6qcc73fhokgg",
+  "production_deploy": "dep-dbq7t5e1egvs73cr9vs0",
+  "tests": {
+    "backend": {
+      "passed": 169,
+      "failed": 0
+    },
+    "telegram_markup_contract": {
+      "passed": 1,
+      "failed": 0
+    },
+    "compile": "PASS",
+    "public_shells": {
+      "passed": 12,
+      "total": 12
+    },
+    "unauthenticated_api_guards": {
+      "passed": 14,
+      "total": 14
+    },
+    "real_image_e2e": "NOT RUN",
+    "real_video_e2e": "NOT RUN"
+  },
+  "provider": {
+    "connector": "fal.ai",
+    "staging_key_name_present": true,
+    "staging_key_value_read": false,
+    "production_key_presence": "NOT VERIFIED",
+    "account_access": "NOT VERIFIED",
+    "usable_balance": "NOT VERIFIED",
+    "net_margin": "NOT VERIFIED",
+    "mapping_revision": 4,
+    "image": {
+      "model": "fal-ai/flux/schnell",
+      "enabled": false,
+      "credits": 4
+    },
+    "video": {
+      "model": "fal-ai/wan/v2.2-a14b/text-to-video",
+      "enabled": false,
+      "credits": 0
+    }
+  },
+  "production_gaps": {
+    "berry_private": false,
+    "checkout_rpc": false,
+    "video_job_rpc": false,
+    "wallet_replay_reference_guard": false
+  },
+  "scope": {
+    "database_writes": 0,
+    "production_deploys": 0,
+    "paid_provider_requests": 0,
+    "provider_spend_myr": 0,
+    "secret_values_read": false,
+    "customer_rows_exported": false
+  },
+  "matrix": [
+    {
+      "id": "I01",
+      "feature": "AI Image \u2014 Telegram menu",
+      "status": "PARTIAL",
+      "evidence": "bot.py show_ai_studio_section(image) shows unavailable/admin-only placeholder.",
+      "missing_work": "Implement a real customer entry and access gates.",
+      "owner": "GPT WORK",
+      "priority": "P1",
+      "related": "PR26/46; b6a4cf8"
+    },
+    {
+      "id": "I02",
+      "feature": "AI Image \u2014 prompt input",
+      "status": "MISSING",
+      "evidence": "No image prompt state/handler connected to provider or MYR job.",
+      "missing_work": "Add validated prompt workflow and receipt precedence.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "bot.py; PR46"
+    },
+    {
+      "id": "I03",
+      "feature": "AI Image \u2014 model/parameters",
+      "status": "PARTIAL",
+      "evidence": "Private rev4 maps FLUX Schnell; no live image settings validation/UI selection.",
+      "missing_work": "Implement parameter-bound approved model/size/output-count offer.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "ai_job_service.py; PR26/38"
+    },
+    {
+      "id": "I04",
+      "feature": "AI Image \u2014 preview/Confirm/Cancel",
+      "status": "MISSING",
+      "evidence": "New durable consent/controller is video-only; no image ticket flow.",
+      "missing_work": "Image consent and expiry/ownership/idempotency tests.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "telegram_video_flow.py; PR45/46"
+    },
+    {
+      "id": "I05",
+      "feature": "AI Image \u2014 provider transport",
+      "status": "PARTIAL",
+      "evidence": "fal_provider.py generic queue POST exists; AIJobService accepts image quote but legacy submit_reserved always raises.",
+      "missing_work": "Connect image-specific schema/real wallet/runtime; real provider acceptance.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR38/40/46"
+    },
+    {
+      "id": "I06",
+      "feature": "AI Image \u2014 mapping/credential metadata",
+      "status": "STAGING VERIFIED",
+      "evidence": "Actual rev4: fal-ai/flux/schnell, Berry Image FLUX Schnell, enabled=false,4 credits. Staging FAL_KEY NAME present=true.",
+      "missing_work": "Validate key/account/model access; replace obsolete price; leave disabled.",
+      "owner": "GPT WORK; PEMILIK account authorization if needed",
+      "priority": "P0",
+      "related": "PR26/48; b6a4cf8"
+    },
+    {
+      "id": "I07",
+      "feature": "AI Image \u2014 pricing/FX/RM1 NET",
+      "status": "MISSING",
+      "evidence": "4 credits = RM0.0032 revenue: below RM1 even at zero cost and below MYR cent granularity. No verified all-in image cost.",
+      "missing_work": "Get actual model price/parameters, FX/fees/tax/operating/failure allocation; enforce price floor.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "berry_credit_pricing.py; ai_wallet_pricing_adapter.py; mapping rev4"
+    },
+    {
+      "id": "I08",
+      "feature": "AI Image \u2014 real MYR debit/refund",
+      "status": "MISSING",
+      "evidence": "Existing public MYR ledger is available, but MyrVideoWorker.JobQuote and RPC accept video only.",
+      "missing_work": "Image job integration to existing ledger, not synthetic balances.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "video_myr_worker.py; PR39/46"
+    },
+    {
+      "id": "I09",
+      "feature": "AI Image \u2014 durable jobs/queue",
+      "status": "PARTIAL",
+      "evidence": "StagingJobWorker supports image with separate synthetic wallets; actual synthetic SQL was tested previously. Not customer MYR integration.",
+      "missing_work": "Production-schema image jobs and ledger-bound lifecycle.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR38/40; staging_job_worker.py"
+    },
+    {
+      "id": "I10",
+      "feature": "AI Image \u2014 polling/restart/timeout",
+      "status": "MOCK ONLY",
+      "evidence": "Image result parsing, GET polling, claim-once and timeout holds covered by synthetic/mock provider worker tests. No live daemon.",
+      "missing_work": "Exercise real runtime/provider restarts and unknown reconciliation after MYR integration.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "tests/test_staging_job_worker.py; PR40/41"
+    },
+    {
+      "id": "I11",
+      "feature": "AI Image \u2014 Telegram delivery",
+      "status": "MISSING",
+      "evidence": "Synthetic worker injects delivery.send; concrete TelegramVideoDelivery rejects image. No customer image delivery adapter wired.",
+      "missing_work": "Implement sendPhoto/document fallback and acknowledgment/unknown handling.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "telegram_video_delivery.py; staging_job_worker.py"
+    },
+    {
+      "id": "I12",
+      "feature": "AI Image \u2014 controlled real E2E",
+      "status": "MISSING",
+      "evidence": "No actual image generation or Telegram image delivery evidence.",
+      "missing_work": "Controlled identity, verified cost/access/balance, real flow within shared cap after gates.",
+      "owner": "GPT WORK; PEMILIK account/identity authorization",
+      "priority": "P0",
+      "related": "docs/soft-launch-progress.md"
+    },
+    {
+      "id": "V01",
+      "feature": "AI Video \u2014 Telegram navigation",
+      "status": "PARTIAL",
+      "evidence": "Admin Gemini/photo preview exists; controlled text-to-video menu code exists only when explicit flow injected. Normal startup injects none.",
+      "missing_work": "Configure reviewed controlled runtime and test identity; customer entry remains locked.",
+      "owner": "GPT WORK; PEMILIK identity authorization",
+      "priority": "P0",
+      "related": "bot.py show_ai_video/build_app; PR45/46"
+    },
+    {
+      "id": "V02",
+      "feature": "AI Video \u2014 prompt validation",
+      "status": "CODE COMPLETE",
+      "evidence": "TelegramVideoFlow validates1\u20131500 chars and16:9/9:16; handler tests cover receipt precedence/private-user authorization.",
+      "missing_work": "Real Telegram input acceptance remains E2E gate.",
+      "owner": "GPT WORK",
+      "priority": "P1",
+      "related": "telegram_video_handlers.py; tests/test_telegram_video_flow.py; PR46"
+    },
+    {
+      "id": "V03",
+      "feature": "AI Video \u2014 model/parameters/photo input",
+      "status": "PARTIAL",
+      "evidence": "Gemini Omni Flash15s720p UI is preview; actual mapping is Wan A14B. Live offer_builder has no concrete account-verified implementation; tests inject fixtures.",
+      "missing_work": "Choose supported model settings from schema, bind cost to exact args; real photo ingestion absent.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "bot.py; telegram_video_flow.py; PR45/46"
+    },
+    {
+      "id": "V04",
+      "feature": "AI Video \u2014 preview/Confirm/Cancel",
+      "status": "STAGING VERIFIED",
+      "evidence": "Durable user-bound tickets and atomic confirm/cancel SQL installed; prior isolated actual SQL and current handler/unit tests PASS. No preview debit; duplicate/cancel/expiry protected.",
+      "missing_work": "Real Telegram callbacks with actual DB/runtime; replay/load E2E.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR45/46; verify_video_consent.sql"
+    },
+    {
+      "id": "V05",
+      "feature": "AI Video \u2014 provider integration",
+      "status": "PARTIAL",
+      "evidence": "fal.ai queue transport implemented; no paid request executed. Name presence is not key validity or model access.",
+      "missing_work": "Authenticated read-only provider check, cost offer, controlled inference only after gates.",
+      "owner": "GPT WORK; PEMILIK provider login if required",
+      "priority": "P0",
+      "related": "fal_provider.py; PR45/46/48"
+    },
+    {
+      "id": "V06",
+      "feature": "AI Video \u2014 mapping/endpoints",
+      "status": "STAGING VERIFIED",
+      "evidence": "Actual rev4: fal-ai/wan/v2.2-a14b/text-to-video, enabled=false,0 credits. POST https://queue.fal.run/fal-ai/wan/v2.2-a14b/text-to-video .",
+      "missing_work": "Verified price/schema/account acceptance; consider announced4Jan2027 model removal before long-term launch.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR26/48; docs/provider-audit-20261112.md"
+    },
+    {
+      "id": "V07",
+      "feature": "AI Video \u2014 pricing/FX/RM1 NET",
+      "status": "PARTIAL",
+      "evidence": "JobQuote enforces supplied all-in-cost arithmetic >=100 cents and RM0.02 debit steps. Fresh cost-binding gate exists; no independently verified provider/FX/fee inputs.",
+      "missing_work": "Authenticated exact-model price/max billable units, FX settlement/fees, tax/operating/refund allocation; prove NET.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR36/45/46/48; video_myr_worker.py"
+    },
+    {
+      "id": "V08",
+      "feature": "AI Video \u2014 atomic MYR debit/refund",
+      "status": "STAGING VERIFIED",
+      "evidence": "Actual existing MYR RPC called in same transaction as job; prior isolated SQL asserts debit/refund once, overspend rollback and ledger reconciliation.",
+      "missing_work": "Actual runtime-to-DB E2E; no customer money tests. Production migration approval after safety.",
+      "owner": "GPT WORK; PEMILIK production approval",
+      "priority": "P0",
+      "related": "PR39/45/46; berry_video_myr_lifecycle.sql"
+    },
+    {
+      "id": "V09",
+      "feature": "AI Video \u2014 jobs/queue/budget/audit",
+      "status": "STAGING VERIFIED",
+      "evidence": "Jobs/tickets/events/budget tables and three video RPCs installed isolated. Read-only count0 jobs/0 tickets/0 grants. Budget <=RM5 and<=5 claims; unknown retains reservation.",
+      "missing_work": "Runtime startup and continuous monitoring; do not seed grant before access/cost approval.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR46; migration20261112033719"
+    },
+    {
+      "id": "V10",
+      "feature": "AI Video \u2014 polling/recovery/unknown",
+      "status": "PARTIAL",
+      "evidence": "Bound GET polling, terminal-error refund and recovery hooks coded/tested with mocked provider; no loop active. Reconciliation RPC absent. WIP candidate not tested/applied/deployed.",
+      "missing_work": "Finish audited cases, authoritative correlated receipts, idempotent operator resolution and race/failure tests. Audit fairness/backoff for >20 blocked reserved jobs and thread shutdown; canceling an asyncio task does not prove an in-flight thread stopped.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR40/41/46; WIP d215ebea"
+    },
+    {
+      "id": "V11",
+      "feature": "AI Video \u2014 Telegram delivery",
+      "status": "MOCK ONLY",
+      "evidence": "sendVideo adapter validates recipient/ack, trusted URLs and redacted errors; claim-once/unknown tests PASS. No real video sent.",
+      "missing_work": "Real Telegram size/codec/URL delivery, timeout/shutdown/restart and receipt reconciliation.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "telegram_video_delivery.py; PR45/46"
+    },
+    {
+      "id": "V12",
+      "feature": "AI Video \u2014 controlled real E2E",
+      "status": "MISSING",
+      "evidence": "No Telegram\u2192provider\u2192video\u2192wallet reconciliation run.169 regression tests are not live E2E.",
+      "missing_work": "Controlled bot identity, authorized account/existing balance and known cost, then bounded test.",
+      "owner": "GPT WORK; PEMILIK authorization",
+      "priority": "P0",
+      "related": "PR45 draft; docs/soft-launch-progress.md"
+    },
+    {
+      "id": "S01",
+      "feature": "Shared \u2014 MYR/Berry Credits display",
+      "status": "PARTIAL",
+      "evidence": "RM1=1250; RM5=6250; new video quote preserves fractional credits. Legacy My Wallet section still int-truncates odd-cent balances.",
+      "missing_work": "Unify exact balance display; keep MYR accounting, no synthetic substitution.",
+      "owner": "GPT WORK",
+      "priority": "P1",
+      "related": "bot.py show_ai_studio_section(wallet); PR36/46"
+    },
+    {
+      "id": "S02",
+      "feature": "Shared \u2014 top-up/QR/receipt/approval",
+      "status": "PARTIAL",
+      "evidence": "Source reuses send_payment_page Browse Shop QR; isolated checkout/approval/credit-once contracts previously PASS. Main PR43 not deployed; production checkout RPC absent. Two receipts unverified. BERRY_TOPUP_CHECKOUT_ENABLED defaults OFF; actual production flag value not read/verified.",
+      "missing_work": "Complete controlled real payment journey separately; do not touch disputed orders; reconcile bank evidence.",
+      "owner": "GPT WORK; PEMILIK bank evidence",
+      "priority": "P0",
+      "related": "PR39/43/44"
+    },
+    {
+      "id": "S03",
+      "feature": "Shared \u2014 tables/migrations",
+      "status": "STAGING VERIFIED",
+      "evidence": "Read-only catalog/migration history confirms isolated20261112033719 consent migration and required tables. Production berry_private/video_job/checkout absent.",
+      "missing_work": "Review production-compatible migration and backup/rollback; explicit approval before applying.",
+      "owner": "GPT WORK; PEMILIK production approval",
+      "priority": "P0",
+      "related": "PR44/46; migration history"
+    },
+    {
+      "id": "S04",
+      "feature": "Shared \u2014 RPC/RLS/idempotency security",
+      "status": "PARTIAL",
+      "evidence": "8 scoped staging tables RLS=true/no anon/auth SELECT;6 scoped RPCs no anon/auth EXECUTE. Production wallet RLS/ACL and empty search_path verified; deployed wallet replay guard checks user/amount/kind but not reference.",
+      "missing_work": "Patch production reference binding only after review/approval; broader security signoff and real concurrency evidence.",
+      "owner": "GPT WORK; PEMILIK risky release approval",
+      "priority": "P0",
+      "related": "PR39/44/46; read-only catalogs/function-line check"
+    },
+    {
+      "id": "S05",
+      "feature": "Shared \u2014 dashboard/auth/AI monitoring",
+      "status": "PARTIAL",
+      "evidence": "Unit auth/session guards and public12 shells/14 unauthorized APIs PASS. Provider test/mutation routes return501; health reports polling_disabled and ai not_verified. No authenticated browser E2E or full AI job monitoring.",
+      "missing_work": "Authorized dashboard session, actual backend reads/monitoring, persistent audit/session production architecture.",
+      "owner": "GPT WORK; PEMILIK login authorization",
+      "priority": "P1",
+      "related": "admin_app.py; PR25/46/48"
+    },
+    {
+      "id": "S06",
+      "feature": "Shared \u2014 staging deploy/runtime",
+      "status": "STAGING VERIFIED",
+      "evidence": "Render b6a4cf8 LIVE dep-dbqjjgec6qcc73fhokgg;169 backend tests/5 CI PASS; public12/14 check refreshed. FAL_KEY name present=true at04:00:27Z. Admin image never starts bot polling.",
+      "missing_work": "Controlled Telegram worker startup/health/shutdown, not another public-shell claim.",
+      "owner": "GPT WORK",
+      "priority": "P0",
+      "related": "PR48; Render metadata/startup boolean"
+    },
+    {
+      "id": "S07",
+      "feature": "Shared \u2014 production version/alignment",
+      "status": "PARTIAL",
+      "evidence": "Render production80655e2 LIVE dep-dbq7t5e1egvs73cr9vs0; main e8712cb includes PR43 ahead of deployed app. PR45 draft and new lifecycle not production. Production FAL_KEY presence not safely verified. Deployed source still drops pending updates on restart and prints raw early HTTP exceptions (token-containing URL risk); reviewed staging fix is not production.",
+      "missing_work": "Approved release after migration/rotation/backup/E2E; no production deploy during audit. Release queued-update preservation/redacted startup fix only with explicit approval.",
+      "owner": "GPT WORK; PEMILIK deployment approval",
+      "priority": "P0",
+      "related": "PR26/43/44/45; Render metadata"
+    },
+    {
+      "id": "S08",
+      "feature": "Shared \u2014 secrets/backup/rollback/release",
+      "status": "PARTIAL",
+      "evidence": "No secrets read/disclosed. Exposed-key rotation not verified; recoverable production backup/restore and real rollback unverified. Staging advisors only24 INFO RLS/no-policy notices, not security signoff.",
+      "missing_work": "Verify backup/PITR and restore drill, coordinated rotation/revocation, monitoring/rollback and final owner GO.",
+      "owner": "GPT WORK; PEMILIK account/production authorization",
+      "priority": "P0",
+      "related": "PR44/45; production-ai-video-launch.md; advisor metadata"
+    }
+  ],
+  "read_only_metadata_checks": [
+    {
+      "name": "staging_acl",
+      "rows": [
+        {
+          "schema": "berry_private",
+          "table_name": "ai_video_job_events",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "berry_private",
+          "table_name": "ai_video_jobs",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "berry_private",
+          "table_name": "ai_video_test_budgets",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "berry_private",
+          "table_name": "ai_video_tickets",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "public",
+          "table_name": "ai_models",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "public",
+          "table_name": "ai_tools",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "public",
+          "table_name": "ai_wallet_transactions",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        },
+        {
+          "schema": "public",
+          "table_name": "ai_wallets",
+          "rls": true,
+          "anon_select": false,
+          "authenticated_select": false
+        }
+      ]
+    },
+    {
+      "name": "staging_rpc_acl",
+      "rows": [
+        {
+          "proname": "ai_wallet_apply_transaction",
+          "anon_execute": false,
+          "authenticated_execute": false
+        },
+        {
+          "proname": "berry_approve_topup_order",
+          "anon_execute": false,
+          "authenticated_execute": false
+        },
+        {
+          "proname": "berry_create_topup_order",
+          "anon_execute": false,
+          "authenticated_execute": false
+        },
+        {
+          "proname": "berry_video_checkout",
+          "anon_execute": false,
+          "authenticated_execute": false
+        },
+        {
+          "proname": "berry_video_job",
+          "anon_execute": false,
+          "authenticated_execute": false
+        },
+        {
+          "proname": "berry_video_recoverable_jobs",
+          "anon_execute": false,
+          "authenticated_execute": false
+        }
+      ]
+    },
+    {
+      "name": "production_rpc_presence",
+      "rows": [
+        {
+          "private_schema": false,
+          "checkout_rpc": false,
+          "video_job_rpc": false
+        }
+      ]
+    }
+  ],
+  "staging_key_presence_evidence": {
+    "timestamp_utc": "2026-11-12T04:00:27.973561928Z",
+    "message": "BERRY_PROVIDER_CONFIG fal_key_present=true",
+    "source": "Render startup srv-dbq2g9mk1f9s73de0u50"
+  },
+  "staging_security_advisors": {
+    "WARN": 0,
+    "ERROR": 0,
+    "INFO_rls_enabled_no_policy": 24,
+    "scope": "staging service-only tables; not production signoff"
+  },
+  "flag_audit": {
+    "private_mapping_staging_image_enabled": false,
+    "private_mapping_staging_video_enabled": false,
+    "normal_bot_controller": "none (source default)",
+    "worker_allow_external_default": false,
+    "flow_enabled_default": false,
+    "topup_checkout_default": false,
+    "production_topup_flag_live_value": "NOT VERIFIED",
+    "admin_writes_live_values": "NOT VERIFIED without authenticated session"
+  }
+}

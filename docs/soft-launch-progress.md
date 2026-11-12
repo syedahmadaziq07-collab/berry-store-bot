@@ -143,3 +143,25 @@ only environment names are accessed, never secret values. IN PROGRESS: CI/stagin
 actual Render FAL_KEY present/absent observation. No public metadata API or production change.
 BLOCKED: authenticated provider access/balance and exact cost/FX/fee bounds. No paid call.
 NEXT: audited unknown-outcome reconciliation; controlled E2E stays gated. LAUNCH NO-GO.
+
+## STEP 1/12 — complete Image/Video audit, 12 November MYT
+
+PASS audit coverage32/32, NOT launch acceptance. Complete matrix with status/evidence/missing work,
+GPT WORK/PEMILIK owner, P0/P1/P2 priority and PR/commit: docs/step1-ai-image-video-audit.md .
+Structured evidence: docs/evidence/step1-ai-audit-20261112.json .169 backend tests +1 PTB contract
+and compile PASS; fresh12 public shells/14 auth guards PASS. STEP1 DB checks were read-only.
+
+Image: placeholder menu; missing prompt/consent/MYR job/delivery, synthetic/mock worker not real
+acceptance. Actual FLUX Schnell mapping disabled4 credits (invalid for RM1 target/cent precision).
+Video: controlled consent and isolated MYR contract exist; no runtime builder enabled or real E2E.
+Wan A14B mapping disabled0 credits, not Gemini preview or Wan5B fixture. Live Render staging
+FAL_KEY NAME present=true, without value access. Account/key validity/balance/max cost still unknown.
+New production metadata gap: deployed wallet replay checks identity/amount/kind, not reference;
+production private schema/checkout/video RPC absent. No production write or customer record touched.
+Unknown reconciliation candidate saved WIP d215ebea, NOT validated/applied/deployed or counted PASS.
+Production backup/rotation/real rollback and per-tool real E2E remain missing. Customer NO-GO.
+Next milestone STEP2/12: close P0 reconciliation/runtime/provider-cost gaps; Image remains separate.
+
+STEP1 follow-up source audit: production80655e2 still drops pending updates and has raw early HTTP
+exception logging; staging fix is not deployed production. Actual production topup flag value is
+unverified, not assumedOFF. Recovery fairness/thread shutdown are open verification gaps.
