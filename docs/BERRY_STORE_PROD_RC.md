@@ -100,6 +100,37 @@ auto-deploy OFF. Persekitaran: hanya nama variable disemak — nilai TIDAK
 dibaca/dicetak. Risiko khas pengeluaran: (1) kelakuan poll pertama selepas
 redeploy akan memproses sebarang update beratur (dikehendaki); (2) tiada.
 
+## PR #78 @ 00f5674+ — Penghalang harga STEP 2 SELESAI (jawapan Fasa B.1–B.3)
+
+**Skema API harga fal.ai DISELESAIKAN** daripada dokumentasi rasmi
+(https://fal.ai/docs/documentation/model-apis/pricing.md):
+- Endpoint: `GET https://api.fal.ai/v1/models/pricing?endpoint_id=<id>`
+- Auth: `Authorization: Key $FAL_KEY`
+- Respons: `{"prices":[{"endpoint_id","unit_price","unit","currency"}],
+  "next_cursor","has_more"}` — unit: image/megapixel/second/video/request;
+  mata wang USD; ralat pelayan & masa giliran percuma.
+
+**Pelaksanaan baru:** `fal_pricing.py` + `tests/test_fal_pricing.py` (11/11):
+- `VerifiedFalPricing.exact_price()` — menerima harga sahaja dari dokumen
+  sah (endpoint_id padanan tepat, unit_price nombor positif, unit dikenali,
+  currency USD). Model tiada, bukan-200, redirect, JSON cacat, harga bukan
+  nombor → `PricingUnavailable` (TIDAK PERMENJADI kos andaian).
+- `cost_bound_myr_cents()` — sempadan kos MYR integer-sen (siling) daripada
+  harga USD × kadar FX pelayan × bilangan unit; FX tidak disimpulkan.
+- `verified_quote_credits()` — rantai penuh STEP 2: kos all-in disahkan →
+  polisi `berry_credit_pricing` (ronde atas kredit penuh) → sepadan unit
+  25-kredit (RM0.02) RPC dompet → **marjin minimum RM1 diuatkuasakan**;
+  marjin tak cukup → tolak.
+- `berry_credit_pricing.py` dibawa ke main (polisi tulen; tiada efek runtime).
+- CI: ujian harga ditambah pada workflow PR #78.
+- Verifikasi baca-sahaja sebenar kekal pintu pemilik: probe sedia laksana
+  apabila kunci diberi; tiada panggilan dibuat dalam keluaran ini.
+
+Status pintu STEP 2 selepas ini: harga-skema **SELESAI (kod+ujian)**;
+entitlement & E2E sebenar kekal TERSEKAT kelulusan pemilik (perlu bacaan
+akaun disahkan & E2E terkawal). Marjin RM1: MEKANISME SELESAI; nilai
+sebenar bergantung pada bacaan harga sebenar + kadar FX pelayan.
+
 ## Remaining blockers (unchanged)
 - Real AI generation: requires STEP 2 operational gates (pricing, entitlement,
   margin, E2E) and owner approval — all features stay disabled.

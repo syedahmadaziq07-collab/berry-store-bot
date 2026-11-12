@@ -44,3 +44,5 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_telegram_image_flow.py -v
           python -m unittest discover -s tests -p test_telegram_image_delivery.py -v
+      - name: Verified fal pricing adapter
+        run: python -m unittest discover -s tests -p test_fal_pricing.py -v
