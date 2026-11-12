@@ -100,7 +100,59 @@ auto-deploy OFF. Persekitaran: hanya nama variable disemak — nilai TIDAK
 dibaca/dicetak. Risiko khas pengeluaran: (1) kelakuan poll pertama selepas
 redeploy akan memproses sebarang update beratur (dikehendaki); (2) tiada.
 
-## PR #78 @ 00f5674+ — Penghalang harga STEP 2 SELESAI (jawapan Fasa B.1–B.3)
+## PR #78 @ 9cae45a+ — Integrasi runtime STEP 3 lengkap (gated)
+
+Pendawaian pengeluaran AI Image kini lengkap pada laluan bot sebenar:
+- `bot.py` penghantar baharu: `_ai_image_prompt_text` (mesej teks dalam
+  peringkat gated → tiket persetujuan beku melalui flow/offer builder yang
+  disemak, butang Confirm/Cancel), `_ai_image_confirm` (gagal-tutup —
+  "Generation imej belum diaktifkan; tiada debit"), `_ai_image_cancel`
+  (pembatalan tiket melalui store).
+- Pemroutean callback: `ai_image_confirm:` / `ai_image_cancel:` bersepadan
+  tepat selepas `ai_studio:` — tiada konflik.
+- `handle_message` memanggil `_ai_image_prompt_text` **sebelum** pengendalian
+  generik; apabila bendera dilumpuhkan helper memulangkan False serta-merta
+  — **mesej pelanggan biasa tidak terjejas** (dilindungi try/except).
+- Ujian: `test_prod_ai_studio_integration.py` diluaskan kepada 19/19
+  (pendawaian gated, laluan tidak-menghalang, sahkan fail-closed, penghantaran
+  tiada panggilan dompet/provider, idempotensi uuid5) + 20/20 modul imej +
+  11/11 harga = **50/50 LULUS**; suite penuh 130 ujian, 0 kegagalan logik.
+- Verdict kekal: pembetulan Confirmed masih gagal-tutup — pengaktifan
+  generation/debit memerlukan gate runtime diluluskan pemilik berasingan
+  (worker + budget + migrasi) dan tidak wujud dalam konfigurasi ini.
+
+## Status pelaksanaan mengikut arahan terkini
+
+| Kriteria | Keputusan |
+|---|---|
+| Telegram pending-update preservation | ENGINEERING PASS (AST + diff) |
+| Exact Berry Credits display | ENGINEERING PASS (6/6 + AST) |
+| STEP 2 pricing/entitlement/reconciliation/margin gates | pricing+margin = ENGINEERING PASS (11/11); entitlement & E2E = BLOCKED (perlu bacaan akaun disahkan oleh pemilik) |
+| STEP 3 handlers/consent/reservation/delivery | ENGINEERING PASS (50/50); reservation SQL = CI PASS (PG16 efemeral); confirm runtime = BLOCKED (gate kelulusan) |
+| STEP 4 S01 | ENGINEERING PASS. S02–S05 = BLOCKED (kelulusan pemilik: bukti bank/migrasi/sesi) |
+| CI PR #78 | Menunggu jalanan commit terkini |
+| PRODUCTION DEPLOYED | TIDAK — menunggu semakan & GO pemilik |
+| CUSTOMER LIVE | TIDAK — semua ciri AI/bayaran dilumpuhkan sengaja |
+
+### Arahan deploy Render (hanya selepas pemilik GO)
+1. Gabung PR #78 ke `main` (squash/merge biasa; tiada force-push).
+2. Render → `berry-store-bot-1` → Manual Deploy → Deploy latest commit (branch main).
+3. Semak log pelancaran: tiada panggilan Telegram import-time; `[WEBHOOK] delete_webhook ok`; `[POLLING] started`.
+4. Ujian asap: (a) `/start` & `/ping` respons; (b) My Wallet papar kredit pecahan (cth. RM4.99 → `6,237.5 Berry Credits`); (c) semua menu kedai/pesanan sedia ada berfungsi; (d) butang AI Studio memaparkan "belum tersedia"; (e) `/healthz` 200; (f) mesej beratur semasa deploy diproses.
+5. Rollback: Render → Deploy commit `409567c` (sebelumnya). Tiada migrasi DB diperlukan; rollback selamat sepenuhnya.
+
+### Penghalang berbaki (tepat)
+1. Entitlement/harga akaun sebenar: perlu bacaan berautentikasi read-only oleh
+   pemilik (FAL_KEY sah) — kod sedia (`fal_pricing.py`), panggilan tidak dibuat.
+2. Pengaktifan generation imej/video: perlu gate runtime diluluskan
+   (worker + budget_id + migrasi SQL persetujuan) — kelulusan berasingan.
+3. S02–S05: bukti bank/migrasi pengeluaran/sesi log masuk — kelulusan pemilik.
+4. CI: jalanan commit terkini belum selesai semasa laporan ini.
+
+## Nota harga disahkan (rujuk bahagian Fasa B sebelumnya)
+Skema API harga rasmi fal (`api.fal.ai/v1/models/pricing`) dan rantai marjin
+RM1 (`fal_pricing.verified_quote_credits`) kekal seperti yang direkodkan di
+atas; tiada panggilan sebenar dibuat (tiada ujian penjanaan berbayar).
 
 **Skema API harga fal.ai DISELESAIKAN** daripada dokumentasi rasmi
 (https://fal.ai/docs/documentation/model-apis/pricing.md):

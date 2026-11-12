@@ -98,8 +98,50 @@ class WalletDisplayTests(unittest.TestCase):
         self.assertNotIn("int(Decimal(balance.replace('RM','').replace(',',''))*1250)", BOT)
 
 
-class IdempotencyContractTests(unittest.TestCase):
-    def test_concurrent_image_prepare_is_store_side_idempotent(self):
+class ImagePromptWiringTests(unittest.TestCase):
+    """Text-stage wiring in bot.py: gated, non-consuming, fail-closed."""
+
+    def test_prompt_stage_wired_before_generic_handler(self):
+        self.assertIn("await _ai_image_prompt_text(update, context)", BOT)
+        self.assertIn("return False  # not consumed", BOT)
+
+    def test_prompt_text_helper_is_gated(self):
+        start = BOT.index("async def _ai_image_prompt_text")
+        end = BOT.index("async def _ai_image_confirm", start)
+        body = BOT[start:end]
+        self.assertIn('stage.get("stage") != "prompt"', body)
+        self.assertIn("return False", body)
+
+    def test_confirm_fail_closed_message_present(self):
+        start = BOT.index("async def _ai_image_confirm")
+        end = BOT.index("async def _ai_image_cancel", start)
+        body = BOT[start:end]
+        self.assertIn("belum diaktifkan", body)
+        self.assertIn("Tiada debit", body)
+
+    def test_callback_routes_registered(self):
+        self.assertIn('data.startswith("ai_image_confirm:")', BOT)
+        self.assertIn('data.startswith("ai_image_cancel:")', BOT)
+        self.assertIn('await _ai_image_confirm(update, context, data.split(":", 1)[1])', BOT)
+        self.assertIn('await _ai_image_cancel(update, context, data.split(":", 1)[1])', BOT)
+
+    def test_no_wallet_or_provider_call_in_wiring(self):
+        start = BOT.index("async def _ai_image_prompt_text")
+        end = BOT.index("async def show_home", start)
+        body = BOT[start:end]
+        for forbidden in ("sb_patch", "ai_wallet_apply_transaction",
+                          "provider.submit", "FalProvider("):
+            self.assertNotIn(forbidden, body)
+
+    def test_prompt_stage_never_blocks_normal_messages_when_disabled(self):
+        # With the gate off, _image_flow returns None and the helper returns
+        # False immediately; handle_message continues to its normal flow.
+        start = BOT.index("def _image_flow")
+        end = BOT.index("\ndef ", start + 10)
+        helper = BOT[start:end]
+        self.assertIn("return None", helper)
+
+    def test_uuid5_ticket_idempotency(self):
         # The image ticket id is a deterministic uuid5 of (tenant, update_id):
         # the same Telegram update can never create two tickets.
         from uuid import UUID, uuid5

@@ -2953,6 +2953,78 @@ async def _ai_image_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["ai_image_flow"] = {"stage": "prompt"}
 
 
+async def _ai_image_prompt_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Text message inside the (gated) image prompt stage: builds the frozen
+    consent ticket via the reviewed offer builder. Never debits; the ticket
+    is preview-only until a separately-approved confirm wiring exists."""
+    flow = _image_flow(context)
+    stage = (context.user_data or {}).get("ai_image_flow")
+    if flow is None or stage is None or stage.get("stage") != "prompt":
+        return False  # not consumed; other handlers may process the text
+    user = update.effective_user
+    if user is None or user.id != flow.test_user_id:
+        return False
+    prompt = (update.message.text or "").strip() if update.message else ""
+    context.user_data.pop("ai_image_flow", None)
+    try:
+        ticket = flow.prepare(user.id, update.update_id, prompt)
+    except Exception:
+        await update.message.reply_text(
+            "⚠️ Prompt tidak sah atau quote telah luput. Tiada debit dibuat.")
+        return True
+    payload = ticket.get("payload", ticket)
+    q = payload.get("quote", {})
+    credits = q.get("credits")
+    debit = q.get("debit_cents")
+    args = payload.get("arguments", {})
+    ident = str(ticket.get("ticket_id", ""))
+    keyboard = [
+        [("✅ Confirm", f"ai_image_confirm:{ident}"),
+         ("❌ Cancel", f"ai_image_cancel:{ident}")],
+    ]
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(text, callback_data=data)
+              for text, data in row] for row in keyboard])
+    except Exception:
+        markup = None
+    await update.message.reply_text(
+        "🖼️ PENGESAHAN IMEJ\n━━━━━━━━━━━━━━━━━━\n\n"
+        f"Prompt: {prompt[:200]}\n"
+        f"Tetapan: {args.get('aspect_ratio', '1:1')} · {args.get('num_images', 1)} imej\n"
+        f"Harga: {credits:,} Berry Credits (RM{(debit or 0) / 100:.2f})\n\n"
+        "🔒 Preview sahaja — Confirm belum aktif; tiada debit dibuat. "
+        "Quote mempunyai tempoh luput.",
+        reply_markup=markup,
+    )
+    return True
+
+
+async def _ai_image_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE, ident: str):
+    """Confirm is intentionally fail-closed: generation/wallet wiring needs
+    a separately approved runtime gate that production does not supply."""
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🔒 Generation imej belum diaktifkan. Tiada debit atau "
+        "penjanaan dibuat. Quote luput secara automatik.",
+    )
+
+
+async def _ai_image_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE, ident: str):
+    flow = _image_flow(context)
+    user = update.effective_user
+    if flow is not None and user is not None:
+        try:
+            flow.cancel(user.id, ident)
+        except Exception:
+            pass
+    await _safe_edit_or_send(
+        update.callback_query,
+        "❌ Dibatalkan. Tiada debit dibuat.",
+    )
+
+
 async def _wallet_balance(user_id: int) -> str | None:
     """Return verified formatted MYR balance, or None if wallet unavailable."""
     if not _wallet_enabled():
@@ -3820,6 +3892,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
         elif data == "ai_image_prompt":
             await _ai_image_prompt(update, context)
+        elif data.startswith("ai_image_confirm:"):
+            await _ai_image_confirm(update, context, data.split(":", 1)[1])
+        elif data.startswith("ai_image_cancel:"):
+            await _ai_image_cancel(update, context, data.split(":", 1)[1])
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
         elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
         elif data.startswith("ai_video_unavailable:"):
@@ -4069,6 +4145,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[MESSAGE] text={text!r}")
     log.info(f"[MESSAGE] user_id={user_id}")
     log.info(f"[MESSAGE] chat_id={update.effective_chat.id}")
+
+    # ── Gated AI Image prompt stage (disabled unless explicitly enabled) ──────
+    # Runs BEFORE generic handling so a controlled prompt is captured; the
+    # helper returns False (not consumed) whenever the gate is off, so
+    # ordinary customer messages are never affected.
+    try:
+        if await _ai_image_prompt_text(update, context):
+            return
+    except Exception:
+        log.warning("[AI_IMAGE] prompt stage handler failed; continuing normal flow")
 
     # ── Reply keyboard: "🏠 Home" button ──────────────────────────────────────
     if text == "🏠 Home":
