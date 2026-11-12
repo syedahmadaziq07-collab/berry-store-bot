@@ -27,6 +27,45 @@ def minimum_sale_cents(provider_usd_bound, fx_myr_per_usd_bound, fixed_myr_bound
     except (InvalidOperation,ValueError,TypeError,OverflowError):
         raise ValueError('Verified finite cost bounds required') from None
 
+class PricingContractError(ValueError):
+    """Constant diagnostic codes only; never include provider data or exceptions."""
+
+
+def parse_pricing(payload, model):
+    """Validate the published pricing envelope before reading a bounded price row.
+
+    A pricing read is not a maximum inference cost or model-access proof.
+    Unrecognized billing units remain blocked rather than guessed.
+    """
+    if not isinstance(payload, dict):
+        raise PricingContractError('envelope_not_object')
+    if 'prices' not in payload:
+        raise PricingContractError('prices_missing')
+    rows = payload['prices']
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise PricingContractError('prices_not_object_array')
+    matches = [row for row in rows if row.get('endpoint_id') == model]
+    if not matches:
+        raise PricingContractError('endpoint_not_found')
+    if len(matches) != 1:
+        raise PricingContractError('endpoint_ambiguous')
+    row = matches[0]
+    value = row.get('unit_price')
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        raise PricingContractError('price_type_invalid')
+    try:
+        price = Decimal(str(value))
+    except InvalidOperation:
+        raise PricingContractError('price_value_invalid') from None
+    if not price.is_finite() or price < 0 or price > 100000:
+        raise PricingContractError('price_value_invalid')
+    if row.get('currency') != 'USD':
+        raise PricingContractError('currency_unsupported')
+    if row.get('unit') not in ('image', 'megapixel', 'second', 'video', 'request', 'video_second'):
+        raise PricingContractError('billing_unit_unsupported')
+    return {'status': 'pricing_read_verified', 'unit_price': str(price),
+            'unit': row['unit'], 'currency': 'USD'}
+
 def pricing_probe(key,client):
     # Environment secrets can acquire a trailing newline on secure paste. Normalize only
     # outer whitespace; embedded whitespace/control characters must fail before HTTP.
@@ -41,13 +80,14 @@ def pricing_probe(key,client):
                 headers={'Authorization':'Key '+key},follow_redirects=False,timeout=10)
             item['http_status']=response.status_code
             if response.status_code==200:
-                rows=response.json().get('prices',[])
-                rows=[r for r in rows if r.get('endpoint_id')==model]
-                if len(rows)!=1:raise ValueError()
-                row=rows[0];price=Decimal(str(row['unit_price']))
-                if not price.is_finite() or price<0 or price>100000 or row.get('currency')!='USD' or row.get('unit') not in ('image','megapixel','second','video','request','video_second'):
-                    raise ValueError()
-                item.update(status='pricing_read_verified',unit_price=str(price),unit=row['unit'],currency='USD')
+                try:
+                    payload = response.json()
+                except (ValueError, UnicodeError):
+                    raise PricingContractError('body_not_json') from None
+                item.update(parse_pricing(payload, model))
+        except PricingContractError as exc:
+            item['error_kind'] = 'invalid_response'
+            item['validation_error'] = str(exc)  # Internal constant; never response content.
         except httpx.TimeoutException:
             item['error_kind']='timeout'
         except httpx.LocalProtocolError:

@@ -220,3 +220,15 @@ an intact key from the authorized fal account. Never send key in chat. See exact
 in docs/step2-provider-runtime-readiness.md. Account access/balance/pricing/FX/fees/RM1 NET unverified.
 NEXT: after secure correction rerun GET-only readiness; separately continue disabled controlled
 runtime/image integrations. Do not duplicate PR56/deploy; do not enable customer flows. NO-GO.
+
+## 2026-11-12 STEP2 pricing response diagnosis
+PASS: owner-updated staging deploy dep-dbqprc2jnfac739dpha0 is LIVE on5053a972.
+Authenticated pricing GET now HTTP200 for all3 models; old credential-format blocker resolved.
+FAIL: all3 responses still invalid_response. Official pricing schema matches endpoint/envelope;
+provider-specific billing units are possible, but actual failure field is not yet established.
+IN PROGRESS: explicit fail-closed schema validation with constant-only failure diagnostics.
+190 regression tests PASS, including malformed/ambiguous rows, non-JSON200 and redaction.
+No raw responses, secret values, inference, database changes or generation activation.
+Business database_match=false remains unchanged; isolated mapping_match=true scopes GET only.
+BLOCKED: maximum billable units, account inference access/balance, FX/fees and RM1 NET still unverified.
+Next: staging CI/review/deploy, inspect sanitized validation reason, then fix confirmed contract mismatch.
