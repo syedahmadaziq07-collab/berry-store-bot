@@ -1,0 +1,36 @@
+name: STEP 2 full function ephemeral clone
+on:
+  pull_request:
+    paths:
+      - 'tests/test_step2_full_function_clone.py'
+      - 'tests/fixtures/step2_*.sql'
+      - '.github/workflows/step2-full-function-clone.yml'
+      - 'docs/sql/step2_video_unknown_recovery_staging_*.sql'
+  workflow_dispatch:
+jobs:
+  clone:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: step2_local
+          POSTGRES_DB: step2_clone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d step2_clone"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'psycopg[binary]>=3.1,<4'
+      - name: Compile staging function snapshot and run isolated integration tests
+        env:
+          BERRY_STEP2_EPHEMERAL_CLONE: '1'
+        run: python -m unittest discover -s tests -p test_step2_full_function_clone.py -v
