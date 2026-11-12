@@ -111,5 +111,62 @@ class IdempotencyContractTests(unittest.TestCase):
         self.assertNotEqual(a, c)
 
 
+class VideoFlowWiringTests(unittest.TestCase):
+    """Production wiring of the STEP 2 video consent controller (gated)."""
+
+    def test_video_flow_helper_gated_by_env(self):
+        self.assertIn('_get_env("BERRY_VIDEO_STUDIO_ENABLED") != "true"', BOT)
+
+    def test_install_video_flow_requires_flag_and_test_user(self):
+        start = BOT.index("def _install_video_flow")
+        end = BOT.index("def build_app", start)
+        body = BOT[start:end]
+        self.assertIn("BERRY_VIDEO_STUDIO_ENABLED", body)
+        self.assertIn("BERRY_VIDEO_STUDIO_TEST_USER_ID", body)
+        # inert worker at install time: no external actions can occur
+        self.assertIn("allow_external=False", body)
+        self.assertIn("budget_id=None", body)
+
+    def test_install_called_in_build_app(self):
+        self.assertIn("_install_video_flow(app)", BOT)
+
+    def test_video_confirm_cancel_routes_registered(self):
+        self.assertIn('data.startswith("ai_video_confirm:")', BOT)
+        self.assertIn('data.startswith("ai_video_cancel:")', BOT)
+
+    def test_video_routes_use_gated_flow(self):
+        self.assertIn("flow = _video_flow(context)", BOT)
+        self.assertIn("AI Video belum diaktifkan", BOT)
+
+    def test_disabled_video_flow_never_reaches_handlers(self):
+        # _video_flow returns None without the literal env flag, so the
+        # callback router answers "not activated" without importing handlers.
+        start = BOT.index("def _video_flow")
+        end = BOT.index("\ndef ", start + 10)
+        helper = BOT[start:end]
+        self.assertIn("return None", helper)
+
+    def test_install_failure_never_breaks_startup(self):
+        call = BOT.index("_install_video_flow(app)", BOT.index("def build_app"))
+        window = BOT[call - 100:call + 100]
+        self.assertIn("try:", window)
+        self.assertIn("except Exception:", window)
+
+    def test_image_prompt_text_handler_wired(self):
+        self.assertIn("await _ai_image_prompt_text(update, context)", BOT)
+
+    def test_image_confirm_routes_registered(self):
+        self.assertIn('data.startswith("ai_image_confirm:")', BOT)
+        self.assertIn('data.startswith("ai_image_cancel:")', BOT)
+
+    def test_video_wiring_makes_no_provider_or_wallet_calls(self):
+        start = BOT.index("def _video_flow")
+        end = BOT.index("def main()", start)
+        body = BOT[start:end]
+        for forbidden in ("FalProvider(", "provider.submit", "ai_wallet_apply",
+                          "sb_patch", "sb_post"):
+            self.assertNotIn(forbidden, body)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2953,6 +2953,68 @@ async def _ai_image_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["ai_image_flow"] = {"stage": "prompt"}
 
 
+async def _ai_image_prompt_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Text inside the (gated) image prompt stage: frozen consent preview.
+
+    Never debits: the Confirm wiring is separately gated and remains
+    fail-closed. Returns False (not consumed) whenever the gate is off so
+    ordinary customer messages are never affected.
+    """
+    flow = _image_flow(context)
+    stage = (context.user_data or {}).get("ai_image_flow")
+    if flow is None or stage is None or stage.get("stage") != "prompt":
+        return False
+    user = update.effective_user
+    if user is None or user.id != flow.test_user_id:
+        return False
+    prompt = (update.message.text or "").strip() if update.message else ""
+    context.user_data.pop("ai_image_flow", None)
+    try:
+        ticket = flow.prepare(user.id, update.update_id, prompt)
+    except Exception:
+        await update.message.reply_text(
+            "⚠️ Prompt tidak sah atau quote telah luput. Tiada debit dibuat.")
+        return True
+    payload = ticket.get("payload", ticket)
+    q = payload.get("quote", {})
+    args = payload.get("arguments", {})
+    ident = str(ticket.get("ticket_id", ""))
+    await update.message.reply_text(
+        "🖼️ PENGESAHAN IMEJ\n━━━━━━━━━━━━━━━━━━\n\n"
+        f"Prompt: {prompt[:200]}\n"
+        f"Tetapan: {args.get('aspect_ratio', '1:1')} · {args.get('num_images', 1)} imej\n"
+        f"Harga: {q.get('credits', 0):,} Berry Credits "
+        f"(RM{(q.get('debit_cents') or 0) / 100:.2f})\n\n"
+        "🔒 Preview sahaja — generation belum aktif; tiada debit dibuat. "
+        "Quote mempunyai tempoh luput.",
+    )
+    return True
+
+
+async def _ai_image_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE, ident: str):
+    """Confirm is intentionally fail-closed until a separately approved
+    runtime gate (worker + budget + migration) exists."""
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🔒 Generation imej belum diaktifkan. Tiada debit atau "
+        "penjanaan dibuat. Quote luput secara automatik.",
+    )
+
+
+async def _ai_image_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE, ident: str):
+    flow = _image_flow(context)
+    user = update.effective_user
+    if flow is not None and user is not None:
+        try:
+            flow.cancel(user.id, ident)
+        except Exception:
+            pass
+    await _safe_edit_or_send(
+        update.callback_query,
+        "❌ Dibatalkan. Tiada debit dibuat.",
+    )
+
+
 async def _wallet_balance(user_id: int) -> str | None:
     """Return verified formatted MYR balance, or None if wallet unavailable."""
     if not _wallet_enabled():
@@ -3820,6 +3882,38 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
         elif data == "ai_image_prompt":
             await _ai_image_prompt(update, context)
+        elif data.startswith("ai_image_confirm:"):
+            await _ai_image_confirm(update, context, data.split(":", 1)[1])
+        elif data.startswith("ai_image_cancel:"):
+            await _ai_image_cancel(update, context, data.split(":", 1)[1])
+        elif data.startswith("ai_video_confirm:"):
+            flow = _video_flow(context)
+            if flow is None:
+                await q.answer("AI Video belum diaktifkan. Tiada caj dikenakan.",
+                               show_alert=True)
+            else:
+                try:
+                    from telegram_video_handlers import consent_callback
+                    await consent_callback(update, context, "confirm",
+                                            data.split(":", 1)[1])
+                except Exception:
+                    await _safe_edit_or_send(
+                        update.callback_query,
+                        "🔒 Generation video belum diaktifkan. "
+                        "Tiada debit atau penjanaan dibuat.")
+        elif data.startswith("ai_video_cancel:"):
+            flow = _video_flow(context)
+            if flow is None:
+                await q.answer("AI Video belum diaktifkan.", show_alert=True)
+            else:
+                try:
+                    from telegram_video_handlers import consent_callback
+                    await consent_callback(update, context, "cancel",
+                                            data.split(":", 1)[1])
+                except Exception:
+                    await _safe_edit_or_send(
+                        update.callback_query,
+                        "❌ Dibatalkan. Tiada debit dibuat.")
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
         elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
         elif data.startswith("ai_video_unavailable:"):
@@ -4069,6 +4163,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[MESSAGE] text={text!r}")
     log.info(f"[MESSAGE] user_id={user_id}")
     log.info(f"[MESSAGE] chat_id={update.effective_chat.id}")
+
+    # ── Gated AI Image prompt stage (disabled unless explicitly enabled) ──────
+    # Runs BEFORE generic handling; returns False whenever the gate is off so
+    # ordinary customer messages are never affected. Protected by try/except.
+    try:
+        if await _ai_image_prompt_text(update, context):
+            return
+    except Exception:
+        log.warning("[AI_IMAGE] prompt stage handler failed; continuing normal flow")
 
     # ── Reply keyboard: "🏠 Home" button ──────────────────────────────────────
     if text == "🏠 Home":
@@ -5512,6 +5615,61 @@ async def cmd_activatetenant(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
 
 
+def _video_flow(context) -> object | None:
+    """Controlled video flow from bot_data, or None when disabled.
+
+    The flow is installed ONLY by an explicit, reviewed build_app
+    configuration gated behind BERRY_VIDEO_STUDIO_ENABLED=true and a
+    controlled test user id; normal production startup installs nothing.
+    Never constructs a worker, store, provider or delivery by itself.
+    """
+    if _get_env("BERRY_VIDEO_STUDIO_ENABLED") != "true":
+        return None
+    return context.application.bot_data.get("berry_video_flow")
+
+
+def _install_video_flow(app):
+    """Install the reviewed, disabled-by-default video consent controller.
+
+    Requires ALL of: explicit env flag, controlled test user id, tenant id
+    and service key. Installs the flow with enabled=True ONLY for that one
+    test identity; worker.allow_external stays False so no provider call or
+    wallet effect can occur from installation alone. Returns the flow or None.
+    """
+    if _get_env("BERRY_VIDEO_STUDIO_ENABLED") != "true":
+        return None
+    raw = _get_env("BERRY_VIDEO_STUDIO_TEST_USER_ID")
+    if not raw.isdigit() or int(raw) <= 0:
+        log.warning("[AI_VIDEO] flag set but test user id missing; not installed")
+        return None
+    try:
+        from telegram_video_flow import TelegramVideoFlow
+        # Offer builder must be reviewed server configuration; without one
+        # configured the flow cannot produce a priced quote — install inert.
+        offer_builder = None
+        if not callable(offer_builder):
+            log.info("[AI_VIDEO] no reviewed offer builder configured; "
+                     "installing inert controller (no quotes, no generation)")
+        worker = _SimpleNamespace(store=_SimpleNamespace(
+            tenant_id=TENANT_ID or ""), allow_external=False, budget_id=None,
+            verified_costs={}, verified_until=None, submit=None, poll=None,
+            deliver=None)
+        flow = TelegramVideoFlow(worker, offer_builder,
+                                  test_user_id=int(raw), enabled=True)
+        app.bot_data["berry_video_flow"] = flow
+        log.info("[AI_VIDEO] controlled video flow installed (gated; "
+                 "no external actions enabled)")
+        return flow
+    except Exception as exc:
+        log.warning("[AI_VIDEO] flow installation failed: %s", type(exc).__name__)
+        return None
+
+
+class _SimpleNamespace:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
@@ -5548,6 +5706,11 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Document.ALL, handle_topup_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)); log.info("[HANDLERS] message handler registered")
     app.add_error_handler(on_error)
+    # ── Controlled AI Video flow (disabled unless explicitly configured) ─────
+    try:
+        _install_video_flow(app)
+    except Exception:
+        log.warning("[AI_VIDEO] controlled flow installation skipped")
     # ── Tenant validation (safe to call sb_get now) ──────────────────────────
     log.info("─" * 35)
     _log_tenant_info()

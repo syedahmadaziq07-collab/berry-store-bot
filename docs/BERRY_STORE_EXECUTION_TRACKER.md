@@ -34,7 +34,17 @@ admin-control-center wujud sebagai rujukan keselamatan (bukan langkah bernombor)
   `video_myr_worker.py` versi gate-no-retry terkini, `provider_readiness.py`
   + `step2_pricing_probe.py`. Suite: 26 video flow/delivery + 17 video worker
   + 10 rekonsiliasi + mocks + probe — semua LULUS.
-- Ujian berkumpul: **220 ujian penuh, 189 lulus, 31 ralat = 0 ralat
+- `feat/prod-step2-completion-20261112` @ (kini): **Pendawaian runtime video
+  ke bot.py sebenar** — `_video_flow` (pintu env), `_install_video_flow`
+  (pengawal lengai: `allow_external=False`, `budget_id=None`; tiada builder
+  = tiada quote), rute callback `ai_video_confirm:`/`ai_video_cancel:`
+  (menjawab "belum diaktifkan" apabila pintu ditutup), pasang dalam
+  `build_app` (dilindungi try/except). Ujian integrasi +10 → 23/23;
+  suite penuh **230 ujian, 0 ralat bukan-Windows**.
+- `docs/ROADMAP_BLOCKER.md` dicipta: STEP 5–12 tidak didefinisikan dalam
+  mana-mana bukti repositori (senarai bukti carian lengkap direkodkan);
+  tidak direka-reka; perlu input pemilik.
+- Ujian berkumpul: **230 ujian penuh, 199 lulus, 31 ralat = 0 ralat
   bukan-Windows** (kunci fail state.db yang diketahui — akan diverifikasi
   semula oleh CI Linux). CI diperluas dengan PTB 20.7 untuk suite video.
 - Peta jalan STEP 5–12: tidak wujud dalam repositori — dilaporkan sebagai
