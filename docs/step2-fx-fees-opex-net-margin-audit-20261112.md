@@ -2,7 +2,7 @@
 Date: 2026-11-12. Read-only analysis; staging documentation only. No paid generation, checkout, wallet or production changes.
 
 ## Verified sources and limits
-- Bank Negara Malaysia KL USD/MYR reference rate on 2026-11-12: **4.0805 MYR/USD** (reference only, NOT a conservative settlement upper bound, processor FX quote, spread or guarantee). https://www.bnm.gov.my/kuala-lumpur-usd/myr-reference-rate
+- Bank Negara Malaysia publishes Kuala Lumpur USD/MYR reference rates. The publicly accessible page reviewed did NOT independently confirm the claimed 2026-11-12 rate of 4.0805; therefore the date-specific rate is UNVERIFIED and excluded from certified calculations. Even a confirmed reference rate is NOT a conservative settlement upper bound, processor FX quote, spread or guarantee. https://www.bnm.gov.my/kuala-lumpur-usd/myr-reference-rate
 - BNM interbank indicative rate is not a merchant's actual settlement FX; processor conversion, spread, tax and card/transfer fees remain account-dependent. https://www.bnm.gov.my/latest-rates
 - ToyyibPay published Standard FPX B2C **RM1.00 per successful transaction**, B2B RM2.00; local cards 1.5%, foreign cards 3.5%; onboarding/annual fees for card plan and applicable terms may alter totals. These are **market comparators**, NOT evidence that Berry Store uses ToyyibPay or has this fee schedule. https://www.toyyibpay.com/pricing-plans/
 - Billplz documentation: plan/payment-method-dependent FPX flat fees and card/wallet percentage fees; **8% SST on transaction fee**, not the whole transaction. Some fees deducted from credit balance, others from payout; annual membership may apply. These are **comparators**, NOT Berry Store account fees. https://support.billplz.com/guide/pricing
@@ -21,7 +21,7 @@ Actual accounting must ensure gross revenue net of taxes, FX, gateway fees, stor
 Missing bounds must block quote/customer activation. Reference FX and competitor payment rates MUST NOT be silently promoted to verified Berry Store bounds.
 
 ## Illustrative arithmetic ONLY — not a retail quote
-At precisely 10 billable seconds, USD 0.0175/s => USD 0.175; multiplying by BNM 4.0805 gives RM 0.7140875 **before** FX spread, fees, taxes and OPEX. This is not a maximum, since hard billed seconds and applicable pricing remain unverified. At public USD 0.025/s, 10 seconds => USD 0.25, RM 1.020125 at same reference FX. Neither implies RM1 net at any retail price.
+At precisely 10 billable seconds, USD 0.0175/s => USD 0.175; multiplying by a purely hypothetical FX rate of 4.0805 MYR/USD gives RM 0.7140875 **before** FX spread, fees, taxes and OPEX. This is not a maximum, since hard billed seconds and applicable pricing remain unverified. At public USD 0.025/s, 10 seconds => USD 0.25, RM 1.020125 at the same hypothetical FX. Neither implies RM1 net at any retail price.
 For an illustrative ToyyibPay Standard RM5 FPX B2C top-up, the published RM1 transaction fee is 20% of gross top-up; actual Berry Store provider and method not established. Allocation and taxes must be independently verified.
 
 ## Evidence needed before RM1 net PASS
