@@ -119,6 +119,23 @@ class MyrVideoJobStore:
         except (httpx.HTTPError, ValueError, TypeError):
             raise JobError("Job result unavailable; reconcile durable state before retrying") from None
 
+    def recoverable(self, limit=20):
+        if type(limit) is not int or not 1 <= limit <= 20:
+            raise JobError("Invalid recovery limit")
+        if self._client is None:
+            self._client = httpx.Client(timeout=15, follow_redirects=False)
+        try:
+            r = self._client.post(self._url + "/rest/v1/rpc/berry_video_recoverable_jobs",
+                headers={"apikey": self._key, "Authorization": "Bearer " + self._key},
+                json={"p_tenant": self.tenant_id, "p_limit": limit})
+            r.raise_for_status()
+            data = r.json()
+            if not isinstance(data, list) or len(data) > limit:
+                raise ValueError()
+            return data
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise JobError("Recovery list unavailable") from None
+
     def close(self):
         if self._client is not None:
             self._client.close()
@@ -229,3 +246,44 @@ class MyrVideoWorker:
             except JobError:
                 pass
             raise JobError("Delivery outcome unknown; no duplicate send or refund performed") from None
+
+    def recover_once(self):
+        """Bounded iteration; unknown outcomes are excluded from automatic recovery."""
+        if not self.allow_external:
+            raise JobError("External recovery disabled")
+        rows = self.store.recoverable(20)
+        if not isinstance(rows, list) or len(rows) > 20:
+            raise JobError("Invalid recovery batch")
+        seen, outcomes = set(), []
+        for row in rows:
+            job_id = None
+            try:
+                job_id = str(UUID(row["job_id"]))
+                if job_id in seen:
+                    continue
+                seen.add(job_id)
+                job = self.store.action(job_id, "get")
+                if job["state"] == "reserved":
+                    job = self.submit(job_id, job["arguments"])
+                if job["state"] == "queued":
+                    job = self.poll(job_id)
+                if job["state"] == "succeeded":
+                    job = self.deliver(job_id)
+                outcomes.append({"job_id": job_id, "state": job["state"]})
+            except Exception:
+                outcomes.append({"job_id": job_id, "state": "held"})
+        return outcomes
+
+    def run_recovery(self, stop_event, interval_seconds=15):
+        """Explicit runtime hook. Never starts on import; stop_event enables shutdown."""
+        if type(interval_seconds) is not int or not 1 <= interval_seconds <= 60:
+            raise JobError("Invalid recovery interval")
+        if not self.allow_external:
+            raise JobError("External recovery disabled")
+        while not stop_event.is_set():
+            try:
+                self.recover_once()
+            except JobError:
+                pass  # No external retry of an ambiguous submission/delivery.
+            if stop_event.wait(interval_seconds):
+                break

@@ -192,4 +192,19 @@ END $$;
 REVOKE ALL ON FUNCTION public.berry_video_job(uuid,uuid,text,jsonb) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.berry_video_job(uuid,uuid,text,jsonb) TO service_role;
 
+CREATE FUNCTION public.berry_video_recoverable_jobs(p_tenant uuid,p_limit int DEFAULT 20)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
+BEGIN
+ IF current_user NOT IN ('service_role','postgres') OR
+  coalesce(current_setting('request.jwt.claims',true),'{}')::jsonb->>'role' IS DISTINCT FROM 'service_role' THEN
+  RAISE EXCEPTION 'server role required' USING ERRCODE='42501'; END IF;
+ IF p_tenant IS NULL OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 20 THEN
+  RAISE EXCEPTION 'invalid recovery scope'; END IF;
+ RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('job_id',job_id,'state',state,'arguments',arguments))
+  FROM (SELECT job_id,state,arguments FROM berry_private.ai_video_jobs
+   WHERE tenant_id=p_tenant AND state IN ('reserved','queued','succeeded')
+   ORDER BY updated_at,job_id LIMIT p_limit) candidates),'[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION public.berry_video_recoverable_jobs(uuid,int) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.berry_video_recoverable_jobs(uuid,int) TO service_role;
 COMMIT;

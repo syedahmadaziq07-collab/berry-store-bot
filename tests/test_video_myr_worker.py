@@ -99,3 +99,26 @@ class VideoTests(unittest.TestCase):
         store=MyrVideoJobStore('https://cirsdvkfkvypprnmyykk.supabase.co','fixture-key',str(uuid4()),client)
         store.action(JOB,'get'); store.close()
         self.assertEqual(seen,['https://cirsdvkfkvypprnmyykk.supabase.co/rest/v1/rpc/berry_video_job'])
+
+class RecoveryTests(unittest.TestCase):
+    setUp = VideoTests.setUp
+    make = VideoTests.make
+    def test_recovery_resumes_queued_job_without_second_submission(self):
+        self.worker.submit(JOB,ARGS)
+        self.store.recoverable=Mock(return_value=[{'job_id':JOB},{'job_id':JOB}])
+        self.provider.status.return_value={'request_id':'fixture1','status':'COMPLETED'}
+        self.provider.result.return_value={'video':{'url':'https://fal.media/fixture.mp4'}}
+        result=self.worker.recover_once()
+        self.assertEqual(result,[{'job_id':JOB,'state':'delivered'}])
+        self.provider.submit.assert_called_once()
+        self.delivery.send.assert_called_once()
+    def test_recovery_isolates_bad_row(self):
+        self.store.recoverable=Mock(return_value=[{'job_id':'invalid'},{'job_id':JOB}])
+        self.provider.status.return_value={'request_id':'fixture1','status':'IN_QUEUE'}
+        result=self.worker.recover_once()
+        self.assertEqual([r['state'] for r in result],['held','queued'])
+    def test_loop_disabled_or_stopped_without_external_effects(self):
+        event=threading.Event();event.set()
+        self.worker.run_recovery(event)
+        with self.assertRaises(JobError):self.make(allow_external=False).run_recovery(event)
+        self.provider.submit.assert_not_called()

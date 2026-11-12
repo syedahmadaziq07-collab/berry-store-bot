@@ -63,6 +63,8 @@ BEGIN
   WHERE tenant_id=t AND job_id=j3 AND action='provider_failed'
    AND evidence->>'failure_evidence'='fixture confirmed terminal failure') THEN
   RAISE EXCEPTION 'missing failure audit'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(public.berry_video_recoverable_jobs(t,20)) a
+  WHERE a->>'job_id'=j::text) THEN RAISE EXCEPTION 'unknown submission automatically recovered'; END IF;
  -- Exhausted budget must leave the next job reserved with no outbound submission claim.
  PERFORM public.berry_video_job(t,j4,'reserve',p);
  rejected:=false;
