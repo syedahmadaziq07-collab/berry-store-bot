@@ -91,6 +91,32 @@ class FullFunctionCloneTests(unittest.TestCase):
         restored=self.admin.execute("SELECT pg_get_functiondef('public.berry_video_job(uuid,uuid,text,jsonb)'::regprocedure)").fetchone()[0]
         self.assertEqual(restored,self.original)
 
+    def test_concurrent_claims_same_budget(self):
+        other_job=str(uuid.uuid4())
+        self.admin.execute("""INSERT INTO berry_private.ai_video_jobs
+          (tenant_id,job_id,user_id,request_hash,arguments,quote,debit_cents,state)
+          VALUES(%s,%s,99,repeat('b',64),'{}',%s,500,'reserved')""",
+          (TENANT,other_job,Jsonb(QUOTE)))
+        self.admin.execute("UPDATE berry_private.ai_video_test_budgets SET max_cost_cents=500 WHERE tenant_id=%s AND budget_id=%s",(TENANT,BUDGET))
+        def claim(job):
+            with psycopg.connect(DSN) as db:
+                db.execute("SELECT set_config('request.jwt.claims','{\"role\":\"service_role\"}',false)")
+                try:
+                    value=db.execute("SELECT public.berry_video_job(%s,%s,'claim_submit',%s)",
+                                     (TENANT,job,Jsonb({"budget_id":BUDGET}))).fetchone()[0]
+                    return value["state"]
+                except psycopg.Error:
+                    return "rejected"
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                results=list(pool.map(claim,(self.job,other_job)))
+            self.assertCountEqual(results,["submitting","rejected"])
+            used=self.admin.execute("SELECT reserved_cost_cents,reserved_generations FROM berry_private.ai_video_test_budgets WHERE tenant_id=%s AND budget_id=%s",(TENANT,BUDGET)).fetchone()
+            self.assertEqual(used,(300,1))
+        finally:
+            self.admin.execute("DELETE FROM berry_private.ai_video_job_events WHERE tenant_id=%s AND job_id=%s",(TENANT,other_job))
+            self.admin.execute("DELETE FROM berry_private.ai_video_jobs WHERE tenant_id=%s AND job_id=%s",(TENANT,other_job))
+
     def test_service_role_fail_closed(self):
         self.admin.execute("SELECT set_config('request.jwt.claims','{}',false)")
         try:
