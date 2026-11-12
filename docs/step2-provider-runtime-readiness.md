@@ -143,3 +143,29 @@ inside server authentication path and reject embedded whitespace/control charact
 No secret inspection/output or environment configuration changes.188 backend tests PASS,
 including wrapped credential/header tests and no-network rejection. New rollout pending.
 Provider generation code remains disabled and unchanged. STEP2 PARTIAL, launch NO-GO, RM0.
+
+## Latest verified checkpoint —18:52MYT,12November2026
+
+PASS PR56 df81d1d5:188 backend +3 CI, merged5053a972; staging LIVE dep-dbqpkc2jnfac739d9tmg
+at10:51:55Z. Public12 shells/14 auth guards PASS10:52:27Z. No production change, paid inference,
+customer transaction/order, database write or secret value inspection in this bounded continuation.
+Actual new result: all3 model checks emit credential_format_invalid10:51:53Z. The runtime rejected
+credential format even after outer whitespace normalization, before issuing HTTP. This proves a
+local credential-format blocker, NOT a provider rejection, insufficient balance or unsupported model.
+Do not strip embedded characters, guess a key, weaken validation or enable generation to test it.
+
+Owner action (only account/secret-holder can supply the intact credential):
+1. Open https://fal.ai/dashboard/keys and log into the account authorized for Berry Store. Use an
+   intact existing key from secure storage, or create a scoped API key if an existing key cannot
+   be retrieved. Do not purchase credits or enable auto top-up; do not share key in chat.
+2. Open https://dashboard.render.com/web/srv-dbq2g9mk1f9s73de0u50/env . Confirm the service name
+   berry-gemini-admin-staging. Under Environment, Edit the existing FAL_KEY using the secret value
+   field; paste the complete key directly (no quotes, commands, Authorization/Key prefix, or inserted
+   line breaks). Save through the secure Render interface. Do not modify production's environment.
+3. Work can then verify the resulting deployment and rerun fixed GET-only pricing metadata checks.
+   Keep checkout/generation disabled; a valid key still does not establish balance/max costs/E2E.
+
+Other gates remain: authorized Telegram test identity, isolated wallet runtime configuration,
+parameter-bound max billing units/costs, FX/fees/net margin, actual Telegram/provider E2E and
+production backup/rotation/release approval. Safe engineering remains, so this is PARTIAL, not
+100% complete. No paid test authorized in STEP2. Next bounded task may proceed independently.

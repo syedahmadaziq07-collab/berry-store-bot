@@ -205,3 +205,18 @@ Secret values never exported/logged. No generation-client or security-control ch
 IN PROGRESS reviewed staging PR/CI/deploy and post-fix metadata observation. No SQL migration
 needed for this change. BLOCKED actual account/balance/cost/FX/fees/net margin and real E2E.
 Customer generation/checkout remains disabled; production/two receipt orders/wallets untouched.
+
+### Verified outcome —12November18:52MYT
+
+PASS PR56 headdf81d1d5:188 backend tests;3 CI43203929788/43203929800/43203929856 PASS.
+Merged staging5053a972; LIVE dep-dbqpkc2jnfac739d9tmg at18:51:55MYT. Fresh public checks
+18:52:27MYT:12 shells/14 unauthorized guards PASS; evidence provider-header-public-20261112.json.
+Staging jobs0,budget grants0. No database writes in this bounded iteration; RM0/0 paid generations.
+BLOCKED NEW OWNER ACTION: all3 runtime metadata checks report credential_format_invalid after
+outer-whitespace normalization, at18:51:53MYT. No provider HTTP request is made for invalid format.
+FAL_KEY NAME present does not imply usable secret. We did not inspect/export its value or alter it.
+Owner must replace the malformed staging FAL_KEY using Render's secure environment editor with
+an intact key from the authorized fal account. Never send key in chat. See exact links/instructions
+in docs/step2-provider-runtime-readiness.md. Account access/balance/pricing/FX/fees/RM1 NET unverified.
+NEXT: after secure correction rerun GET-only readiness; separately continue disabled controlled
+runtime/image integrations. Do not duplicate PR56/deploy; do not enable customer flows. NO-GO.

@@ -1,0 +1,30 @@
+{
+  "status": "PARTIAL",
+  "launch": "NO-GO",
+  "pr": 56,
+  "head": "df81d1d5e394fb12a8b01355f667a838b98acb82",
+  "staging_commit": "5053a972773d5f4752f81b4ec5b4f7d4dcac1c5a",
+  "deploy": "dep-dbqpkc2jnfac739d9tmg",
+  "live_at_utc": "2026-11-12T10:51:55.736052Z",
+  "backend_tests": 188,
+  "ci_pass": [
+    43203929788,
+    43203929800,
+    43203929856
+  ],
+  "provider_result": "credential_format_invalid",
+  "provider_result_at_utc": "2026-11-12T10:51:53Z",
+  "models": [
+    "fal-ai/flux/schnell",
+    "fal-ai/wan/v2.2-a14b/text-to-video",
+    "minimax/h3-max-turbo/text-to-video"
+  ],
+  "pricing_http_sent": false,
+  "secret_value_exported": false,
+  "paid_generations": 0,
+  "spend_myr": 0,
+  "jobs": 0,
+  "budget_grants": 0,
+  "public_checks": "12 shells/14 unauthorized guards PASS",
+  "owner_action": "Correct FAL_KEY using secure staging Render environment input, not chat"
+}
