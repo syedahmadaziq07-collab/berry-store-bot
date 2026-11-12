@@ -1,7 +1,10 @@
-"""Staging contract adapter with injected MOCK RPC/provider only.
+"""Test-only Supabase RPC contract adapter with injected fake RPC.
 
-No HTTP, Supabase client, wallet, credentials, or runtime integration.
-Fail closed on unknown RPC outcome; never auto-resubmit a paid request.
+No Supabase client, no provider HTTP, no wallet, no runtime wiring.
+CRITICAL: staging SQL permits queued only from submitting, but
+submission_unknown only from submitting; there is no safe durable
+pre-submit marker that can subsequently bind a provider request.
+Therefore this adapter NEVER calls provider.submit. Fail closed.
 """
 from uuid import UUID
 from step2_offline_queue_contract import classify_queue_status
@@ -29,11 +32,11 @@ class MockRpcVideoAdapter:
             })
         except Exception:
             raise AdapterBlocked("rpc_outcome_unknown") from None
-        if not isinstance(result, dict) or result.get("state") is None:
+        if not isinstance(result, dict) or not isinstance(result.get("state"), str):
             raise AdapterBlocked("rpc_contract_unknown")
         return result
 
-    def claim_then_submit(self, tenant, job, budget_id):
+    def claim_only(self, tenant, job, budget_id):
         try:
             UUID(budget_id)
         except (TypeError, ValueError, AttributeError):
@@ -41,27 +44,12 @@ class MockRpcVideoAdapter:
         claimed = self._call(tenant, job, "claim_submit", {"budget_id": budget_id})
         if claimed.get("state") != "submitting" or claimed.get("budget_id") != budget_id:
             raise AdapterBlocked("claim_not_confirmed")
-        # Durable uncertainty BEFORE outbound fake call. If this RPC is ambiguous,
-        # no fake submit occurs. No retry is attempted.
-        unknown = self._call(tenant, job, "submission_unknown", {})
-        if unknown.get("state") != "submission_unknown":
-            raise AdapterBlocked("unknown_state_not_confirmed")
-        try:
-            request = self.provider.submit(job)
-        except Exception:
-            return "submission_unknown"
-        if not isinstance(request, dict) or not isinstance(request.get("request_id"), str):
-            return "submission_unknown"
-        payload = {
-            "provider_request_id": request["request_id"],
-            "queue_status_url": request.get("status_url"),
-            "queue_result_url": request.get("response_url"),
-        }
-        try:
-            bound = self._call(tenant, job, "queued", payload)
-        except AdapterBlocked:
-            return "submission_unknown"
-        return bound["state"] if bound["state"] == "queued" else "submission_unknown"
+        return "claim_confirmed_mock_only"
+
+    def submit(self, tenant, job):
+        # Never call provider even after a confirmed fake budget claim.
+        # A real worker needs an approved SQL state/lease protocol first.
+        raise AdapterBlocked("durable_pre_submit_protocol_missing")
 
     def recover(self, tenant, job, attempt=0):
         state = self._call(tenant, job, "get", {})
