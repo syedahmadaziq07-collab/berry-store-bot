@@ -232,3 +232,17 @@ No raw responses, secret values, inference, database changes or generation activ
 Business database_match=false remains unchanged; isolated mapping_match=true scopes GET only.
 BLOCKED: maximum billable units, account inference access/balance, FX/fees and RM1 NET still unverified.
 Next: staging CI/review/deploy, inspect sanitized validation reason, then fix confirmed contract mismatch.
+
+## 13 November 2026 — bounded staging continuation
+PASS state audit: staging fe994788 includes PR60 plural billing-unit fix and PR61 cost-bound helper.
+Render remains LIVE44102547/dep-dbqqbaifngtc738checg; no in-flight deploy. PR76 worker integration
+and PR79 production candidate remain open; neither overwritten or merged by this iteration.
+IN PROGRESS PR59 refreshed onto latest staging: remove superseded parser changes, preserve PR60/61,
+and retain only GET /v1/account/billing?expand=credits. Output is positive-balance boolean and HTTP
+status; never username, exact balance, secrets or raw response. Pricing permission does not imply
+billing-read permission, inference entitlement or adequate budget. No automatic permission changes.
+PASS245 tests discovered:233 pass,12 PostgreSQL-dependent tests skipped locally (not counted PASS).
+BLOCKED unchanged: hard billable-duration ceiling, FX/fees/OPEX evidence, RM1 net margin, controlled
+Telegram/provider E2E and isolated business-wallet runtime. No generation, grants, payments or SQL
+migration performed. PR70 proposal remains unapplied. Customer activation and production prohibited.
+NEXT: review/CI PR59, staging-only deploy, sanitized account result and public behavior checks.

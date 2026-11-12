@@ -114,3 +114,48 @@ class ReadinessTests(unittest.TestCase):
         result = pricing_probe('fixture-key', client)
         self.assertTrue(all(r['validation_error'] == 'body_not_json' for r in result))
         self.assertNotIn('sensitive-fixture', json.dumps(result))
+
+    def test_account_balance_probe_redacts_and_never_generates(self):
+        seen = []
+        def transport(req):
+            seen.append(req)
+            return httpx.Response(200, json={'username': 'private-identity', 'credits': {'current_balance': .37, 'currency': 'USD'}, 'secret': 'fixture-key'})
+        result = account_balance_probe('fixture-key', httpx.Client(transport=httpx.MockTransport(transport)))
+        self.assertEqual(result['status'], 'balance_read_verified')
+        self.assertTrue(result['positive_balance'])
+        self.assertFalse(result['inference_access_verified'])
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].method, 'GET')
+        self.assertEqual(str(seen[0].url), 'https://api.fal.ai/v1/account/billing?expand=credits')
+        for forbidden in ('private-identity', 'fixture-key', '0.37'):
+            self.assertNotIn(forbidden, json.dumps(result))
+
+    def test_account_probe_fails_closed_for_denial_redirect_invalid_balance(self):
+        for code, balance in ((403, 10), (302, 10), (200, True), (200, 'NaN'), (200, -1), (200, None)):
+            payload = {'credits': {'current_balance': balance, 'currency': 'USD'}}
+            client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(code, json=payload, headers={'Location': 'https://evil.test'})))
+            result = account_balance_probe('fixture-key', client)
+            self.assertEqual(result['status'], 'unverified')
+            self.assertNotIn('positive_balance', result)
+        client = Mock()
+        result = account_balance_probe('bad key', client)
+        client.get.assert_not_called()
+        self.assertEqual(result['error_kind'], 'credential_format_invalid')
+
+    def test_staging_startup_account_probe_scope_and_redaction(self):
+        seen = []
+        output = []
+        def transport(req):
+            seen.append(req)
+            if req.url.path.endswith('/billing'):
+                return httpx.Response(200, json={'username': 'private-fixture', 'credits': {'current_balance': 0, 'currency': 'USD'}})
+            return httpx.Response(200, json={'prices': [{'endpoint_id': req.url.params['endpoint_id'], 'unit_price': .1, 'unit': 'seconds', 'currency': 'USD'}]})
+        staging_startup_probe({'RENDER_SERVICE_ID': STAGING_SERVICE, 'AI_MAPPING_SUPABASE_URL': STAGING_DATABASE, 'FAL_KEY': 'fixture-key'},
+            lambda: httpx.Client(transport=httpx.MockTransport(transport)), lambda text, **kw: output.append(text))
+        self.assertEqual(len(seen), 4)
+        self.assertTrue(all(r.method == 'GET' and r.url.host == 'api.fal.ai' for r in seen))
+        account = json.loads(output[-1].split(' ', 1)[1])
+        self.assertEqual(account['status'], 'balance_read_verified')
+        self.assertFalse(account['positive_balance'])
+        self.assertNotIn('private-fixture', str(output))
+        self.assertNotIn('fixture-key', str(output))
