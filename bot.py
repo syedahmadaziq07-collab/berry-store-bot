@@ -2957,6 +2957,7 @@ def _install_image_flow(app):
         from telegram_image_delivery import TelegramImageDelivery
         from telegram_image_flow import TelegramImageFlow
         from telegram_image_offer_builder import VerifiedImageOfferBuilder
+        from telegram_image_worker import MyrImageWorker
 
         class _InertImageWorker:
             """Inert worker: allows prepare/consent but refuses confirm-time
@@ -3016,6 +3017,34 @@ def _install_image_flow(app):
             builder = VerifiedImageOfferBuilder(entries)
 
         token = _get_env("BERRY_IMAGE_DELIVERY_BOT_TOKEN") or BOT_TOKEN
+        # ── Runtime activation gate (owner-approved) ─────────────────────────
+        # BERRY_IMAGE_RUNTIME_ENABLED=true + BERRY_IMAGE_TEST_BUDGET_ID switch
+        # the worker from the consent-only inert adapter to the real durable
+        # MyrImageWorker (provider submission, polling, sendPhoto delivery,
+        # settlement). The store uses the approved image checkout/job RPC and
+        # fails closed when the migration is absent.
+        runtime_enabled = _get_env("BERRY_IMAGE_RUNTIME_ENABLED") == "true"
+        budget_id = _get_env("BERRY_IMAGE_TEST_BUDGET_ID")
+        if runtime_enabled and not budget_id:
+            log.warning("[AI_IMAGE] runtime flag set without budget id; "
+                        "staying consent-only")
+            runtime_enabled = False
+        if runtime_enabled:
+            job_store = _ImageSupabaseStore(SUPABASE_URL, SUPABASE_SERVICE_KEY,
+                                            TENANT_ID)
+            from fal_provider import FalProvider
+            provider = FalProvider(_get_env("FAL_KEY") or None)
+            delivery = TelegramImageDelivery(token)
+            worker = MyrImageWorker(job_store, provider, delivery,
+                                    budget_id=budget_id, allow_external=True)
+            flow = TelegramImageFlow(worker, builder, test_user_id=test_user,
+                                     enabled=True)
+            app.bot_data["berry_image_flow"] = flow
+            app.bot_data["berry_image_worker"] = worker
+            log.warning("[AI_IMAGE] RUNTIME ENABLED (owner-approved): real "
+                        "provider submissions and wallet effects are possible "
+                        "for the controlled test identity only.")
+            return flow
         worker = _InertImageWorker(TENANT_ID, token)
         flow = TelegramImageFlow(worker, builder, test_user_id=test_user,
                                  enabled=True)
@@ -3026,6 +3055,65 @@ def _install_image_flow(app):
     except Exception as exc:
         log.warning("[AI_IMAGE] flow installation failed: %s", type(exc).__name__)
         return None
+
+
+class _ImageSupabaseStore:
+    """Durable image job store over the image checkout/job RPC contract.
+
+    Mirrors the verified video job store but scoped to the image RPC. Fails
+    closed (JobError) when the RPC is absent — the SQL candidate must be
+    applied by an approved migration first.
+    """
+
+    def __init__(self, url, key, tenant_id, client=None):
+        from staging_job_worker import JobError as _JobError
+        if not url or not key:
+            raise _JobError("Job database configuration required")
+        self.url = url.rstrip("/")
+        self._key = key
+        self.tenant_id = str(tenant_id)
+        self._client = client
+
+    def action(self, job_id, action, payload=None):
+        from staging_job_worker import JobError as _JobError
+        from uuid import UUID as _UUID
+        job_id = str(_UUID(job_id))
+        if self._client is None:
+            self._client = httpx.Client(timeout=15, follow_redirects=False)
+        try:
+            r = self._client.post(
+                self.url + "/rest/v1/rpc/berry_image_job",
+                headers={"apikey": self._key,
+                         "Authorization": "Bearer " + self._key},
+                json={"p_tenant": self.tenant_id, "p_job": job_id,
+                      "p_action": action, "p_payload": payload or {}})
+            r.raise_for_status()
+            data = r.json()
+            if (not isinstance(data, dict) or data.get("job_id") != job_id
+                    or not isinstance(data.get("state"), str)):
+                raise ValueError()
+            return data
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise _JobError("Job result unavailable; reconcile durable state "
+                            "before retrying") from None
+
+    def recoverable(self, limit=20):
+        from staging_job_worker import JobError as _JobError
+        if self._client is None:
+            self._client = httpx.Client(timeout=15, follow_redirects=False)
+        try:
+            r = self._client.post(
+                self.url + "/rest/v1/rpc/berry_image_recoverable",
+                headers={"apikey": self._key,
+                         "Authorization": "Bearer " + self._key},
+                json={"p_tenant": self.tenant_id, "p_limit": int(limit)})
+            r.raise_for_status()
+            rows = r.json()
+            if not isinstance(rows, list):
+                raise ValueError()
+            return rows
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise _JobError("Recovery batch unavailable") from None
 
 async def _ai_image_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Entry for the disabled-by-default image prompt flow."""

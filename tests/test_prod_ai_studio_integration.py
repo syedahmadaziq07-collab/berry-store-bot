@@ -202,12 +202,17 @@ class ImageFlowInstallerTests(unittest.TestCase):
         # No quotes when the reviewed catalog is absent.
         self.assertIn("consent-only", body)
 
-    def test_installer_never_constructs_provider(self):
+    def test_installer_constructs_provider_only_in_runtime_gate(self):
         start = BOT.index("def _install_image_flow")
         end = BOT.index("def _ai_image_prompt", start)
         body = BOT[start:end]
-        self.assertNotIn("FalProvider(", body)
-        self.assertNotIn("provider.submit", body)
+        self.assertIn('BERRY_IMAGE_RUNTIME_ENABLED") == "true"', body)
+        # Provider construction must live strictly after the runtime gate.
+        gate = body.index('BERRY_IMAGE_RUNTIME_ENABLED") == "true"')
+        provider = body.index("FalProvider(")
+        self.assertLess(gate, provider)
+        # Runtime flag without budget stays consent-only.
+        self.assertIn("staying consent-only", body)
         # delivery token never logged
         self.assertNotIn('log.info(f"{token', body)
 
