@@ -27,6 +27,24 @@ def minimum_sale_cents(provider_usd_bound, fx_myr_per_usd_bound, fixed_myr_bound
     except (InvalidOperation,ValueError,TypeError,OverflowError):
         raise ValueError('Verified finite cost bounds required') from None
 
+def minimum_video_sale_cents(unit_usd_per_second, max_billable_seconds,
+                             fx_myr_per_usd_bound, fixed_myr_bound, sale_fee_fraction):
+    """Require a separately verified maximum billed duration, not requested duration.
+
+    Caller must verify rate applicability, maximum billable seconds, FX and fees.
+    Authenticated unit-price metadata alone never certifies this calculation.
+    """
+    try:
+        unit = Decimal(str(unit_usd_per_second))
+        seconds = Decimal(str(max_billable_seconds))
+        if not unit.is_finite() or not seconds.is_finite() or unit <= 0 or seconds <= 0:
+            raise ValueError()
+        return minimum_sale_cents(unit * seconds, fx_myr_per_usd_bound,
+                                  fixed_myr_bound, sale_fee_fraction)
+    except (InvalidOperation, ValueError, TypeError, OverflowError):
+        raise ValueError('Verified finite cost bounds required') from None
+
+
 class PricingContractError(ValueError):
     """Constant diagnostic codes only; never include provider data or exceptions."""
 
