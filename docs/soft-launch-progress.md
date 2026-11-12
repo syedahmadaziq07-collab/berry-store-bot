@@ -283,3 +283,9 @@ against installed-function contract. GPT WORK owns these fixes; do not ask owner
 Do not weaken unknown-outcome reconciliation or apply PR70 proposal just to make this test pass.
 No app behavior changed in this test-only milestone; no redundant staging redeploy is needed.
 STEP2 PARTIAL/customer NO-GO. Existing billing403/cost/E2E owner-access blockers unchanged.
+PASS PR81 head4fdb48e8:4 CI43280251422/43280251455/43280251308/43280251440.
+PASS246 local cases:234 passed,12 PostgreSQL-dependent skipped (not counted PASS).
+PASS fresh public checks02:29MYT:12 shells/14 unauthorized guards. Actual provider/Telegram E2E
+still BLOCKED. PR76 review body now records both reproduced blockers; source head unchanged.
+This checkpoint completes the test-only milestone; next engineering action is PR76 compatibility
+repair, not provider activation. No owner action newly required by these code defects.
