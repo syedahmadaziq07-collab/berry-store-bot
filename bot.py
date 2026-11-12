@@ -25,55 +25,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Kill Any Other Running Bot Instance ──────────────────────────────────────
-# Runs BEFORE polling starts. Forces Telegram to drop any existing session
-# (other Replit tab, old Render deploy, etc.) so this instance takes over cleanly.
-
-import httpx as _httpx_early
-import os as _os_early
-
-_EARLY_TOKEN = (
-    (_os_early.getenv("BOT_TOKEN") or "").strip() or
-    (_os_early.getenv("TOKEN") or "").strip() or
-    (_os_early.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-)
-
-if _EARLY_TOKEN:
-    try:
-        _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/close",
-            timeout=10,
-        )
-        print("✅ Old sessions closed")
-    except Exception as _e:
-        print(f"⚠️ Could not close old session: {_e}")
-
-    try:
-        _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/deleteWebhook?drop_pending_updates=true",
-            timeout=10,
-        )
-        print("✅ Webhook cleared, pending updates dropped")
-    except Exception as _e:
-        print(f"⚠️ Could not clear webhook: {_e}")
-
-    print("🚀 This instance is now the ONLY running bot!")
-
-    # Log current webhook info for diagnostics
-    try:
-        _wh_resp = _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/getWebhookInfo",
-            timeout=10,
-        )
-        _wh_data = _wh_resp.json()
-        _wh_result = _wh_data.get("result") or {}
-        print(f"[WEBHOOK_INFO] url={_wh_result.get('url','')!r} "
-              f"has_custom_certificate={_wh_result.get('has_custom_certificate')} "
-              f"pending_update_count={_wh_result.get('pending_update_count')} "
-              f"last_error_date={_wh_result.get('last_error_date')} "
-              f"last_error_message={_wh_result.get('last_error_message','')!r}")
-    except Exception as _e:
-        print(f"[WEBHOOK_INFO] Could not fetch: {_e}")
+# Telegram lifecycle actions belong to main(), after logging/redaction is configured.
+# Importing the module must not close sessions or discard queued customer updates.
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 # Logs to console AND to bot.log file for debugging
@@ -3005,6 +2958,20 @@ def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
 
 
 async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    flow = context.application.bot_data.get("berry_video_flow")
+    if flow is not None:
+        try:
+            from telegram_video_handlers import runtime
+            runtime(update, context)
+        except Exception:
+            await update.callback_query.message.reply_text("🔒 AI Video belum tersedia untuk akaun ini.")
+            return
+        await _safe_edit_or_send(update.callback_query,
+            "🎬 AI VIDEO\nMasukkan prompt. Model, tetapan dan harga sebenar dipaparkan sebelum Confirm.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✍️ Teks → Video", callback_data="ai_video_text")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="home")]]))
+        return
     """Admin-only AI Studio hub, with clear sections and a preview balance."""
     if not _ai_video_is_admin(update):
         await _safe_edit_or_send(
@@ -3388,8 +3355,26 @@ async def _store_topup_receipt(update, context, oid: str, file_id: str, as_docum
                                      caption=caption, reply_markup=buttons)
 
 
+async def _live_video_callback(update, context, action, ticket):
+    from telegram_video_handlers import consent_callback
+    try:
+        await consent_callback(update, context, action, ticket)
+    except Exception:
+        # Never echo provider/Telegram HTTP errors or retry an outbound operation here.
+        await update.callback_query.message.reply_text(
+            "⚠️ Tindakan belum dapat disahkan. Gunakan ticket yang sama; jangan buat request baharu. "
+            "Status job dan wallet akan disemak sebelum tindakan seterusnya.")
+
+
 async def show_ai_video_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Do not offer an unsupported text-to-video generation flow."""
+    if context.application.bot_data.get("berry_video_flow") is not None:
+        from telegram_video_handlers import request_prompt
+        try:
+            await request_prompt(update, context)
+        except Exception:
+            await update.callback_query.message.reply_text("🔒 AI Video belum tersedia untuk akaun ini. Tiada caj dikenakan.")
+        return
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
@@ -3544,6 +3529,13 @@ async def accept_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Render a harmless summary; actual generation is intentionally disabled."""
+    if context.user_data.get("ai_video_flow", {}).get("stage") == "live_prompt":
+        from telegram_video_handlers import prepare_prompt
+        try:
+            return await prepare_prompt(update, context)
+        except Exception:
+            await update.message.reply_text("⚠️ Quote belum dapat disahkan. Tiada generation dihantar; cuba semula selepas harga/baki disahkan.")
+            return True
     if not _ai_video_is_admin(update):
         return False
     state = context.user_data.get("ai_video_flow")
@@ -3809,6 +3801,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("Checkout belum aktif. Tiada bayaran diterima.", show_alert=True)
         elif data.startswith("ai_studio:"):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
+        elif data.startswith("ai_video_confirm:"):
+            await _live_video_callback(update, context, "confirm", data.split(":", 1)[1])
+        elif data.startswith("ai_video_cancel:"):
+            await _live_video_callback(update, context, "cancel", data.split(":", 1)[1])
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
         elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
         elif data.startswith("ai_video_unavailable:"):
@@ -5501,8 +5497,13 @@ async def cmd_activatetenant(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"❌ Error: {_safe_error(exc)}")
 
 
-def build_app() -> Application:
-    app = Application.builder().token(BOT_TOKEN).build()
+def build_app(video_flow=None) -> Application:
+    from telegram_video_flow import start_video_recovery, stop_video_recovery
+    app = (Application.builder().token(BOT_TOKEN)
+           .post_init(start_video_recovery).post_shutdown(stop_video_recovery).build())
+    if video_flow is not None:
+        video_flow.authorize(video_flow.test_user_id)
+        app.bot_data["berry_video_flow"] = video_flow
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     app.add_handler(CommandHandler("admin",       cmd_admin))
@@ -5618,7 +5619,7 @@ def main():
             # Clear any lingering webhook so polling takes over cleanly
             try:
                 _telegram_loop.run_until_complete(
-                    app.bot.delete_webhook(drop_pending_updates=True)
+                    app.bot.delete_webhook(drop_pending_updates=False)
                 )
                 log.info("[WEBHOOK] delete_webhook ok")
             except Exception as exc:
@@ -5636,7 +5637,7 @@ def main():
 
             log.info("[POLLING] started")
             app.run_polling(
-                drop_pending_updates=True,
+                drop_pending_updates=False,
                 allowed_updates=Update.ALL_TYPES,
                 close_loop=False,
             )
