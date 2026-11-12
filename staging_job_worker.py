@@ -148,7 +148,7 @@ class StagingJobWorker:
         # the provider POST. claim_fn durably persists SUBMISSION_UNKNOWN
         # BEFORE the network call; the gate allows exactly one POST and binds
         # the response to it. Any failure leaves the job held, never retried.
-        from step2_no_retry_protocol import Attempt, State, SubmissionBlocked
+        from step2_no_retry_protocol import Attempt, State
         from step2_submission_gate import WorkerSubmissionGate
         post_response = {}
 

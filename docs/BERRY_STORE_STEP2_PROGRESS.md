@@ -88,6 +88,44 @@
 - Local: step2 63/63 OK (15 CI-only Postgres skips), video_myr 17/17,
   staging worker 22/22, no-retry 6/6. Pushed for CI re-run on PR #76.
 
+## 2026-11-12 update 5 — final review, operator reconciliation, pricing probe
+Final code review of PR #76 (fencing/crash/wallet invariants) found:
+- Atomic claim fencing: sound — claim_submit + durable submission_unknown
+  before POST; re-claim refused; state fencing is the authoritative guard
+  (gate generation is snapshot metadata, not the fence).
+- Crash recovery: sound — restart on submission_unknown never POSTs; binding
+  from unknown allowed once (queue_urls + request-id checks).
+- Wallet invariants: sound — single debit on claim; no automatic refund path;
+  over-refund schema-blocked; job never returns to reserved.
+- Cosmetic fix: removed unused SubmissionBlocked import (no behavior change).
+Remaining gaps (documented, not blockers for these commits): pricing
+applicability/entitlement live verification and staging E2E remain unverified
+and require owner approval.
+
+New restricted operator reconciliation (`step2_operator_reconciliation.py`):
+- `RestrictedOperatorReconciler` wraps `UnknownOutcomeReconciler` with an
+  exact-match server-side operator allowlist; authorization is checked BEFORE
+  the (read-only) provider status GET so an unauthorized caller triggers zero
+  provider calls; every attempt is appended to an append-only audit record
+  (identifiers + decision only — no prompts, URLs, keys or refunds); actions
+  limited to hold / bind_request / confirm_delivery; no refund and no
+  resubmission action exists. Tests: 7/7 OK
+  (tests/test_step2_operator_reconciliation.py).
+
+New read-only pricing probe (`step2_pricing_probe.py`):
+- `FalPricingProbe` performs authenticated GETs ONLY to allowlisted
+  read-only pricing paths on fal.ai (queue.fal.run/inference URLs are
+  rejected); an exact numeric per-model price is accepted only from a valid
+  parsed JSON document; invalid shapes, missing models, non-numeric prices,
+  non-200 responses, redirects and network errors NEVER become an assumed
+  cost (they raise). `verify_documented_cost_bound` rejects frozen cost
+  bounds below the documented USD price converted with a server-configured
+  FX rate. Tests: 11/11 OK (tests/test_step2_pricing_probe.py, mocked
+  transport; no real requests, no inference).
+CI: both new suites added to step2-postgres-rollback.yml job.
+Local totals: step2 81/81 OK (15 CI-only Postgres skips), video_myr 17/17,
+staging 22/22, reconciliation 10/10.
+
 ## 2026-11-12 update — no-retry gate wired toward worker integration
 - New `step2_submission_gate.py`: single sanctioned path from a submittable job
   to one provider POST, enforcing the PR #75 state machine (durable

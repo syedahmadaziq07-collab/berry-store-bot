@@ -19,6 +19,8 @@ tests, PRs, CI and deployment evidence only — no unverified claims.
 
 | 2026-11-12 | feat/step2-no-retry-worker-integration-20261112 | (this push) | `MyrVideoWorker.submit` routed through `WorkerSubmissionGate` (+5 regression tests); +3 ephemeral PostgreSQL 16 CI fixtures for durable-unknown-before-POST fencing, crash-after-POST single binding, wallet single debit/no auto refund; CI workflow extended to run all four gate suites. | video_myr 17/17, staging 22/22, step2 63/63 local (15 CI-only skips) | pending |
 
+| 2026-11-12 | feat/step2-no-retry-worker-integration-20261112 | (this push) | Restricted operator reconciliation (allowlist, pre-read authorization, append-only audit, no refund/resubmit) + read-only fal pricing probe (allowlisted origins only, fail-closed on invalid responses, cost-bound verification with server FX); +18 tests; unused import cleanup after final review. | ops-recon 7/7, pricing 11/11, step2 81/81, video 17/17, staging 22/22 local | pending |
+
 PR creation: `gh` CLI not installed and no GitHub API token in this environment.
 PR target branch: `deploy/berry-ai-private-mapping-staging-20261111`.
 Open PR from: https://github.com/syedahmadaziq07-collab/berry-store-bot/pull/new/feat/step2-no-retry-worker-integration-20261112
