@@ -33,6 +33,7 @@ class Store:
             j=self.jobs[key]
             if action=='claim_submit' and j['state']=='reserved':
                 j['state']='submitting';claimed=True;self.claims+=1
+                j['submission_tags']={'berry_job':key,'berry_hash':j['request_hash'],'berry_tenant':self.tenant_id}
             elif action=='queued':j.update(payload,state='queued')
             elif action=='submission_unknown':j['state']='submission_unknown'
             elif action=='succeed':j.update(payload,state='succeeded')

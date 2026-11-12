@@ -140,6 +140,23 @@ class MyrVideoJobStore:
         except (httpx.HTTPError, ValueError, TypeError):
             raise JobError("Consent result unavailable; retry the same ticket only") from None
 
+    def reconcile(self, job_id, case_id, action, evidence):
+        job_id, case_id = str(UUID(job_id)), str(UUID(case_id))
+        if self._client is None:
+            self._client = httpx.Client(timeout=15, follow_redirects=False)
+        try:
+            r = self._client.post(self._url + "/rest/v1/rpc/berry_video_reconcile",
+                headers={"apikey": self._key, "Authorization": "Bearer " + self._key},
+                json={"p_tenant": self.tenant_id, "p_job": job_id, "p_case": case_id,
+                      "p_action": action, "p_evidence": evidence})
+            r.raise_for_status()
+            data = r.json()
+            if not isinstance(data,dict) or data.get("job_id") != job_id or data.get("case_id") != case_id:
+                raise ValueError()
+            return data
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise JobError("Reconciliation unconfirmed; retry identical case only") from None
+
     def balance(self, user_id):
         from decimal import Decimal
         if type(user_id) is not int or user_id <= 0:
@@ -216,7 +233,12 @@ class MyrVideoWorker:
         if claim.get("claimed") is not True:
             return claim
         try:
-            response = self.provider.submit(q["provider_model_id"], arguments)
+            tags = claim.get("submission_tags")
+            expected_tags = {"berry_job": str(UUID(job_id)), "berry_hash": job["request_hash"],
+                             "berry_tenant": self.store.tenant_id}
+            if tags != expected_tags:
+                raise JobError("Durable submission correlation unavailable")
+            response = self.provider.submit(q["provider_model_id"], arguments, correlation=tags)
             request_id = response["request_id"]
             recovery = queue_urls(q["provider_model_id"], request_id,
                                   response["status_url"], response["response_url"])

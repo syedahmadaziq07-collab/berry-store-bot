@@ -15,6 +15,7 @@ BUDGET=str(uuid4())
 
 class Store:
     def __init__(self):
+        self.tenant_id=str(uuid4())
         self.job=None
         self.lock=threading.Lock()
         self.claim_budget=None
@@ -26,6 +27,7 @@ class Store:
                 self.job=dict(payload,job_id=job_id,state='reserved')
             elif action=='claim_submit' and self.job['state']=='reserved':
                 self.job['state']='submitting'
+                self.job['submission_tags']={'berry_job':job_id,'berry_hash':self.job['request_hash'],'berry_tenant':self.tenant_id}
                 self.claim_budget=payload['budget_id']
                 claimed=True
             elif action=='queued': self.job.update(payload,state='queued')
@@ -62,7 +64,7 @@ class VideoTests(unittest.TestCase):
     def test_concurrent_submits_only_one_post_with_budget(self):
         with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(lambda _:self.make().submit(JOB,ARGS),range(8)))
-        self.provider.submit.assert_called_once_with(Q.provider_model_id,ARGS)
+        self.provider.submit.assert_called_once_with(Q.provider_model_id,ARGS,correlation=self.store.job["submission_tags"])
         self.assertEqual(self.store.claim_budget,BUDGET)
     def test_expired_or_unbounded_cost_proof_blocks(self):
         for expiry in (None, int(time.time())-1, int(time.time())+3600):
