@@ -85,6 +85,20 @@ class ReadinessTests(unittest.TestCase):
             self.assertNotIn('sensitive-fixture', json.dumps(result))
             self.assertNotIn('fixture-key', json.dumps(result))
 
+    def test_official_plural_billing_units_are_accepted_without_conversion(self):
+        # Public fal.ai pricing uses plural labels (e.g. seconds and megapixels).
+        # Keep the provider's exact unit; this is not a verified per-generation cap.
+        for unit in ('seconds', 'megapixels', 'images', 'videos', 'requests'):
+            row = {'endpoint_id': MODELS[0], 'unit_price': '0.025',
+                   'unit': unit, 'currency': 'USD'}
+            parsed = parse_pricing({'prices': [row]}, MODELS[0])
+            self.assertEqual(parsed['status'], 'pricing_read_verified')
+            self.assertEqual(parsed['unit'], unit)
+            self.assertEqual(parsed['unit_price'], '0.025')
+        with self.assertRaisesRegex(PricingContractError, 'billing_unit_unsupported'):
+            parse_pricing({'prices': [{'endpoint_id': MODELS[0],
+                'unit_price': 0.025, 'unit': 'unknown-unit', 'currency': 'USD'}]}, MODELS[0])
+
     def test_http_200_non_json_body_is_not_pricing(self):
         client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text='<html>sensitive-fixture</html>')))
         result = pricing_probe('fixture-key', client)
