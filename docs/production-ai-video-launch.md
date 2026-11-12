@@ -9,8 +9,8 @@ two orders and two receipts. No customer identities or receipt contents were exp
 
 IN PROGRESS: corrected migration now validates duplicates before DDL, creates the private schema,
 revokes public access, grants service-role usage and wraps the complete change in a transaction.
-27 local production-branch regression tests PASS. CI and isolated execution of this revised script
-remain required. This is preparation, not approval to run it in production.
+27 local production-branch regression tests PASS. Exact revised SQL applied only in isolated staging;
+actual payment-contract rollback suite PASS. Both PR44 CI checks PASS. This is preparation, not approval to run it in production.
 
 ## Concrete migration impact and rollback plan
 
@@ -37,10 +37,13 @@ remain required. This is preparation, not approval to run it in production.
 - Customer video handlers must use the existing production MYR wallet with durable job reservations;
   synthetic staging job balances are not a replacement. This integration is not complete.
 - Real video model, parameter-bound costs, FX/fees/retries and at least RM1 net margin unverified.
-- No approved provider billing budget is specified. No paid API call may run.
+- Owner now authorizes RM5 total / at most 5 paid generations from existing authorized provider balance.
+  No purchases/top-ups. Exact maximum model/parameter/FX/fee cost must be verified before each request;
+  no paid request has run. Budget authorization does not authorize bank payments or customer wallet edits.
 - Live Telegram delivery, restart recovery, definitive refund and ambiguous reconciliation unverified.
 - Exposed production secret rotation needs coordinated owner-approved secure configuration, service
   rollout and old-key revocation. No secret values were read or rotated here.
 
 NEXT ACTION: validate this migration revision in isolation and finish safe code integration while
-payment reconciliation, verified backup, test identity, budget and secure rotation remain blocked.
+payment reconciliation, verified backup, test identity, verified cost/access and secure rotation remain blocked.
+See PR45 and docs/production-ai-video-progress.md for MYR lifecycle implementation evidence.
