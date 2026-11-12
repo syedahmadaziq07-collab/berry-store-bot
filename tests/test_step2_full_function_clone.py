@@ -8,8 +8,12 @@ import os
 from pathlib import Path
 import unittest
 import uuid
-import psycopg
-from psycopg.types.json import Jsonb
+try:
+    import psycopg
+    from psycopg.types.json import Jsonb
+except ImportError:
+    psycopg = None
+    Jsonb = None
 
 ROOT = Path(__file__).resolve().parents[1]
 DSN = "postgresql://postgres:step2_local@127.0.0.1:5432/step2_clone"
@@ -18,7 +22,7 @@ BUDGET = str(uuid.UUID("22222222-2222-4222-8222-222222222222"))
 QUOTE = {"all_in_cost_cents": 300, "provider_model_id": "fal-ai/wan/v2.2-a14b/text-to-video"}
 
 
-@unittest.skipUnless(os.getenv("BERRY_STEP2_EPHEMERAL_CLONE") == "1", "ephemeral CI only")
+@unittest.skipUnless(psycopg is not None and os.getenv("BERRY_STEP2_EPHEMERAL_CLONE") == "1", "ephemeral CI only")
 class FullFunctionCloneTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
