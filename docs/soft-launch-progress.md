@@ -232,3 +232,74 @@ No raw responses, secret values, inference, database changes or generation activ
 Business database_match=false remains unchanged; isolated mapping_match=true scopes GET only.
 BLOCKED: maximum billable units, account inference access/balance, FX/fees and RM1 NET still unverified.
 Next: staging CI/review/deploy, inspect sanitized validation reason, then fix confirmed contract mismatch.
+
+## 13 November 2026 — bounded staging continuation
+PASS state audit: staging fe994788 includes PR60 plural billing-unit fix and PR61 cost-bound helper.
+Render remains LIVE44102547/dep-dbqqbaifngtc738checg; no in-flight deploy. PR76 worker integration
+and PR79 production candidate remain open; neither overwritten or merged by this iteration.
+IN PROGRESS PR59 refreshed onto latest staging: remove superseded parser changes, preserve PR60/61,
+and retain only GET /v1/account/billing?expand=credits. Output is positive-balance boolean and HTTP
+status; never username, exact balance, secrets or raw response. Pricing permission does not imply
+billing-read permission, inference entitlement or adequate budget. No automatic permission changes.
+PASS245 tests discovered:233 pass,12 PostgreSQL-dependent tests skipped locally (not counted PASS).
+BLOCKED unchanged: hard billable-duration ceiling, FX/fees/OPEX evidence, RM1 net margin, controlled
+Telegram/provider E2E and isolated business-wallet runtime. No generation, grants, payments or SQL
+migration performed. PR70 proposal remains unapplied. Customer activation and production prohibited.
+NEXT: review/CI PR59, staging-only deploy, sanitized account result and public behavior checks.
+
+### Verified outcome —13 November00:45MYT
+PASS PR59 latest head05202c98:3 CI43261815613/43261815622/43261816415;233 local PASS,12 PG skips.
+Merged d4627501; LIVE dep-dbquq06k1f9s73fe247g at2026-11-12T16:45:14Z.
+PASS fresh pricing GET200: FLUX0.003 USD/megapixels, Wan0.08 USD/seconds, MiniMax0.0175 USD/seconds.
+PASS12 public staging shells and14 unauthorized API guards after deployment; not authenticated E2E.
+BLOCKED NEW VERIFIED: account billing GET403. Existing credential does not authorize this read;
+no balance value or positive-balance conclusion obtained. This is NOT evidence of zero funds or
+inference denial. No permission expansion attempted. Owner-account authorization is required to
+verify balance via official Billing portal or an appropriately scoped secure read-only credential.
+Do not replace a working inference key with a billing-only key or paste any key in chat.
+Evidence: docs/evidence/staging-balance-readiness-20261113.json and staging-balance-public-20261113.json.
+Latest state supersedes older credential_format_invalid instructions: key format and pricing GET
+work. Do NOT ask owner to recreate FAL_KEY merely for pricing. Business database_match=false unchanged.
+STEP2 PARTIAL/launch NO-GO. Hard billing duration, effective FX/fees/OPEX, RM1 NET and real E2E remain
+unverified. PR76 worker integration needs separate review, staging compatibility/SQL validation and
+safe deployment; PR79 production candidate untouched. No production, customer, migration, payment,
+provider inference or budget-grant mutation. RM0/0 paid generations in this iteration.
+
+## 13 November02:28MYT — PR76 runtime-contract review
+PASS fresh audit: stagingdf9abed; LIVE applicationd462750/dep-dbquq06k1f9s73fe247g.
+No in-flight deploy. PR76 head2455323 remains open with6 CI PASS; newer production work untouched.
+FAIL PR76 packaging: both workers function-import step2_no_retry_protocol and step2_submission_gate,
+but Dockerfile.admin copies neither. New AST-based manifest check detects both missing modules;
+current staging passes. No application import/network side effect occurs during this check.
+FAIL PR76 installed SQL compatibility: submit now writes submission_unknown before POST and then
+calls normal queued. Installed berry_video_job permits normal queued only from submitting; ambiguous
+binding must use audited reconciliation. Actual isolated rollback test confirms rejection with
+'invalid queued transition'. Existing mocks and simplified temporary tables did not prove this path.
+PASS extended actual MYR lifecycle SQL suite (including forbidden unknown-to-queued), all fixtures
+rolled back; retained jobs0/grants0/cases0. No live schema changes, paid provider calls or customer data.
+IN PROGRESS: add packaging regression to existing all-tests CI and checkpoint review evidence.
+BLOCKED PR76 merge/deploy until packaging AND receipt-binding semantics are corrected and tested
+against installed-function contract. GPT WORK owns these fixes; do not ask owner to bypass guards.
+Do not weaken unknown-outcome reconciliation or apply PR70 proposal just to make this test pass.
+No app behavior changed in this test-only milestone; no redundant staging redeploy is needed.
+STEP2 PARTIAL/customer NO-GO. Existing billing403/cost/E2E owner-access blockers unchanged.
+PASS PR81 head4fdb48e8:4 CI43280251422/43280251455/43280251308/43280251440.
+PASS246 local cases:234 passed,12 PostgreSQL-dependent skipped (not counted PASS).
+PASS fresh public checks02:29MYT:12 shells/14 unauthorized guards. Actual provider/Telegram E2E
+still BLOCKED. PR76 review body now records both reproduced blockers; source head unchanged.
+This checkpoint completes the test-only milestone; next engineering action is PR76 compatibility
+repair, not provider activation. No owner action newly required by these code defects.
+
+## 13 November06:17MYT — PR76 packaging repaired, SQL gate preserved
+PASS latest stagingdfdf59b and PR76 head2455323 checked; no concurrent deploy/head movement.
+PASS Dockerfile.admin now includes/compiles step2_no_retry_protocol.py and step2_submission_gate.py.
+PASS new isolated manifest test runs both worker contract suites without repository modules on
+PYTHONPATH. Provider/Telegram effects mocked; this is packaging evidence, NOT real external E2E.
+PASS288 discovered cases:273 passed,15 PostgreSQL-dependent skipped locally (not counted PASS).
+Latest staging changes merged into existing PR76 candidate to retain pricing/billing and PR81 guards;
+no duplicate worker PR and no main/production modification. CI pending on updated candidate.
+BLOCKED PR76 merge/deploy: its pre-POST submission_unknown -> normal queued still conflicts with
+installed SQL. No RPC guard weakened, no schema changed, no paid call, wallet/order change or grant.
+NEXT GPT WORK: reconcile durable submitting-claim fencing with response binding and audited ambiguous
+recovery, then test worker against actual installed-function contract before merge/deploy. Owner is
+not asked to bypass this engineering gate. STEP2 PARTIAL/customer NO-GO; other blockers unchanged.

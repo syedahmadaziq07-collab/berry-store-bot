@@ -135,3 +135,38 @@ def staging_startup_probe(environ=None,client_factory=httpx.Client,emit=print):
     with client_factory() as client:
         for result in pricing_probe(key,client):
             emit('BERRY_PROVIDER_READONLY '+json.dumps(result,sort_keys=True),flush=True)
+        emit('BERRY_PROVIDER_ACCOUNT_READONLY '+json.dumps(account_balance_probe(key,client),sort_keys=True),flush=True)
+
+
+def account_balance_probe(key, client):
+    """GET only; expose positive-balance boolean, never identity or raw billing data.
+
+    Pricing permission does not imply billing permission or inference authorization.
+    A positive balance is not sufficient-budget evidence until a cost cap is verified.
+    """
+    key = key.strip() if isinstance(key, str) else ''
+    result = {'status': 'unverified', 'inference_access_verified': False}
+    if not re.fullmatch(r'[!-~]{1,4096}', key):
+        return dict(result, error_kind='credential_format_invalid')
+    try:
+        response = client.get('https://api.fal.ai/v1/account/billing', params={'expand': 'credits'},
+                              headers={'Authorization': 'Key ' + key}, follow_redirects=False, timeout=10)
+        result['http_status'] = response.status_code
+        if response.status_code != 200:
+            return result
+        payload = response.json()
+        credits = payload.get('credits') if isinstance(payload, dict) else None
+        if not isinstance(credits, dict) or credits.get('currency') != 'USD':
+            return dict(result, error_kind='invalid_response')
+        value = credits.get('current_balance')
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            return dict(result, error_kind='invalid_response')
+        balance = Decimal(str(value))
+        if not balance.is_finite() or balance < 0:
+            return dict(result, error_kind='invalid_response')
+        result.update(status='balance_read_verified', positive_balance=balance > 0)
+    except httpx.RequestError:
+        result['error_kind'] = 'transport_error'
+    except Exception:
+        result['error_kind'] = 'invalid_response'
+    return result

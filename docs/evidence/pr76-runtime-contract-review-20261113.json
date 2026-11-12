@@ -1,0 +1,28 @@
+{
+  "reviewed_pr": 76,
+  "reviewed_head": "2455323eb443548528259d7678849ecdfb35c717",
+  "staging_head": "df9abed3843747b840a9c3eeeb8743335ea79a97",
+  "packaging_current_staging": "PASS",
+  "packaging_pr76": "FAIL",
+  "missing_modules": [
+    "step2_no_retry_protocol.py",
+    "step2_submission_gate.py"
+  ],
+  "affected_workers": [
+    "staging_job_worker.py",
+    "video_myr_worker.py"
+  ],
+  "installed_sql_contract": "PASS: direct queued transition from submission_unknown rejected",
+  "pr76_installed_sql_compatibility": "FAIL",
+  "sql_suite": "docs/sql/verify_video_myr_lifecycle.sql",
+  "sql_sha256": "bd5509e12a78442aa85453437ce55c63d21f6888b4fcc1e5f8240811f494db59",
+  "project": "cirsdvkfkvypprnmyykk",
+  "fixtures": "rolled_back",
+  "retained": {
+    "jobs": 0,
+    "grants": 0,
+    "cases": 0
+  },
+  "external_provider_calls": 0,
+  "production_changes": false
+}

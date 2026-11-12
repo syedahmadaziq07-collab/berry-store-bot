@@ -1,0 +1,52 @@
+{
+  "checked_at_utc": "2026-11-12T16:45:14Z",
+  "application_commit": "d462750195a012b998a425f4bf1bdc1762e60ce4",
+  "pr": 59,
+  "ci_head": "05202c98f2b4b5c8e996211f795023e703ea080a",
+  "ci_pass": [
+    43261815613,
+    43261815622,
+    43261816415
+  ],
+  "local_tests": {
+    "discovered": 245,
+    "passed": 233,
+    "skipped_postgres": 12
+  },
+  "deploy": "dep-dbquq06k1f9s73fe247g",
+  "deploy_status": "live",
+  "gate": {
+    "service_match": true,
+    "database_match": false,
+    "mapping_match": true
+  },
+  "pricing": [
+    {
+      "model": "fal-ai/flux/schnell",
+      "http_status": 200,
+      "usd_per_unit": "0.003",
+      "unit": "megapixels"
+    },
+    {
+      "model": "fal-ai/wan/v2.2-a14b/text-to-video",
+      "http_status": 200,
+      "usd_per_unit": "0.08",
+      "unit": "seconds"
+    },
+    {
+      "model": "minimax/h3-max-turbo/text-to-video",
+      "http_status": 200,
+      "usd_per_unit": "0.0175",
+      "unit": "seconds"
+    }
+  ],
+  "account_billing": {
+    "http_status": 403,
+    "status": "unverified",
+    "inference_access_verified": false
+  },
+  "paid_generations": 0,
+  "provider_spend_myr": 0,
+  "launch": "NO-GO",
+  "step2": "PARTIAL"
+}
