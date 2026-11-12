@@ -140,9 +140,9 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.context=NS(application=NS(bot_data={'berry_video_flow':self.f.flow}),user_data={})
     async def test_prompt_buttons_and_confirm_reach_real_controller(self):
         await request_prompt(self.update,self.context)
-        self.assertTrue(await prepare_prompt(self.update,self.context))
+        self.assertTrue(await prepare_prompt(self.update,self.context,keyboard_factory=lambda rows:rows))
         markup=self.message.reply_text.call_args.kwargs['reply_markup']
-        data=markup.inline_keyboard[0][0].callback_data
+        data=markup[0][0][1]
         self.assertTrue(data.startswith('ai_video_confirm:'))
         ident=data.split(':',1)[1]
         await consent_callback(self.update,self.context,'confirm',ident)

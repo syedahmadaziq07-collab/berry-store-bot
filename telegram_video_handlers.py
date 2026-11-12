@@ -19,23 +19,25 @@ async def request_prompt(update,context):
     await update.callback_query.message.reply_text('✏️ Hantar prompt video. Model, tetapan, harga dan baki akan dipaparkan sebelum Confirm.')
 
 
-async def prepare_prompt(update,context):
+async def prepare_prompt(update,context,keyboard_factory=None):
     state=context.user_data.get('ai_video_flow')
     if not isinstance(state,dict) or state.get('stage')!='live_prompt':return False
     if context.user_data.get('pending_receipt'):return False
     flow=runtime(update,context)
     ticket=await asyncio.to_thread(flow.prepare,update.effective_user.id,update.update_id,
                                   update.message.text or '',state['ratio'])
-    from telegram import InlineKeyboardButton,InlineKeyboardMarkup
+    if keyboard_factory is None:
+        from telegram import InlineKeyboardButton,InlineKeyboardMarkup
+        keyboard_factory=lambda rows:InlineKeyboardMarkup([
+            [InlineKeyboardButton(text,callback_data=data) for text,data in row] for row in rows])
     payload=ticket['payload'];q=payload['quote'];ident=ticket['ticket_id']
     await update.message.reply_text(
         f"🎬 {payload['label']}\n{payload['settings_label']}\n"
         f"Harga: {q['credits']:,} Berry Credits (RM{q['debit_cents']/100:.2f})\n"
         f"Baki: {ticket['balance_credits']:,} Berry Credits (RM{ticket['balance_myr']})\n"
         f"Prompt: {payload['prompt']}\n\nConfirm untuk debit dan generation; Cancel untuk batal. Quote mempunyai tempoh luput.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton('✅ Confirm',callback_data='ai_video_confirm:'+ident),
-            InlineKeyboardButton('❌ Cancel',callback_data='ai_video_cancel:'+ident)]]))
+        reply_markup=keyboard_factory([[('✅ Confirm','ai_video_confirm:'+ident),
+                                        ('❌ Cancel','ai_video_cancel:'+ident)]]))
     context.user_data.pop('ai_video_flow',None)
     return True
 
