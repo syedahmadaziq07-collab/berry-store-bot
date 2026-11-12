@@ -282,7 +282,7 @@
       "feature": "AI Video \u2014 polling/recovery/unknown",
       "status": "PARTIAL",
       "evidence": "Bound GET polling, terminal-error refund and recovery hooks coded/tested with mocked provider; no loop active. Reconciliation RPC absent. WIP candidate not tested/applied/deployed.",
-      "missing_work": "Finish audited cases, authoritative correlated receipts, idempotent operator resolution and race/failure tests.",
+      "missing_work": "Finish audited cases, authoritative correlated receipts, idempotent operator resolution and race/failure tests. Audit fairness/backoff for >20 blocked reserved jobs and thread shutdown; canceling an asyncio task does not prove an in-flight thread stopped.",
       "owner": "GPT WORK",
       "priority": "P0",
       "related": "PR40/41/46; WIP d215ebea"
@@ -321,7 +321,7 @@
       "id": "S02",
       "feature": "Shared \u2014 top-up/QR/receipt/approval",
       "status": "PARTIAL",
-      "evidence": "Source reuses send_payment_page Browse Shop QR; isolated checkout/approval/credit-once contracts previously PASS. Main PR43 not deployed; production checkout RPC absent. Two receipts unverified.",
+      "evidence": "Source reuses send_payment_page Browse Shop QR; isolated checkout/approval/credit-once contracts previously PASS. Main PR43 not deployed; production checkout RPC absent. Two receipts unverified. BERRY_TOPUP_CHECKOUT_ENABLED defaults OFF; actual production flag value not read/verified.",
       "missing_work": "Complete controlled real payment journey separately; do not touch disputed orders; reconcile bank evidence.",
       "owner": "GPT WORK; PEMILIK bank evidence",
       "priority": "P0",
@@ -371,8 +371,8 @@
       "id": "S07",
       "feature": "Shared \u2014 production version/alignment",
       "status": "PARTIAL",
-      "evidence": "Render production80655e2 LIVE dep-dbq7t5e1egvs73cr9vs0; main e8712cb includes PR43 ahead of deployed app. PR45 draft and new lifecycle not production. Production FAL_KEY presence not safely verified.",
-      "missing_work": "Approved release after migration/rotation/backup/E2E; no production deploy during audit.",
+      "evidence": "Render production80655e2 LIVE dep-dbq7t5e1egvs73cr9vs0; main e8712cb includes PR43 ahead of deployed app. PR45 draft and new lifecycle not production. Production FAL_KEY presence not safely verified. Deployed source still drops pending updates on restart and prints raw early HTTP exceptions (token-containing URL risk); reviewed staging fix is not production.",
+      "missing_work": "Approved release after migration/rotation/backup/E2E; no production deploy during audit. Release queued-update preservation/redacted startup fix only with explicit approval.",
       "owner": "GPT WORK; PEMILIK deployment approval",
       "priority": "P0",
       "related": "PR26/43/44/45; Render metadata"
@@ -506,5 +506,15 @@
     "ERROR": 0,
     "INFO_rls_enabled_no_policy": 24,
     "scope": "staging service-only tables; not production signoff"
+  },
+  "flag_audit": {
+    "private_mapping_staging_image_enabled": false,
+    "private_mapping_staging_video_enabled": false,
+    "normal_bot_controller": "none (source default)",
+    "worker_allow_external_default": false,
+    "flow_enabled_default": false,
+    "topup_checkout_default": false,
+    "production_topup_flag_live_value": "NOT VERIFIED",
+    "admin_writes_live_values": "NOT VERIFIED without authenticated session"
   }
 }

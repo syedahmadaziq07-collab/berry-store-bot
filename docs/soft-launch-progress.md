@@ -161,3 +161,7 @@ production private schema/checkout/video RPC absent. No production write or cust
 Unknown reconciliation candidate saved WIP d215ebea, NOT validated/applied/deployed or counted PASS.
 Production backup/rotation/real rollback and per-tool real E2E remain missing. Customer NO-GO.
 Next milestone STEP2/12: close P0 reconciliation/runtime/provider-cost gaps; Image remains separate.
+
+STEP1 follow-up source audit: production80655e2 still drops pending updates and has raw early HTTP
+exception logging; staging fix is not deployed production. Actual production topup flag value is
+unverified, not assumedOFF. Recovery fairness/thread shutdown are open verification gaps.
