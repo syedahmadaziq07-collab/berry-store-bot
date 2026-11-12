@@ -264,3 +264,22 @@ STEP2 PARTIAL/launch NO-GO. Hard billing duration, effective FX/fees/OPEX, RM1 N
 unverified. PR76 worker integration needs separate review, staging compatibility/SQL validation and
 safe deployment; PR79 production candidate untouched. No production, customer, migration, payment,
 provider inference or budget-grant mutation. RM0/0 paid generations in this iteration.
+
+## 13 November02:28MYT — PR76 runtime-contract review
+PASS fresh audit: stagingdf9abed; LIVE applicationd462750/dep-dbquq06k1f9s73fe247g.
+No in-flight deploy. PR76 head2455323 remains open with6 CI PASS; newer production work untouched.
+FAIL PR76 packaging: both workers function-import step2_no_retry_protocol and step2_submission_gate,
+but Dockerfile.admin copies neither. New AST-based manifest check detects both missing modules;
+current staging passes. No application import/network side effect occurs during this check.
+FAIL PR76 installed SQL compatibility: submit now writes submission_unknown before POST and then
+calls normal queued. Installed berry_video_job permits normal queued only from submitting; ambiguous
+binding must use audited reconciliation. Actual isolated rollback test confirms rejection with
+'invalid queued transition'. Existing mocks and simplified temporary tables did not prove this path.
+PASS extended actual MYR lifecycle SQL suite (including forbidden unknown-to-queued), all fixtures
+rolled back; retained jobs0/grants0/cases0. No live schema changes, paid provider calls or customer data.
+IN PROGRESS: add packaging regression to existing all-tests CI and checkpoint review evidence.
+BLOCKED PR76 merge/deploy until packaging AND receipt-binding semantics are corrected and tested
+against installed-function contract. GPT WORK owns these fixes; do not ask owner to bypass guards.
+Do not weaken unknown-outcome reconciliation or apply PR70 proposal just to make this test pass.
+No app behavior changed in this test-only milestone; no redundant staging redeploy is needed.
+STEP2 PARTIAL/customer NO-GO. Existing billing403/cost/E2E owner-access blockers unchanged.

@@ -26,6 +26,17 @@ BEGIN
  r:=public.berry_video_job(t,j,'claim_submit',jsonb_build_object('budget_id',budget));
  IF r->>'claimed'<>'false' THEN RAISE EXCEPTION 'duplicate submit claimed'; END IF;
  PERFORM public.berry_video_job(t,j,'submission_unknown');
+ -- A normal queue acknowledgement must not bind an ambiguous submission.
+ -- PR76 currently attempts this sequence before every POST: keep it blocked
+ -- until a separately reviewed receipt-binding protocol is implemented.
+ rejected:=false;
+ BEGIN
+  PERFORM public.berry_video_job(t,j,'queued',jsonb_build_object(
+   'provider_request_id','fixture-unknown',
+   'queue_result_url','https://queue.fal.run/fal-ai/wan/requests/fixture-unknown',
+   'queue_status_url','https://queue.fal.run/fal-ai/wan/requests/fixture-unknown/status'));
+ EXCEPTION WHEN raise_exception THEN rejected:=SQLERRM='invalid queued transition'; END;
+ IF NOT rejected THEN RAISE EXCEPTION 'ambiguous submission bound without reconciliation'; END IF;
  rejected:=false;
  BEGIN PERFORM public.berry_video_job(t,j,'refund_before_submit');
  EXCEPTION WHEN raise_exception THEN rejected:=true; END;
