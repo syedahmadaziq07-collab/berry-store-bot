@@ -316,3 +316,7 @@ These are SQL compatibility tests, NOT paid provider/Telegram E2E or proof of cu
 No SQL migration or weakening of audited reconciliation. No production, customer data or paid calls.
 BLOCKED merge/deploy pending current CI and full candidate review. STEP2 PARTIAL; customer NO-GO.
 NEXT verify PostgreSQL CI, review remaining candidate modules, then staging-only release if safe.
+PASS candidate review found and disabled legacy unit-price-only cost verifier: it cannot certify
+all-in generation costs without maximum billable units/fees/FX applicability. Regression asserts
+refusal without any network call even for a large proposed budget. Runtime uses existing separate
+provider_readiness metadata path; no verified cost/margin is claimed. Legacy probe remains unwired.

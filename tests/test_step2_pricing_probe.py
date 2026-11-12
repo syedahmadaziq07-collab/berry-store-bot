@@ -72,17 +72,16 @@ class PricingProbeTests(unittest.TestCase):
             with self.assertRaises(PricingProbeError):
                 self.probe._model(bad)
 
-    def test_cost_bound_verification_rejects_underpricing(self):
-        doc = {"models": {MODEL: {"price": 0.025}}}  # USD/second
-        c = client_with(lambda r: httpx.Response(200, json=doc))
-        probe = FalPricingProbe("k", client=c)
-        fx = 4.7  # MYR per USD, server-configured fixture
-        # documented MYR cents/sec = 0.025 * 4.7 * 100 = 11.75 -> bound must be >= 11.75
-        self.assertEqual(probe.verify_documented_cost_bound(MODEL, 12, fx_rate=fx), 0.025)
-        self.assertEqual(probe.verify_documented_cost_bound(MODEL, 200, fx_rate=fx), 0.025)
-        for bad_bound in (11, 0, -1):
-            with self.assertRaises(PricingProbeError):
-                probe.verify_documented_cost_bound(MODEL, bad_bound, fx_rate=fx)
+    def test_unit_price_never_verifies_generation_bound(self):
+        calls = []
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={'models': {MODEL: {'price': 0.025}}})
+        probe = FalPricingProbe('fixture-key', client=client_with(handler))
+        for bound in (12, 200, 500, 999999):
+            with self.assertRaisesRegex(PricingProbeError, 'maximum generation cost'):
+                probe.verify_documented_cost_bound(MODEL, bound, fx_rate=4.7)
+        self.assertEqual(calls, [])
 
     def test_cost_bound_requires_server_fx_rate(self):
         doc = {"models": {MODEL: {"price": 0.025}}}

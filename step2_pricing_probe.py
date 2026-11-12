@@ -96,20 +96,10 @@ class FalPricingProbe:
     def verify_documented_cost_bound(self, model_id, all_in_cost_cents, *,
                                       pricing_url="https://fal.ai/api/pricing",
                                       fx_rate=None):
-        """Validate that the frozen all-in cost bound is not below the exact
-        documented unit price (per second). fx_rate converts USD price to MYR
-        cents and must be supplied by server configuration, never inferred.
+        """Deprecated: a unit price cannot verify an all-in generation bound.
 
-        Raises if the document is invalid or the bound would under-price the
-        provider's documented rate. Returns the verified numeric price.
+        This legacy probe lacks validated billing units, duration, fees and rate
+        applicability. Refuse before network I/O. Runtime pricing metadata uses
+        provider_readiness.py; its inputs still require independent verification.
         """
-        price = self.exact_price(model_id, pricing_url=pricing_url)
-        if type(all_in_cost_cents) is not int:
-            raise PricingProbeError("Cost bound must be integer cents")
-        if isinstance(fx_rate, bool) or not isinstance(fx_rate, (int, float)) or fx_rate <= 0:
-            raise PricingProbeError("Server-configured FX rate required")
-        # MYR cents per unit = USD unit price * fx_rate(MYR/USD) * 100
-        documented_myr_cents = price * fx_rate * 100
-        if all_in_cost_cents < documented_myr_cents:
-            raise PricingProbeError("Frozen cost bound is below documented provider price")
-        return price
+        raise PricingProbeError("Unit pricing cannot verify maximum generation cost")
