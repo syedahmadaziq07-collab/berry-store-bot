@@ -92,3 +92,42 @@ maximum cost, FX/fees and RM1 NET; production backup/rotation/migration/real E2E
 Owner provider cap now RM5 total / at most 5 paid generations from existing authorized balance;
 no purchase/top-up, and no spend without verified worst-case bound. Two unverified production
 receipt orders remain untouched. Payment/generation disabled. LAUNCH NO-GO.
+
+## Verified staging deployment — 12 November 2026, 11:39 MYT
+
+- PASS: PR46 merged staging only, application 7b82f01bd17b60e3760c41419e1f758489e716cb.
+  Render dep-dbqj9a2fngtc73fp57v0 LIVE at 03:38:52Z. No production merge/deploy.
+- PASS: all eight CI workflows on reviewed head13131ce2924328e41c7bc3cd6d21c34c5b5e852c.
+  167 complete staging backend tests; frontend16 tests/typecheck/build/audit in CI.
+  PR45 candidate head3e03c3c9 has six CI PASS and117 backend tests; remains DRAFT/unmerged main.
+- PASS: migration berry_video_myr_consent_staging_20261112 installed ONLY isolated project.
+  Earlier DDL-validation transaction was rolled back; reviewed schema is now persisted for staging.
+  Both actual SQL lifecycle/consent suites PASS after migration, dummy data rolled back.
+  Post-test counts:0 jobs,0 tickets,0 budget grants,0 audit events. No customer money involved.
+- PASS: public staging audit at03:39:09Z:12 shells +14 unauthenticated API guards.
+  Evidence: docs/evidence/video-consent-public-audit-20261112.json. No error-level logs in
+  checked immediate03:38:53Z–03:39:35Z interval. This is NOT authenticated business or Telegram E2E.
+- PASS: mapping revision4 still has0 enabled image/video mappings. No controller or recovery daemon
+  is started by normal bot/admin deployment. No provider request, Telegram send or payment activation.
+- PASS (staging advisory scope): no WARN/ERROR notices;24 INFO RLS-with-no-policy findings for
+  service-only tables. Documentation: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+- BLOCKED: actual account pricing endpoint requires authorized provider access; published model
+  page alone did not establish a parameter-bound maximum. Pricing API documentation:
+  https://fal.ai/docs/documentation/model-apis/pricing . No FX/fees/net-margin proof invented.
+- BLOCKED: controlled Telegram identity and provider existing-balance/access; authenticated
+  dashboard session; production backup/rotation/migration approval and actual E2E.
+  Both unverified production receipt orders remain untouched. Owner budget is RM5 total/5 max;
+  actual spend in this iteration RM0, paid generations0.
+
+Readiness: consent source CODE COMPLETE for controlled text-to-video; database contracts and
+admin packaging/public guards STAGING VERIFIED. Live bot/provider/delivery NOT VERIFIED.
+PRODUCTION READY: NO. PRODUCTION LIVE: NO for these changes. Customer launch NO-GO.
+Next safe work: audited unknown-outcome operator reconciliation and authenticated integration
+coverage; exact model/cost/access proof before any paid attempt. Never enable from CI/LIVE alone.
+
+Checkpoint for continuation: PR45 must remain draft until remaining runtime/cost/security/E2E
+acceptance; staging deployment above is current. Do not create another runtime port/deploy of46.
+No rollback of ledger rows or re-submission of unknown jobs is authorized. Production main and
+customer money/orders remain restricted; latest directive requires explicit owner approval for
+production merge/deploy. No secrets have been read/disclosed. Reuse this checkpoint and inspect
+current branch/CI/deploy state before further writes.
