@@ -62,3 +62,31 @@ class ReadinessTests(unittest.TestCase):
             client=Mock();result=pricing_probe(key,client)
             client.get.assert_not_called()
             self.assertTrue(all(r['error_kind']=='credential_format_invalid' for r in result))
+
+    def test_contract_failures_are_distinct_and_redacted(self):
+        valid = {'endpoint_id': MODELS[0], 'unit_price': .1, 'unit': 'image', 'currency': 'USD'}
+        cases = [(None, 'envelope_not_object'), ({}, 'prices_missing'),
+                 ({'prices': 'sensitive-fixture'}, 'prices_not_object_array'),
+                 ({'prices': [None]}, 'prices_not_object_array'),
+                 ({'prices': []}, 'endpoint_not_found'),
+                 ({'prices': [valid, valid]}, 'endpoint_ambiguous')]
+        for field, value, reason in [('unit_price', True, 'price_type_invalid'),
+                                     ('unit_price', 'sensitive-fixture', 'price_value_invalid'),
+                                     ('unit_price', 'NaN', 'price_value_invalid'),
+                                     ('unit_price', -1, 'price_value_invalid'),
+                                     ('currency', 'sensitive-fixture', 'currency_unsupported'),
+                                     ('unit', 'sensitive-fixture', 'billing_unit_unsupported')]:
+            cases.append(({'prices': [dict(valid, **{field: value})]}, reason))
+        for payload, reason in cases:
+            client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=json.dumps(payload), headers={'Content-Type': 'application/json'})))
+            result = pricing_probe('fixture-key', client)[0]
+            self.assertEqual(result['validation_error'], reason)
+            self.assertEqual(result['status'], 'unverified')
+            self.assertNotIn('sensitive-fixture', json.dumps(result))
+            self.assertNotIn('fixture-key', json.dumps(result))
+
+    def test_http_200_non_json_body_is_not_pricing(self):
+        client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text='<html>sensitive-fixture</html>')))
+        result = pricing_probe('fixture-key', client)
+        self.assertTrue(all(r['validation_error'] == 'body_not_json' for r in result))
+        self.assertNotIn('sensitive-fixture', json.dumps(result))
