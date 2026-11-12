@@ -18,9 +18,14 @@ admin-control-center wujud sebagai rujukan keselamatan (bukan langkah bernombor)
 | Paparan kredit tepat | PASS | PASS | Dalam main | — | verifikasi visual selepas asap |
 
 ## Log pelaksanaan
-- `feat/prod-step2-completion-20261112`: bawa komponen STEP 2 teruji dari
-  PR #76 ke main tanpa sasaran staging — `step2_no_retry_protocol.py` (6/6),
-  `step2_submission_gate.py` (10/10), `step2_operator_reconciliation.py`
-  (7/7), `step2_staging_preflight.py` (5/5), `video_reconciliation.py`,
-  `ai_wallet_pricing_adapter.py`. Total 28/28 step2 + 13/13 prod + 50/50
-  berkaitan PR #78. Semua modul lengai secara import (tiada rangkaian/DB).
+- `feat/prod-step2-completion-20261112` @ `7f05d92`: komponen STEP 2 teruji
+  dari PR #76 ke main (28/28) + tracker.
+- `feat/prod-step2-completion-20261112` @ `ca12b79`: `fal_pricing.py` +
+  `berry_credit_pricing.py` (11/11) — skema API harga rasmi fal.
+- `feat/prod-step2-completion-20261112` @ (kini): `production_model_catalog.py`
+  (5/5) — katalog pengeluaran yang mengikat harga TERVERIFIKASI ke offer beku
+  imej; gagal-tutup pada model tiada/tool salah/harga tak tersedia. CI diperluas.
+- Ujian berkumpul: 28 step2 + 11 fal + 5 katalog + 13 prod-integrasi + 20 imej
+  = 77 lulus tempatan (suite penuh 124; 31 = kunci fail Windows diketahui).
+- Peta jalan STEP 5–12: tidak wujud dalam repositori — dilaporkan sebagai
+  sumber hilang, tidak direka-reka; menunggu takrifan pemilik.
