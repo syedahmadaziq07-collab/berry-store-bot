@@ -61,7 +61,7 @@ def parse_pricing(payload, model):
         raise PricingContractError('price_value_invalid')
     if row.get('currency') != 'USD':
         raise PricingContractError('currency_unsupported')
-    if row.get('unit') not in ('image', 'megapixel', 'second', 'video', 'request', 'video_second'):
+    if row.get('unit') not in ('image', 'images', 'megapixel', 'megapixels', 'second', 'seconds', 'video', 'videos', 'request', 'requests', 'video_second'):
         raise PricingContractError('billing_unit_unsupported')
     return {'status': 'pricing_read_verified', 'unit_price': str(price),
             'unit': row['unit'], 'currency': 'USD'}
