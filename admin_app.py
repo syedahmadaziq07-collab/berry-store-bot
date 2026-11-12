@@ -164,8 +164,14 @@ def overview(products, orders, wallets, now=None):
     }
 
 
+def provider_key_present(names=None):
+    """Presence-only audit: iterate environment NAMES; never fetch a secret value."""
+    return any(name == "FAL_KEY" for name in (os.environ.keys() if names is None else names))
+
+
 def create_app(config=None, store=None, mapping_store=None):
     app = Flask(__name__, static_folder=None)
+    print("BERRY_PROVIDER_CONFIG fal_key_present=" + str(provider_key_present()).lower(), flush=True)
     # Render terminates TLS one trusted proxy hop ahead of the container.
     # Keep remote_addr unchanged; never trust client-supplied X-Forwarded-For.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=1)

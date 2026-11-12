@@ -131,3 +131,15 @@ No rollback of ledger rows or re-submission of unknown jobs is authorized. Produ
 customer money/orders remain restricted; latest directive requires explicit owner approval for
 production merge/deploy. No secrets have been read/disclosed. Reuse this checkpoint and inspect
 current branch/CI/deploy state before further writes.
+
+## Provider identity audit — 12 November MYT
+
+PASS: actual revision4 mapping identifies fal.ai / Wan2.2 A14B text-to-video, disabled,0 credits.
+Gemini15s is UI preview; PixVerse3.5 is in legacy unmerged drafts. Do not confuse the Wan5B
+regression fixture with the configured A14B model. Official A14B page announces4 January2027
+removal. See docs/provider-audit-20261112.md for sources, exact endpoint and pricing limits.
+PASS:169 full local backend tests. Presence-only startup metadata added; unit test proves that
+only environment names are accessed, never secret values. IN PROGRESS: CI/staging deployment and
+actual Render FAL_KEY present/absent observation. No public metadata API or production change.
+BLOCKED: authenticated provider access/balance and exact cost/FX/fee bounds. No paid call.
+NEXT: audited unknown-outcome reconciliation; controlled E2E stays gated. LAUNCH NO-GO.
