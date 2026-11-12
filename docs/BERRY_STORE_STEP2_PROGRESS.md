@@ -32,7 +32,23 @@
 - Validate account-specific fal pricing with read-only authenticated endpoint; do not call paid inference.
 - Request separate approval for live staging migration and any spending, wallet writes or deployments.
 
-**No claim of STEP 2 PASS until all release gates are verified.**
+## 2026-11-12 update 2 — gate wired into StagingJobWorker.submit
+- `staging_job_worker.StagingJobWorker.submit` now routes the provider POST
+  through `step2_submission_gate.WorkerSubmissionGate` (PR #75 protocol):
+  - Durable `submission_unknown` marker is persisted BEFORE the network POST
+    (via `claim_fn`), fencing all competing workers.
+  - The gate authorizes exactly one POST; the response is bound to that POST
+    only (`provider_request_id`), then validated by `queue_urls` and persisted.
+  - Any failure (POST timeout, malformed response, persistence failure) raises
+    `JobError`; the job stays held with no second POST and no refund.
+  - Net safety improvement: if the durable `submission_unknown` write itself
+    fails, NO provider POST happens at all (previously one POST could occur).
+- Test change: `test_response_persistence_failure_still_blocks_resubmission`
+    updated to assert zero provider POSTs when the durable marker commit fails.
+- Verification: test_staging_job_worker.py 22/22 OK, test_step2* suite 60/60
+  OK (12 skipped require Postgres, unchanged), test_video_myr_worker.py 12/12 OK,
+  test_step2_no_retry_protocol.py 6/6 OK. Python 3.13, no network/DB/paid calls.
+- Still NO-GO for paid generation; no migration, wallet write, or deploy.
 
 ## 2026-11-12 update — no-retry gate wired toward worker integration
 - New `step2_submission_gate.py`: single sanctioned path from a submittable job

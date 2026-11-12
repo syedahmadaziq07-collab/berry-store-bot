@@ -144,19 +144,38 @@ class StagingJobWorker:
         claim = self.store.action(job_id, "claim_submit")
         if claim.get("claimed") is not True:
             return claim
+        # PR #75 integration: the WorkerSubmissionGate is now the sole path to
+        # the provider POST. claim_fn durably persists SUBMISSION_UNKNOWN
+        # BEFORE the network call; the gate allows exactly one POST and binds
+        # the response to it. Any failure leaves the job held, never retried.
+        from step2_no_retry_protocol import Attempt, State, SubmissionBlocked
+        from step2_submission_gate import WorkerSubmissionGate
+        post_response = {}
+
+        def durable_unknown():
+            self.store.action(job_id, "submission_unknown")
+            return Attempt(State.SUBMITTING, generation=0)
+
+        def provider_post():
+            nonlocal post_response
+            post_response = self.provider.submit(q["provider_model_id"], arguments)
+            return post_response
+
+        gate = WorkerSubmissionGate(durable_unknown, provider_post)
         try:
-            response = self.provider.submit(q["provider_model_id"], arguments)
-            request_id = response["request_id"]
+            bound = gate.submit(Attempt(State.SUBMITTING, generation=0))
+        except Exception:
+            # Fail-closed: POST error/timeout, or a failed durable-unknown commit,
+            # both leave the job held; never a second POST or a refund.
+            raise JobError("Submission outcome unknown; no retry or refund performed") from None
+        try:
+            request_id = bound.provider_request_id
             recovery = queue_urls(q["provider_model_id"], request_id,
-                                  response["status_url"], response["response_url"])
+                                  post_response["status_url"], post_response["response_url"])
             return self.store.action(job_id, "queued", recovery)
         except Exception:
             # Even a failure recording the successful HTTP response is ambiguous.
-            # If this write also fails, persisted 'submitting' still blocks replay.
-            try:
-                self.store.action(job_id, "submission_unknown")
-            except JobError:
-                pass
+            # Persisted 'submission_unknown' (written before the POST) blocks replay.
             raise JobError("Submission outcome unknown; no retry or refund performed") from None
 
     def poll(self, job_id):

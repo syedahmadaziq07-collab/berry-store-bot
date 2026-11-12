@@ -101,9 +101,12 @@ class WorkerTests(unittest.TestCase):
         self.store.action = action
         with self.assertRaises(JobError):
             self.worker.submit(JOB, ARGS)
+        # PR #75 gate: the durable SUBMISSION_UNKNOWN marker is written BEFORE
+        # the provider POST. If that write fails, no POST happens at all.
+        self.provider.submit.assert_not_called()
         self.assertEqual(self.store.job["state"], "submitting")
         self.worker.submit(JOB, ARGS)
-        self.provider.submit.assert_called_once()
+        self.provider.submit.assert_not_called()
 
     def test_delivery_timeout_does_not_send_again(self):
         self.worker.submit(JOB, ARGS)

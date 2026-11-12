@@ -15,7 +15,10 @@ tests, PRs, CI and deployment evidence only — no unverified claims.
 | 2026-11-12 | feat/step2-no-retry-worker-integration-20261112 | 334040a | `step2_submission_gate.py` wires the PR #75 durable no-retry state machine as the sole sanctioned path to a single provider POST (durable SUBMISSION_UNKNOWN before POST, generation-fenced single authorization, response binding, restart → poll/hold, never a second POST). | `tests/test_step2_submission_gate.py` — 10/10 pass locally (Python 3.13), no network/DB/paid calls | `.github/workflows/step2-submission-gate.yml` added; pending first PR run |
 | (prior) | deploy/berry-ai-private-mapping-staging-20261111 | fe99478 | PR #75 fail-closed durable no-retry submission protocol (reference state machine) | tests/test_step2_no_retry_protocol.py 6/6 | step2-durable-no-retry.yml |
 
+| 2026-11-12 | feat/step2-no-retry-worker-integration-20261112 | (this push) | `StagingJobWorker.submit` POST now routed through `WorkerSubmissionGate`: durable `submission_unknown` before POST, single POST, response binding, fail-closed hold. Safety upgraded: failed durable-marker write now prevents any POST. | worker 22/22, step2 60/60, video_myr 12/12, no_retry 6/6 OK locally | pending |
+
 PR creation: `gh` CLI not installed and no GitHub API token in this environment.
+PR target branch: `deploy/berry-ai-private-mapping-staging-20261111`.
 Open PR from: https://github.com/syedahmadaziq07-collab/berry-store-bot/pull/new/feat/step2-no-retry-worker-integration-20261112
 
 ## Safety boundaries honoured
