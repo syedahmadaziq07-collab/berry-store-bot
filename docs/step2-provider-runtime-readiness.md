@@ -133,3 +133,13 @@ This is not evidence of invalid key, denied account access or price. Additional 
 diagnostics (never exception strings) are being validated to distinguish transport from malformed
 response.186 backend tests expected after diagnostic test; CI/deploy pending. Mapping revision4
 still0 enabled flags; no runtime/checkout activation, grants, provider inference or budget spending.
+
+## Provider request header correction
+
+PR55 diagnostic deployment14dc3bb is LIVE. Actual startup05:24:43Z: all3 pricing reads report
+local_request_rejected with no HTTP status. This is a client protocol failure, not an observed
+provider401/403. Source https://www.python-httpx.org/exceptions/ . Normalize outer whitespace
+inside server authentication path and reject embedded whitespace/control characters before HTTP.
+No secret inspection/output or environment configuration changes.188 backend tests PASS,
+including wrapped credential/header tests and no-network rejection. New rollout pending.
+Provider generation code remains disabled and unchanged. STEP2 PARTIAL, launch NO-GO, RM0.

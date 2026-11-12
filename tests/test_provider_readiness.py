@@ -49,3 +49,16 @@ class ReadinessTests(unittest.TestCase):
             result=pricing_probe('secret-fixture',client)
             self.assertTrue(all(r['error_kind']==kind for r in result))
             self.assertNotIn('secret-fixture',json.dumps(result))
+
+    def test_outer_credential_whitespace_normalized_inside_runtime(self):
+        def transport(request):
+            self.assertEqual(request.headers['Authorization'],'Key fixture-key')
+            return httpx.Response(401)
+        result=pricing_probe('  fixture-key\r\n',httpx.Client(transport=httpx.MockTransport(transport)))
+        self.assertTrue(all(r['http_status']==401 for r in result))
+        self.assertNotIn('fixture-key',json.dumps(result))
+    def test_embedded_controls_rejected_before_network(self):
+        for key in ('fixture\nkey','fixture key','fixture\tkey','',None,'é','a'*4097):
+            client=Mock();result=pricing_probe(key,client)
+            client.get.assert_not_called()
+            self.assertTrue(all(r['error_kind']=='credential_format_invalid' for r in result))

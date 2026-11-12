@@ -5,6 +5,7 @@ Pricing access is NOT model authorization, balance verification or a cost ceilin
 """
 import json
 import os
+import re
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import httpx
 
@@ -27,6 +28,11 @@ def minimum_sale_cents(provider_usd_bound, fx_myr_per_usd_bound, fixed_myr_bound
         raise ValueError('Verified finite cost bounds required') from None
 
 def pricing_probe(key,client):
+    # Environment secrets can acquire a trailing newline on secure paste. Normalize only
+    # outer whitespace; embedded whitespace/control characters must fail before HTTP.
+    key=key.strip() if isinstance(key,str) else ''
+    if not re.fullmatch(r'[!-~]{1,4096}',key):
+        return [{'model':m,'status':'unverified','error_kind':'credential_format_invalid'} for m in MODELS]
     results=[]
     for model in MODELS:
         item={'model':model,'status':'unverified'}
