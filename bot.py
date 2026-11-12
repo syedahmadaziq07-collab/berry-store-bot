@@ -2994,6 +2994,67 @@ def _ai_video_is_admin(update: Update) -> bool:
     return bool(ADMIN_ID and update.effective_user and update.effective_user.id == ADMIN_ID)
 
 
+async def _ai_video_channel_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Fail closed for AI Video membership. Bot must be channel admin to verify."""
+    user = update.effective_user
+    if not user:
+        return False
+    try:
+        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
+        if member.status in ("member", "administrator", "creator") or (
+            member.status == "restricted" and getattr(member, "is_member", False)
+        ):
+            return True
+    except Exception as exc:
+        log.warning("[AI_VIDEO] Channel membership verification unavailable: %s", type(exc).__name__)
+        await _safe_edit_or_send(
+            update.callback_query,
+            "⚠️ Tak dapat sahkan membership channel buat masa ini. "
+            "Sila cuba lagi selepas bot mendapat akses admin channel.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Semak Semula", callback_data="ai_video_join_check")],
+                [InlineKeyboardButton("📢 Buka Channel", url=REQUIRED_CHANNEL_URL)],
+            ]),
+        )
+        return False
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🔒 Untuk guna AI Video, sila join channel Berry Store dahulu. "
+        "Selepas join, tekan Semak Membership.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 Join @berrystorrel", url=REQUIRED_CHANNEL_URL)],
+            [InlineKeyboardButton("✅ Saya Dah Join — Semak", callback_data="ai_video_join_check")],
+        ]),
+    )
+    return False
+
+
+async def _announce_ai_video_generation(context: ContextTypes.DEFAULT_TYPE, state: dict) -> None:
+    """Announce an admin test only after an explicit paid generation request."""
+    try:
+        me = await context.bot.get_me()
+        if not me.username:
+            return
+        deep_link = "https://t.me/" + me.username + "?start=ai_video"
+        duration = state.get("duration", "5")
+        await context.bot.send_message(
+            chat_id=REQUIRED_CHANNEL,
+            text=(
+                "🍓 BERRY AI STUDIO\\n\\n"
+                "🎬 Ada pengguna sedang cuba generate AI Video!\\n"
+                "🤖 Model: PixVerse V3.5\\n"
+                f"⏱ Durasi: {duration} saat\\n"
+                "⚡ Status: Request sedang diproses\\n\\n"
+                "Nak cuba AI Video sendiri? Buka Berry Store Bot."
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Buka Berry Store Bot", url=deep_link)]
+            ]),
+        )
+    except Exception as exc:
+        log.warning("[AI_VIDEO] Announcement skipped: %s", type(exc).__name__)
+
+
 def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("⬅️ Kembali", callback_data=callback),
@@ -3409,14 +3470,13 @@ async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_T
         "━━━━━━━━━━━━━━━━━━\n"
         "Langkah 1/3 — Pilih durasi\n\n"
         "Nak video sepanjang berapa saat?\n\n"
-        "✅ 15 saat tersedia untuk preview.\n"
-        "Durasi lain belum tersedia.\n\n"
-        "💡 Harga dalam RM akan dipaparkan pada pilihan model "
-        "selepas harga sebenar ditetapkan.",
+        "✅ PixVerse V3.5: 5 atau 8 saat.\n"
+        "8s dikenakan 2× kos 5s.\n\n"
+        "💵 Kos API 720p: USD0.20 (5s), USD0.40 (8s).\n"
+        "🔒 Admin-only; belum melibatkan Berry Credits.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚡ 8–10 saat (akan datang)", callback_data="ai_video_unavailable:short")],
-            [InlineKeyboardButton("🎬 15 saat (preview)", callback_data="ai_video_models:15")],
-            [InlineKeyboardButton("🎞️ 30 saat (akan datang)", callback_data="ai_video_unavailable:long")],
+            [InlineKeyboardButton("🎬 5 saat · PixVerse", callback_data="ai_video_models:5")],
+            [InlineKeyboardButton("🎞️ 8 saat · PixVerse", callback_data="ai_video_models:8")],
             [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video")],
         ]),
     )
@@ -3434,30 +3494,31 @@ async def show_ai_video_unavailable(update: Update, context: ContextTypes.DEFAUL
     )
 
 
-async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE, duration: str = "15"):
+async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYPE, duration: str = "5"):
     """Show only matching models, not a wall of servers and mixed pricing."""
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
-    if duration != "15":
+    context.user_data["pixverse_duration"] = duration
+    if duration not in ("5", "8"):
         await show_ai_video_unavailable(update, context)
         return
     await _safe_edit_or_send(
         update.callback_query,
-        "🤖 PILIH MODEL\n"
+        "🤖 PIXVERSE V3.5\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "Langkah 2/3 — Video 15 saat\n\n"
-        "🔥 Gemini Omni Flash\n"
-        "• Durasi: 15 saat\n"
+        f"Langkah 2/3 — Video {duration} saat\n\n"
+        "🎬 PixVerse V3.5 · Image-to-Video\n"
+        f"• Durasi: {duration} saat\n"
         "• Kualiti: 720p\n"
-        "• Audio: tersedia\n"
+        "• Audio: tiada\n"
         "• Input: 1 gambar + prompt\n"
-        "• Harga: belum ditetapkan (RM)\n\n"
+        "• Kos API 720p: USD0.20 (5s) / USD0.40 (8s)\n\n"
         "Model lain akan disenaraikan mengikut durasi "
         "apabila API dan harga disahkan.\n\n"
-        "🔒 Demo sahaja. Tiada caj.",
+        "🔒 Admin-only. Caj fal.ai hanya selepas tekan Generate.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔥 Pilih Gemini Omni Flash", callback_data="ai_video_ratio")],
+            [InlineKeyboardButton("🎬 Pilih PixVerse 720p", callback_data="ai_video_ratio")],
             [InlineKeyboardButton("⬅️ Tukar Durasi", callback_data="ai_video_duration")],
         ]),
     )
@@ -3470,19 +3531,18 @@ async def show_ai_video_ratio(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.pop("ai_video_flow", None)
     await _safe_edit_or_send(
         update.callback_query,
-        "🎬 GEMINI OMNI FLASH\n"
+        "🎬 PIXVERSE V3.5\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "Langkah 3/3 — Tetapan Video\n\n"
-        "⏱ Durasi: 15 saat\n"
+        f"⏱ Durasi: {context.user_data.get('pixverse_duration', '5')} saat\n"
         "📺 Resolution: 720p\n"
-        "🔊 Audio: tersedia\n"
-        "💰 Harga: belum ditetapkan\n\n"
+        "🔇 Audio: tiada\n"
+        "💰 Harga API: USD0.20 (5s) / USD0.40 (8s)\n\n"
         "📷 Sediakan 1 gambar dan prompt.\n"
-        "📐 Pilih aspect ratio:",
+        "📐 Ratio output ikut gambar asal:",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🖥️ Landscape · 16:9", callback_data="ai_video_photo:16:9")],
-            [InlineKeyboardButton("📱 Portrait · 9:16", callback_data="ai_video_photo:9:16")],
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("📷 Teruskan upload gambar", callback_data="ai_video_photo:auto")],
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="ai_video_duration")],
         ]),
     )
 
@@ -3491,7 +3551,7 @@ async def request_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_T
     """Start an ephemeral preview session without writing to the database."""
     if not _ai_video_is_admin(update):
         return
-    if ratio not in ("16:9", "9:16"):
+    if ratio != "auto":
         return
     if context.user_data.get("pending_receipt"):
         await _safe_edit_or_send(
@@ -3503,15 +3563,16 @@ async def request_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_T
         return
     context.user_data["ai_video_flow"] = {
         "stage": "await_photo",
-        "model": "Gemini Omni Flash (15s)",
+        "model": "PixVerse V3.5 (720p)",
+        "duration": context.user_data.get("pixverse_duration", "5"),
         "ratio": ratio,
     }
     await _safe_edit_or_send(
         update.callback_query,
-        f"🔥 Gemini Omni Flash (15s) ({ratio})\n\n"
+        f"🎬 PixVerse V3.5 · {context.user_data.get('pixverse_duration', '5')}s · 720p\n\n"
         "📷 Hantar SATU gambar rujukan untuk mula.\n"
         "Kemudian bot akan minta prompt.\n\n"
-        "⚠️ Preview sahaja — video belum akan dijana.",
+        "💵 fal.ai API berbayar; generation hanya selepas pengesahan.",
         reply_markup=_ai_video_back_button("ai_video_ratio"),
     )
 
@@ -3532,7 +3593,7 @@ async def accept_ai_video_photo(update: Update, context: ContextTypes.DEFAULT_TY
         f"✅ Gambar diterima! Ratio: {state['ratio']}\n\n"
         "✏️ Sekarang hantar prompt untuk video.\n"
         "Contoh: Cinematic sunrise, slow camera pan, birds singing.\n\n"
-        "⚠️ Ini preview; gambar tidak dihantar ke AI provider.",
+        "🔒 Gambar belum dihantar ke fal.ai. Caj hanya selepas pengesahan.",
         reply_markup=_ai_video_back_button("ai_video_ratio"),
     )
     return True
@@ -3546,23 +3607,87 @@ async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_T
     if not isinstance(state, dict) or state.get("stage") != "await_prompt":
         return False
     prompt = (update.message.text or "").strip()
-    if not prompt or len(prompt) > 1500:
-        await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 1500 aksara.")
+    if not prompt or len(prompt.encode("utf-8")) > 2048:
+        await update.message.reply_text("⚠️ Prompt mesti antara 1 hingga 2048 bytes UTF-8.")
         return True
-    context.user_data.pop("ai_video_flow", None)
+    state["prompt"] = prompt
+    state["provider_cost_usd"] = "0.20" if state.get("duration") == "5" else "0.40"
+    state["stage"] = "await_confirm"
     await update.message.reply_text(
-        "✅ PREVIEW REQUEST\n\n"
+        "✅ SEMAK SEBELUM GENERATE\n\n"
         f"🎬 Model: {state['model']}\n"
         f"📐 Ratio: {state['ratio']}\n"
         "📷 Gambar: diterima\n"
         f"✏️ Prompt: {prompt}\n\n"
-        "🔒 Belum dihantar untuk generation. Tiada caj dikenakan.",
+        f"💵 Anggaran caj fal.ai: USD{state['provider_cost_usd']} (720p).\n"
+        "⚠️ Caj sebenar ditentukan fal.ai. Klik Generate hanya jika setuju.",
         reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Generate (API berbayar)", callback_data="ai_video_generate")],
+            [InlineKeyboardButton("❌ Batalkan", callback_data="ai_video_cancel")],
             [InlineKeyboardButton("🔄 Cuba Lagi", callback_data="ai_video_models")],
             [InlineKeyboardButton("🏠 Home", callback_data="home")],
         ]),
     )
     return True
+
+
+async def generate_ai_video_confirmed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only, explicit paid confirmation. No customer wallet operations."""
+    if not _ai_video_is_admin(update):
+        return
+    query = update.callback_query
+    state = context.user_data.get("ai_video_flow")
+    if not isinstance(state, dict) or state.get("stage") != "await_confirm":
+        await query.message.reply_text("⚠️ Request dah tamat. Sila mula semula.")
+        return
+    if not os.getenv("FAL_KEY"):
+        await query.message.reply_text("⚠️ FAL_KEY belum tersedia pada server.")
+        return
+    # Pop before any await to prevent duplicate clicks/charges.
+    context.user_data.pop("ai_video_flow", None)
+    await query.message.reply_text("⏳ Menyediakan request fal.ai. Video mungkin ambil beberapa minit.")
+    import tempfile
+    from pathlib import Path
+    try:
+        import fal_client
+        photo = await context.bot.get_file(state["photo_file_id"])
+        image_bytes = bytes(await photo.download_as_bytearray())
+        if len(image_bytes) > 20 * 1024 * 1024:
+            await query.message.reply_text("⚠️ Gambar terlalu besar.")
+            return
+        def _generate():
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "input.jpg"
+                path.write_bytes(image_bytes)
+                image_url = fal_client.upload_file(str(path))
+                return fal_client.subscribe(
+                    "fal-ai/pixverse/v3.5/image-to-video",
+                    arguments={
+                        "prompt": state["prompt"],
+                        "image_url": image_url,
+                        "duration": state["duration"],
+                        "resolution": "720p",
+                    },
+                )
+        await _announce_ai_video_generation(context, state)
+        result = await asyncio.wait_for(asyncio.to_thread(_generate), timeout=600)
+        url = ((result or {}).get("video") or {}).get("url")
+        if not url or not url.startswith("https://"):
+            raise ValueError("fal.ai did not return a video URL")
+        await query.message.reply_video(video=url, caption="🎬 Berry AI Studio · PixVerse V3.5")
+    except Exception as exc:
+        log.warning("[FAL_VIDEO] generation or delivery failed: %s", type(exc).__name__)
+        await query.message.reply_text(
+            "❌ Generation/delivery gagal. Semak fal.ai dashboard untuk status caj. "
+            "Jangan retry sebelum sahkan request lama tidak berjaya."
+        )
+
+
+async def cancel_ai_video_generation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ai_video_is_admin(update):
+        return
+    context.user_data.pop("ai_video_flow", None)
+    await update.callback_query.message.reply_text("✅ Request dibatalkan. Tiada generation dihantar.")
 
 
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3796,6 +3921,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if   data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
+        elif data == "ai_video_join_check":
+            if await _ai_video_channel_gate(update, context):
+                await show_ai_video(update, context)
+        elif (data == "ai_video" or data.startswith("ai_studio:video")
+              or data.startswith("ai_video_") or data.startswith("ai_pixverse_")) and not await _ai_video_channel_gate(update, context):
+            return
         elif data == "ai_video":           await show_ai_video(update, context)
         elif data.startswith("ai_topup_checkout:"):
             await checkout_ai_topup(update, context, data.split(":", 1)[1])
@@ -3813,6 +3944,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("ai_video_models:"):
             await show_ai_video_models(update, context, data.split(":", 1)[1])
         elif data == "ai_video_ratio":     await show_ai_video_ratio(update, context)
+        elif data == "ai_video_generate":  await generate_ai_video_confirmed(update, context)
+        elif data == "ai_video_cancel":    await cancel_ai_video_generation(update, context)
         elif data.startswith("ai_video_photo:"):
             await request_ai_video_photo(update, context, data.split(":", 1)[1])
         elif data == "myorders":           await my_orders(update, context)

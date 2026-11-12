@@ -3,3 +3,5 @@ supabase
 httpx==0.25.2
 flask
 python-dotenv
+
+fal-client>=0.7,<1
