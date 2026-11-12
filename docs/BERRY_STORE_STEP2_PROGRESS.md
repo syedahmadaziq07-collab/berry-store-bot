@@ -126,6 +126,73 @@ CI: both new suites added to step2-postgres-rollback.yml job.
 Local totals: step2 81/81 OK (15 CI-only Postgres skips), video_myr 17/17,
 staging 22/22, reconciliation 10/10.
 
+## 2026-11-12 update 6 — E2E preflight, pricing audit, evidence classification
+New `step2_staging_preflight.py` (+5 tests, all pass): deterministic offline
+E2E readiness gate with six checks — pricing verified, staging migration
+applied, operator allowlist configured, worker runtime deployed, delivery
+channel configured, budget ceiling ≤ RM5 in integer cents. Fail-closed with
+exact reasons; a PASS authorizes nothing (E2E still needs owner approval).
+
+fal.ai pricing documentation audit (read-only, docs page
+https://fal.ai/docs/documentation/model-apis/pricing):
+- Confirmed billing units: video models bill **per second or per video**;
+  image per image/megapixel; others per request/compute seconds.
+- Confirmed prepaid-credit model; queue time and server errors are free.
+- The documentation states prices are queryable "programmatically through the
+  Platform APIs" but the exact Platform pricing endpoint URL and response
+  schema could NOT be extracted from the fetched page (client-rendered docs).
+  **Therefore the probe's `https://fal.ai/api/pricing` path is an
+  UNVERIFIED assumption and must not be cited as evidence.** Before any
+  pricing claim, the operator must confirm the exact documented Platform API
+  pricing endpoint and schema, then run the probe read-only. Currency
+  handling: documentation prices are USD; MYR conversion requires a
+  server-configured FX rate (probe enforces this and rejects bounds below
+  documented price). Entitlement: documentation does not establish
+  account-level entitlement; account applicability remains unverified.
+
+Evidence classification (mock vs real) — current state:
+- Mock/unit-verified (no real provider/DB): no-retry gate, worker submit/poll
+  fencing, operator reconciliation authorization/audit, pricing probe
+  parsing/fail-closed behavior, E2E preflight logic.
+- Real database, isolated ephemeral PostgreSQL 16 (CI-only): claim atomicity,
+  durable-unknown-before-POST, crash-after-POST single binding, wallet
+  single-debit/no-refund CHECKs. NOT the real staging Supabase.
+- Real staging Supabase evidence (read-only, prior PRs): table existence,
+  zero-row snapshot, Render deploy metadata — NOT worker correctness.
+- Real provider evidence: NONE. No authenticated pricing response, no
+  entitlement, no queue response has ever been captured. Nothing in this
+  branch claims real provider verification.
+
+Operator reconciliation connection audit:
+- `UnknownOutcomeReconciler.apply()` maps to the real staging RPC
+  `public.berry_video_reconcile` (docs/sql/berry_video_unknown_reconciliation.sql,
+  service-role only, RLS, evidence JSONB) — the SQL path exists and is
+  CI-tested via clones, but the restricted facade
+  (`step2_operator_reconciliation.py`) is NOT yet wired into any running
+  staging service/daemon; there is no admin route or CLI entry point yet.
+  Precise blocker: need an operator entry point (admin UI route or service
+  command) + allowlist configuration + staging deployment, all requiring
+  owner approval. Currently it is safely isolated and tested, not connected.
+
+STEP 2 acceptance requirements and exact blockers:
+1. No-retry submission protocol integrated — DONE (code+tests, PR #76).
+2. Isolated PostgreSQL fencing/persistence evidence — DONE (CI ephemeral PG16).
+3. Restricted operator reconciliation — code DONE; staging wiring BLOCKED on
+   owner-approved operator entry point + deployment.
+4. Account-specific pricing verification — BLOCKED: exact Platform pricing
+   endpoint/schema unconfirmed; requires authenticated read-only call by the
+   operator (no code change; the probe is ready once the endpoint is
+   confirmed).
+5. Entitlement & billed-duration hard max — BLOCKED: provider docs do not
+   establish them; needs owner/provider confirmation.
+6. FX/fees and RM1 net margin — BLOCKED: requires verified FX source +
+   pricing verification (4).
+7. Staging E2E (non-paid) — BLOCKED: preflight implemented; requires
+   approved migration, worker deployment, delivery channel, budget config.
+8. Live migration/wallet writes/paid generation/Render deploy — BLOCKED on
+   explicit owner approval (never automatic).
+Local totals after this update: step2 86/86 OK (15 CI-only skips).
+
 ## 2026-11-12 update — no-retry gate wired toward worker integration
 - New `step2_submission_gate.py`: single sanctioned path from a submittable job
   to one provider POST, enforcing the PR #75 state machine (durable

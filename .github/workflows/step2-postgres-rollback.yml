@@ -42,3 +42,4 @@ jobs:
           python -m unittest discover -s tests -p test_step2_no_retry_protocol.py -v
           python -m unittest discover -s tests -p test_step2_operator_reconciliation.py -v
           python -m unittest discover -s tests -p test_step2_pricing_probe.py -v
+          python -m unittest discover -s tests -p test_step2_staging_preflight.py -v
