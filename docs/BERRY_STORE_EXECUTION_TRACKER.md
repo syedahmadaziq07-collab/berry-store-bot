@@ -27,5 +27,15 @@ admin-control-center wujud sebagai rujukan keselamatan (bukan langkah bernombor)
   imej; gagal-tutup pada model tiada/tool salah/harga tak tersedia. CI diperluas.
 - Ujian berkumpul: 28 step2 + 11 fal + 5 katalog + 13 prod-integrasi + 20 imej
   = 77 lulus tempatan (suite penuh 124; 31 = kunci fail Windows diketahui).
+- `feat/prod-step2-completion-20261112` @ (kini): **D3 video generation
+  engineering** — `telegram_video_flow.py` (persetujuan terkawal: harga beku,
+  identiti ujian, pembatalan), `telegram_video_delivery.py` (sendVideo
+  berasaskan pengesahan, redaksi token), `telegram_video_handlers.py`,
+  `video_myr_worker.py` versi gate-no-retry terkini, `provider_readiness.py`
+  + `step2_pricing_probe.py`. Suite: 26 video flow/delivery + 17 video worker
+  + 10 rekonsiliasi + mocks + probe — semua LULUS.
+- Ujian berkumpul: **220 ujian penuh, 189 lulus, 31 ralat = 0 ralat
+  bukan-Windows** (kunci fail state.db yang diketahui — akan diverifikasi
+  semula oleh CI Linux). CI diperluas dengan PTB 20.7 untuk suite video.
 - Peta jalan STEP 5–12: tidak wujud dalam repositori — dilaporkan sebagai
   sumber hilang, tidak direka-reka; menunggu takrifan pemilik.

@@ -32,3 +32,12 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_fal_pricing.py -v
           python -m unittest discover -s tests -p test_production_model_catalog.py -v
+      - name: STEP 2 video flow, delivery, worker and reconciliation
+        run: |
+          python -m pip install 'python-telegram-bot==20.7'
+          python -m py_compile telegram_video_flow.py telegram_video_delivery.py telegram_video_handlers.py video_myr_worker.py provider_readiness.py step2_pricing_probe.py
+          python -m unittest discover -s tests -p 'test_telegram_video*.py' -v
+          python -m unittest discover -s tests -p test_video_myr_worker.py -v
+          python -m unittest discover -s tests -p test_video_reconciliation.py -v
+          python -m unittest discover -s tests -p test_step2_provider_safety_mocks.py -v
+          python -m unittest discover -s tests -p test_step2_pricing_probe.py -v
