@@ -1,0 +1,32 @@
+name: step3 image consent and delivery
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'telegram_image_flow.py'
+      - 'telegram_image_delivery.py'
+      - 'tests/test_telegram_image_flow.py'
+      - 'tests/test_telegram_image_delivery.py'
+      - '.github/workflows/step3-image-consent.yml'
+  pull_request:
+    paths:
+      - 'telegram_image_flow.py'
+      - 'telegram_image_delivery.py'
+      - 'tests/test_telegram_image_flow.py'
+      - 'tests/test_telegram_image_delivery.py'
+      - '.github/workflows/step3-image-consent.yml'
+  workflow_dispatch:
+jobs:
+  image-consent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'httpx==0.25.2'
+      - run: python -m py_compile telegram_image_flow.py telegram_image_delivery.py
+      - name: Verify image consent flow and sendPhoto delivery
+        run: |
+          python -m unittest discover -s tests -p test_telegram_image_flow.py -v
+          python -m unittest discover -s tests -p test_telegram_image_delivery.py -v
