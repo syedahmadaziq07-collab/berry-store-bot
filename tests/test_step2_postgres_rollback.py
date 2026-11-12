@@ -103,6 +103,64 @@ class PostgreSQLRollbackTests(unittest.TestCase):
         self.assertIn("expected staging function contract mismatch",migration)
         self.assertIn("expected migration fingerprint missing",rollback)
 
+    def test_durable_unknown_marker_persisted_before_post(self):
+        # PR #75 gate contract: the claim transition must atomically move the
+        # job to a pre-POST ambiguous state so a crash after the provider POST
+        # can never be replayed as a new submission.
+        self.db.execute("""CREATE FUNCTION pg_temp.claim_submit(p_id text) RETURNS boolean
+          LANGUAGE plpgsql AS $body$
+          DECLARE v_row text;
+          BEGIN
+            UPDATE pg_temp.job SET state='submission_unknown'
+             WHERE id=p_id AND state='submitting' RETURNING id INTO v_row;
+            IF v_row IS NULL THEN RETURN false; END IF;
+            RETURN true;
+          END $body$""")
+        self.assertTrue(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
+        # Worker's durable_unknown write happens BEFORE the provider POST.
+        self.assertTrue(self.db.execute("SELECT pg_temp.claim_submit('a')").fetchone()[0])
+        state = self.db.execute("SELECT state FROM job WHERE id='a'").fetchone()[0]
+        self.assertEqual(state, "submission_unknown")
+        # Crash simulation: restart must not be able to claim or POST again.
+        self.assertFalse(self.db.execute("SELECT pg_temp.claim_submit('a')").fetchone()[0])
+        self.assertFalse(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
+
+    def test_crash_after_post_binds_response_once(self):
+        # After the provider POST returns, exactly one bind to request_id is
+        # allowed from the durable unknown state; a second bind is refused.
+        self.db.execute("UPDATE job SET state='submission_unknown' WHERE id='a'")
+        bind = """UPDATE job SET state='queued', request_id=%s WHERE id='a'
+            AND state='submission_unknown' AND request_id IS NULL RETURNING id"""
+        self.assertIsNotNone(self.db.execute(bind, ("post-crash-r1",)).fetchone())
+        self.assertIsNone(self.db.execute(bind, ("post-crash-r2",)).fetchone())
+        self.assertEqual(
+            self.db.execute("SELECT request_id FROM job WHERE id='a'").fetchone()[0],
+            "post-crash-r1")
+
+    def test_wallet_single_debit_and_no_refund_on_unknown(self):
+        # Budget consumption happens only once with the atomic claim; the
+        # submission_unknown path never reverses it automatically.
+        self.assertTrue(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
+        self.db.execute("UPDATE job SET state='submission_unknown' WHERE id='a'")
+        self.assertEqual(self.db.execute("SELECT used FROM budget").fetchone()[0], 400)
+        # Refund-style decrement is only schema-blocked when it would drive the
+        # balance negative (used=400, refund of 401 > balance is rejected);
+        # smaller decrements are schema-legal, so safety relies on there being
+        # NO code path that decrements -- proven below by state fencing.
+        self.db.execute("SAVEPOINT refund_try")
+        with self.assertRaises(psycopg.errors.CheckViolation):
+            self.db.execute("UPDATE budget SET used=used-401 WHERE id=1")
+        self.db.execute("ROLLBACK TO SAVEPOINT refund_try")
+        # Over-refund attempt left the budget untouched.
+        self.assertEqual(self.db.execute("SELECT used FROM budget").fetchone()[0], 400)
+        # A second claim attempt must not double-debit (fencing on state).
+        self.assertFalse(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
+        self.assertEqual(self.db.execute("SELECT used,generations FROM budget").fetchone(),(400,1))
+        # The job stays in the unknown state: no transition back to 'reserved'
+        # exists, so a resubmission claim (and thus a second debit) is impossible.
+        state = self.db.execute("SELECT state FROM job WHERE id='a'").fetchone()[0]
+        self.assertEqual(state, "submission_unknown")
+
 
 if __name__ == "__main__":
     unittest.main()

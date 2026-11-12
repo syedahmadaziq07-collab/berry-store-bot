@@ -289,3 +289,34 @@ PASS fresh public checks02:29MYT:12 shells/14 unauthorized guards. Actual provid
 still BLOCKED. PR76 review body now records both reproduced blockers; source head unchanged.
 This checkpoint completes the test-only milestone; next engineering action is PR76 compatibility
 repair, not provider activation. No owner action newly required by these code defects.
+
+## 13 November06:17MYT — PR76 packaging repaired, SQL gate preserved
+PASS latest stagingdfdf59b and PR76 head2455323 checked; no concurrent deploy/head movement.
+PASS Dockerfile.admin now includes/compiles step2_no_retry_protocol.py and step2_submission_gate.py.
+PASS new isolated manifest test runs both worker contract suites without repository modules on
+PYTHONPATH. Provider/Telegram effects mocked; this is packaging evidence, NOT real external E2E.
+PASS288 discovered cases:273 passed,15 PostgreSQL-dependent skipped locally (not counted PASS).
+Latest staging changes merged into existing PR76 candidate to retain pricing/billing and PR81 guards;
+no duplicate worker PR and no main/production modification. CI pending on updated candidate.
+BLOCKED PR76 merge/deploy: its pre-POST submission_unknown -> normal queued still conflicts with
+installed SQL. No RPC guard weakened, no schema changed, no paid call, wallet/order change or grant.
+NEXT GPT WORK: reconcile durable submitting-claim fencing with response binding and audited ambiguous
+recovery, then test worker against actual installed-function contract before merge/deploy. Owner is
+not asked to bypass this engineering gate. STEP2 PARTIAL/customer NO-GO; other blockers unchanged.
+
+## 13 November — PR76 durable claim / SQL compatibility repair
+PASS worker receipt binding now retains the committed atomic submitting claim before POST.
+Observed ambiguous failures attempt submission_unknown; a failed marker write retains the original
+no-retry fence. Lost queued acknowledgements preserve the pollable receipt under existing SQL guards.
+PASS 296 local tests discovered:277 passed,19 PostgreSQL-dependent skipped, not counted PASS.
+PASS stricter worker fixture rejects normal unknown-to-queued; claim failures/invalid claims never POST.
+IN PROGRESS four new actual-function PostgreSQL worker integration cases: normal receipt, timeout,
+write outage, and lost acknowledgement; CI executes these with inert provider and wallet-denying stub.
+These are SQL compatibility tests, NOT paid provider/Telegram E2E or proof of customer wallet debit.
+No SQL migration or weakening of audited reconciliation. No production, customer data or paid calls.
+BLOCKED merge/deploy pending current CI and full candidate review. STEP2 PARTIAL; customer NO-GO.
+NEXT verify PostgreSQL CI, review remaining candidate modules, then staging-only release if safe.
+PASS candidate review found and disabled legacy unit-price-only cost verifier: it cannot certify
+all-in generation costs without maximum billable units/fees/FX applicability. Regression asserts
+refusal without any network call even for a large proposed budget. Runtime uses existing separate
+provider_readiness metadata path; no verified cost/margin is claimed. Legacy probe remains unwired.

@@ -1,7 +1,8 @@
 """Fail-closed submission protocol for an external non-idempotent paid API.
 
-Pure reference logic for an atomic database claim. The caller MUST persist
-SUBMISSION_UNKNOWN *before* making a provider POST, in one durable transaction.
+Pure reference logic for an atomic database claim. The caller MUST commit an exclusive submitting claim before a provider POST.
+The in-memory SUBMISSION_UNKNOWN represents that authorization being consumed;
+the database submitting state already blocks restart/retry until receipt binding.
 A worker restart, timeout, or ambiguous response can NEVER authorize a retry.
 This module performs no provider, wallet, or database operations.
 """

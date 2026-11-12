@@ -59,6 +59,72 @@ class FullFunctionCloneTests(unittest.TestCase):
         return self.admin.execute("SELECT public.berry_video_job(%s,%s,%s,%s)",
             (TENANT,self.job,action,Jsonb(payload or {}))).fetchone()[0]
 
+    def worker_fixture(self, failure=None):
+        from unittest.mock import Mock
+        from video_myr_worker import MyrVideoWorker, JobQuote, request_hash
+        import time
+        quote = JobQuote('video', QUOTE['provider_model_id'], 1, 6250, 500, 300,
+                         'ephemeral fixture, not live cost verification')
+        args = {'prompt': 'no network fixture'}
+        digest = request_hash(99, quote.payload(), args)
+        self.admin.execute("UPDATE berry_private.ai_video_jobs SET quote=%s, arguments=%s, request_hash=%s WHERE job_id=%s",
+                           (Jsonb(quote.payload()), Jsonb(args), digest, self.job))
+        case = self
+        class SQLStore:
+            tenant_id = TENANT
+            def action(self, job_id, action, payload=None):
+                if failure == 'write_down' and action in ('queued', 'submission_unknown'):
+                    raise RuntimeError('fixture write unavailable')
+                result = case.call(action, payload)
+                if failure == 'lost_ack' and action == 'queued':
+                    raise RuntimeError('fixture lost acknowledgement')
+                return result
+        provider = Mock()
+        def submit(*args, **kwargs):
+            case.assertEqual(case.call('get')['state'], 'submitting')
+            if failure == 'timeout':
+                raise TimeoutError('fixture timeout')
+            base = 'https://queue.fal.run/fal-ai/wan/requests/mock_r1'
+            return {'request_id': 'mock_r1', 'response_url': base, 'status_url': base+'/status'}
+        provider.submit.side_effect = submit
+        worker = MyrVideoWorker(SQLStore(), provider, Mock(), allow_external=True,
+                               budget_id=BUDGET, verified_costs={digest:300},
+                               verified_until=int(time.time())+300)
+        return worker, provider, args
+
+    def test_worker_normal_receipt_binds_with_actual_sql_contract(self):
+        worker, provider, args = self.worker_fixture()
+        self.assertEqual(worker.submit(self.job, args)['state'], 'queued')
+        worker.submit(self.job, args)
+        provider.submit.assert_called_once()
+        self.assertEqual(self.call('get')['provider_request_id'], 'mock_r1')
+
+    def test_worker_timeout_remains_unknown_without_repost_or_refund(self):
+        from video_myr_worker import JobError
+        worker, provider, args = self.worker_fixture('timeout')
+        with self.assertRaises(JobError): worker.submit(self.job, args)
+        self.assertEqual(self.call('get')['state'], 'submission_unknown')
+        worker.submit(self.job, args)
+        provider.submit.assert_called_once()
+        with self.assertRaises(psycopg.Error): self.call('refund_before_submit')
+        self.assertEqual(self.call('get')['budget_reserved_cents'], 300)
+
+    def test_worker_write_outage_keeps_durable_claim(self):
+        from video_myr_worker import JobError
+        worker, provider, args = self.worker_fixture('write_down')
+        with self.assertRaises(JobError): worker.submit(self.job, args)
+        self.assertEqual(self.call('get')['state'], 'submitting')
+        worker.submit(self.job, args)
+        provider.submit.assert_called_once()
+
+    def test_worker_lost_queue_ack_preserves_pollable_receipt(self):
+        from video_myr_worker import JobError
+        worker, provider, args = self.worker_fixture('lost_ack')
+        with self.assertRaises(JobError): worker.submit(self.job, args)
+        self.assertEqual(self.call('get')['state'], 'queued')
+        worker.submit(self.job, args)
+        provider.submit.assert_called_once()
+
     def test_claim_budget_and_duplicate_idempotency(self):
         first=self.call("claim_submit",{"budget_id":BUDGET})
         self.assertEqual(first["state"],"submitting")

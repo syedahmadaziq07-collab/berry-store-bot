@@ -30,8 +30,13 @@ class Store:
                 self.job['submission_tags']={'berry_job':job_id,'berry_hash':self.job['request_hash'],'berry_tenant':self.tenant_id}
                 self.claim_budget=payload['budget_id']
                 claimed=True
-            elif action=='queued': self.job.update(payload,state='queued')
-            elif action in ('submission_unknown','delivery_unknown'): self.job['state']=action
+            elif action=='queued':
+                if self.job['state'] != 'submitting': raise JobError('invalid queued transition')
+                self.job.update(payload,state='queued')
+            elif action == 'submission_unknown':
+                if self.job['state'] not in ('submitting','submission_unknown'): raise JobError('invalid unknown transition')
+                self.job['state']=action
+            elif action == 'delivery_unknown': self.job['state']=action
             elif action=='succeed': self.job.update(payload,state='succeeded')
             elif action=='claim_delivery' and self.job['state']=='succeeded':
                 self.job['state']='delivering'; claimed=True
@@ -97,6 +102,81 @@ class VideoTests(unittest.TestCase):
         self.make().deliver(JOB)
         self.delivery.send.assert_called_once()
         self.assertEqual(self.store.job['state'],'delivery_unknown')
+    def test_failed_claim_never_posts(self):
+        original = self.store.action
+        def action(job, op, payload=None):
+            if op == 'claim_submit': raise JobError('claim unavailable')
+            return original(job, op, payload)
+        self.store.action = action
+        with self.assertRaises(JobError): self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+        self.assertEqual(self.store.job['state'], 'reserved')
+
+    def test_invalid_claim_state_never_posts(self):
+        original = self.store.action
+        def action(job, op, payload=None):
+            result = original(job, op, payload)
+            if op == 'claim_submit': result['state'] = 'submission_unknown'
+            return result
+        self.store.action = action
+        with self.assertRaises(JobError): self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+
+    def test_response_persistence_failure_still_blocks_resubmission(self):
+        original = self.store.action
+        def action(job, op, payload=None):
+            if op in ("queued", "submission_unknown"):
+                raise JobError("DB temporarily unavailable")
+            return original(job, op, payload)
+        self.store.action = action
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_called_once()
+        self.assertEqual(self.store.job["state"], "submitting")
+        self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_called_once()
+
+    def test_gate_malformed_response_holds_without_retry(self):
+        self.provider.submit.return_value = {"no_request_id": True}
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_called_once()
+        self.assertEqual(self.store.job["state"], "submission_unknown")
+        # Restart: a second submit performs no POST (claim refused, job held).
+        out = self.make().submit(JOB, ARGS)
+        self.assertEqual(out["state"], "submission_unknown")
+        self.provider.submit.assert_called_once()
+
+    def test_gate_non_dict_response_holds_without_retry(self):
+        self.provider.submit.return_value = "fixture-request-id"
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_called_once()
+        self.assertEqual(self.store.job["state"], "submission_unknown")
+
+    def test_gate_restart_after_unknown_never_posts_again(self):
+        # Simulate crash after POST with response lost: state persisted as
+        # submission_unknown. A restarted worker must never POST again.
+        self.worker.submit(JOB, ARGS)
+        self.assertEqual(self.store.job["state"], "queued")
+        # Force unknown state as if the queued write was lost after the POST.
+        self.store.job["state"] = "submission_unknown"
+        out = self.make().submit(JOB, ARGS)
+        self.assertEqual(out["state"], "submission_unknown")
+        self.provider.submit.assert_called_once()
+
+    def test_gate_correlation_tags_still_required_before_post(self):
+        claim = self.store.action
+        def action(job, op, payload=None):
+            out = claim(job, op, payload)
+            if op == "claim_submit":
+                out["submission_tags"] = {"berry_job": str(uuid4())}
+            return out
+        self.store.action = action
+        with self.assertRaises(JobError):
+            self.worker.submit(JOB, ARGS)
+        self.provider.submit.assert_not_called()
+
     def test_rpc_targets_real_wallet_lifecycle(self):
         seen=[]
         def handler(r):

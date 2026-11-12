@@ -39,3 +39,27 @@ class AdminRuntimePackagingTests(unittest.TestCase):
     def test_all_local_runtime_imports_are_shipped(self):
         self.assertEqual(missing_runtime_modules(ROOT), [],
                          'Dockerfile.admin omits a local Python dependency')
+
+    def test_packaged_workers_run_without_repository_modules(self):
+        # Execute worker contracts from the deployed Python manifest only.
+        # Repository root is absent from cwd/PYTHONPATH; provider traffic is mocked.
+        import os
+        import shutil
+        import subprocess
+        import sys
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory)
+            for line in (ROOT / 'Dockerfile.admin').read_text().splitlines():
+                parts = shlex.split(line)
+                if not parts or parts[0].upper() != 'COPY' or any(p.startswith('--from=') for p in parts):
+                    continue
+                for source in parts[1:-1]:
+                    if source.endswith('.py'):
+                        shutil.copy2(ROOT / source, bundle / Path(source).name)
+            for suite in ('test_staging_job_worker.py', 'test_video_myr_worker.py'):
+                result = subprocess.run(
+                    [sys.executable, '-m', 'unittest', 'discover', '-s', str(ROOT / 'tests'), '-p', suite, '-q'],
+                    cwd=bundle, env=dict(os.environ, PYTHONPATH=str(bundle)),
+                    capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr)
