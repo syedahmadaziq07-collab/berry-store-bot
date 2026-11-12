@@ -25,55 +25,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Kill Any Other Running Bot Instance ──────────────────────────────────────
-# Runs BEFORE polling starts. Forces Telegram to drop any existing session
-# (other Replit tab, old Render deploy, etc.) so this instance takes over cleanly.
-
-import httpx as _httpx_early
-import os as _os_early
-
-_EARLY_TOKEN = (
-    (_os_early.getenv("BOT_TOKEN") or "").strip() or
-    (_os_early.getenv("TOKEN") or "").strip() or
-    (_os_early.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-)
-
-if _EARLY_TOKEN:
-    try:
-        _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/close",
-            timeout=10,
-        )
-        print("✅ Old sessions closed")
-    except Exception as _e:
-        print(f"⚠️ Could not close old session: {_e}")
-
-    try:
-        _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/deleteWebhook?drop_pending_updates=true",
-            timeout=10,
-        )
-        print("✅ Webhook cleared, pending updates dropped")
-    except Exception as _e:
-        print(f"⚠️ Could not clear webhook: {_e}")
-
-    print("🚀 This instance is now the ONLY running bot!")
-
-    # Log current webhook info for diagnostics
-    try:
-        _wh_resp = _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/getWebhookInfo",
-            timeout=10,
-        )
-        _wh_data = _wh_resp.json()
-        _wh_result = _wh_data.get("result") or {}
-        print(f"[WEBHOOK_INFO] url={_wh_result.get('url','')!r} "
-              f"has_custom_certificate={_wh_result.get('has_custom_certificate')} "
-              f"pending_update_count={_wh_result.get('pending_update_count')} "
-              f"last_error_date={_wh_result.get('last_error_date')} "
-              f"last_error_message={_wh_result.get('last_error_message','')!r}")
-    except Exception as _e:
-        print(f"[WEBHOOK_INFO] Could not fetch: {_e}")
+# ─── Startup safety ───────────────────────────────────────────────────────────
+# PRODUCTION FIX (owner directive): the previous import-time block called
+# Telegram /close and deleteWebhook with pending updates dropped on EVERY
+# start, silently discarding queued customer messages and printing raw API
+# errors (which can embed the token). Removed entirely: webhook cleanup now
+# happens once inside main() with drop_pending_updates=False, preserving
+# every queued customer update. Nothing runs at import time.
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 # Logs to console AND to bot.log file for debugging
@@ -2943,6 +2901,57 @@ def _wallet_enabled() -> bool:
     # Never query a money balance with the public/anon key.
     return bool(TENANT_ID and SUPABASE_SERVICE_KEY)
 
+# ─── AI Image Studio (STEP 3 integration, DISABLED by default) ─────────────────
+# Safe wiring of the reviewed image consent/delivery components into the real
+# customer bot. Nothing activates unless an owner sets BERRY_IMAGE_STUDIO_ENABLED
+# to the literal "true" AND a controlled test user id is configured. No wallet
+# writes, no provider calls, no delivery can occur through this wiring alone:
+# TelegramImageFlow.confirm still requires worker.allow_external + budget_id,
+# which no production configuration currently supplies.
+
+def _image_studio_enabled() -> bool:
+    return bool(_get_env("BERRY_IMAGE_STUDIO_ENABLED") == "true")
+
+def _image_studio_test_user() -> int | None:
+    raw = _get_env("BERRY_IMAGE_STUDIO_TEST_USER_ID")
+    if not raw.isdigit():
+        return None
+    value = int(raw)
+    return value if value > 0 else None
+
+def _image_flow(context) -> object | None:
+    """Return the controlled image flow from bot_data, or None when disabled.
+
+    The flow is only installed by an explicit, reviewed build_app
+    configuration; normal production startup installs nothing. This helper
+    never constructs a worker, store, provider or delivery by itself.
+    """
+    if not _image_studio_enabled() or _image_studio_test_user() is None:
+        return None
+    return context.application.bot_data.get("berry_image_flow")
+
+async def _ai_image_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry for the disabled-by-default image prompt flow."""
+    flow = _image_flow(context)
+    user = update.effective_user
+    if flow is None or user is None or user.id != flow.test_user_id:
+        await _safe_edit_or_send(
+            update.callback_query,
+            "🖼️ IMAGE STUDIO\n━━━━━━━━━━━━━━━━━━\n\n"
+            "🚧 Fungsi ini belum tersedia dalam Berry AI Studio.\n"
+            "Ia akan diaktifkan selepas sistem berkaitan siap.\n\n"
+            "🔒 Tiada caj dikenakan.",
+        )
+        return
+    await _safe_edit_or_send(
+        update.callback_query,
+        "🖼️ IMAGE STUDIO — PROMPT\n━━━━━━━━━━━━━━━━━━\n\n"
+        "Hantar prompt imej anda sebagai mesej teks (1–1500 aksara).\n"
+        "Tetapan: 1:1 · 1 imej.\n\n"
+        "🔒 Preview sahaja — tiada debit atau generation akan dibuat.",
+    )
+    context.user_data["ai_image_flow"] = {"stage": "prompt"}
+
 
 async def _wallet_balance(user_id: int) -> str | None:
     """Return verified formatted MYR balance, or None if wallet unavailable."""
@@ -3101,10 +3110,14 @@ async def show_ai_studio_section(
         balance = await _wallet_balance(update.effective_user.id)
         # The underlying wallet RPC stores MYR, not credits.
         # Convert only for display; do not change wallet accounting units.
+        # S01 fix: exact Decimal conversion preserves fractional credits
+        # (e.g. RM4.99 -> 6,237.5) instead of int-truncating to 6,237.
         balance_label = balance if balance is not None else "Belum tersedia"
         if balance is not None:
             try:
-                balance_label = f"{int(Decimal(balance.replace('RM','').replace(',',''))*1250):,} Berry Credits ({balance})"
+                credits = Decimal(balance.replace('RM','').replace(',','')) * 1250
+                credits_label = f"{credits:,.2f}".rstrip("0").rstrip(".")
+                balance_label = f"{credits_label} Berry Credits ({balance})"
             except (ValueError, InvalidOperation):
                 pass
         status = (
@@ -3805,6 +3818,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("Checkout belum aktif. Tiada bayaran diterima.", show_alert=True)
         elif data.startswith("ai_studio:"):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
+        elif data == "ai_image_prompt":
+            await _ai_image_prompt(update, context)
         elif data == "ai_video_text":      await show_ai_video_text(update, context)
         elif data == "ai_video_duration":  await show_ai_video_duration(update, context)
         elif data.startswith("ai_video_unavailable:"):
@@ -5614,7 +5629,7 @@ def main():
             # Clear any lingering webhook so polling takes over cleanly
             try:
                 _telegram_loop.run_until_complete(
-                    app.bot.delete_webhook(drop_pending_updates=True)
+                    app.bot.delete_webhook(drop_pending_updates=False)
                 )
                 log.info("[WEBHOOK] delete_webhook ok")
             except Exception as exc:
@@ -5632,7 +5647,7 @@ def main():
 
             log.info("[POLLING] started")
             app.run_polling(
-                drop_pending_updates=True,
+                drop_pending_updates=False,
                 allowed_updates=Update.ALL_TYPES,
                 close_loop=False,
             )
