@@ -1,0 +1,24 @@
+name: step2 submission gate
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'step2_submission_gate.py'
+      - 'tests/test_step2_submission_gate.py'
+      - '.github/workflows/step2-submission-gate.yml'
+  pull_request:
+    paths:
+      - 'step2_submission_gate.py'
+      - 'tests/test_step2_submission_gate.py'
+      - '.github/workflows/step2-submission-gate.yml'
+  workflow_dispatch:
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify worker submission gate
+        run: python -m unittest discover -s tests -p test_step2_submission_gate.py -v

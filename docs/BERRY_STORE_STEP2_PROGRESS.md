@@ -33,3 +33,22 @@
 - Request separate approval for live staging migration and any spending, wallet writes or deployments.
 
 **No claim of STEP 2 PASS until all release gates are verified.**
+
+## 2026-11-12 update — no-retry gate wired toward worker integration
+- New `step2_submission_gate.py`: single sanctioned path from a submittable job
+  to one provider POST, enforcing the PR #75 state machine (durable
+  SUBMISSION_UNKNOWN before POST, exactly one POST authorization, response
+  binding to the prior POST only, restart → poll/operator-hold, never a new POST).
+- New tests `tests/test_step2_submission_gate.py` (10 cases, deterministic, no
+  network/DB/paid calls): single POST + binding, claim commit failure blocks POST,
+  non-Attempt claim result blocks POST, stale generation blocks POST,
+  already-POSTed durable state blocks POST, malformed/non-dict response keeps
+  hold with no retry, non-submittable states rejected pre-claim, constructor and
+  snapshot validation. All pass locally (Python 3.13).
+- New CI workflow `.github/workflows/step2-submission-gate.yml` mirrors the
+  existing `step2-durable-no-retry.yml` pattern.
+- Remaining integration gap (unchanged risk, now narrowed): `StagingJobWorker.submit`
+  and `VideoMyrWorker.submit` still perform their own claim/POST sequence and must
+  be refactored to route through `WorkerSubmissionGate`; plus ephemeral-Postgres
+  crash/timeout/concurrency/tenant-isolation integration tests. Still NO-GO for
+  paid generation; no migration, wallet write, or deploy performed.
