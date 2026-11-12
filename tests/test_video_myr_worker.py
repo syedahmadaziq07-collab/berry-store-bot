@@ -1,5 +1,6 @@
 import copy
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
@@ -46,7 +47,7 @@ class VideoTests(unittest.TestCase):
         self.worker=self.make()
         self.worker.reserve(JOB,900000088,Q,ARGS)
     def make(self, **kwargs):
-        options=dict(allow_external=True,budget_id=BUDGET,verified_costs=self.binding)
+        options=dict(allow_external=True,budget_id=BUDGET,verified_costs=self.binding,verified_until=int(time.time())+300)
         options.update(kwargs)
         return MyrVideoWorker(self.store,self.provider,self.delivery,**options)
     def test_default_disabled(self):
@@ -63,6 +64,10 @@ class VideoTests(unittest.TestCase):
             list(pool.map(lambda _:self.make().submit(JOB,ARGS),range(8)))
         self.provider.submit.assert_called_once_with(Q.provider_model_id,ARGS)
         self.assertEqual(self.store.claim_budget,BUDGET)
+    def test_expired_or_unbounded_cost_proof_blocks(self):
+        for expiry in (None, int(time.time())-1, int(time.time())+3600):
+            with self.assertRaises(JobError):self.make(verified_until=expiry).submit(JOB,ARGS)
+        self.provider.submit.assert_not_called()
     def test_parameter_change_fails_before_post(self):
         with self.assertRaises(JobError): self.worker.submit(JOB,dict(ARGS,num_frames=161))
         self.provider.submit.assert_not_called()

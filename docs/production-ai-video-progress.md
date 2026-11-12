@@ -9,7 +9,7 @@ no customer order/wallet mutation, no paid provider or Telegram request in this 
   change either order or customer wallet. Only owner bank evidence can resolve reconciliation.
 - Authorized provider tests: RM5 TOTAL, at most 5 paid generations, stop at either limit.
   No credit purchases, provider top-ups or auto top-up. Existing authorized balance/access only.
-  Exact worst-case model/parameters, FX and additional costs must be verified before any request.
+  Exact worst-case model/parameters, FX and additional costs must be verified before any request. Worker cost bindings must expire within 15 minutes; stale or unbounded proofs cannot submit.
 
 ## Verified evidence
 
@@ -22,7 +22,7 @@ no customer order/wallet mutation, no paid provider or Telegram request in this 
 | Budget guard | PASS | Actual SQL asserts consumed cost/count do not repeat, exhausted grant cannot claim, max RM5/5 constraints, service worker cannot expand grant. No grant created outside rollback fixture. Unknown outcomes retain full worst-case reserved budget. |
 | Audit evidence | PASS | Failure evidence and bound request/budget/delivery metadata saved in private append-only-for-worker event table. Terminal provider failure needs matching request plus evidence. No automatic unknown resolution. |
 | Telegram transport | PASS | Automated tests verify sendVideo acknowledgment/recipient, URL restriction, negative ACK and redacted error. NOT real Telegram delivery. |
-| Unit regression | PASS | 54 local tests: 15 worker/delivery + 4 provider + 27 payment + 6 topup + 2 restart safety checks. An initial local provider-test failure (SOCKS environment at constructor) was fixed by lazy client initialization; rerun PASS. |
+| Unit regression | PASS | 55 local tests: 16 worker/delivery + 4 provider + 27 payment + 6 topup + 2 restart safety checks. An initial local provider-test failure (SOCKS environment at constructor) was fixed by lazy client initialization; rerun PASS. |
 | Startup queued-update preservation | PASS | Source patch removes early import-time Telegram close/deleteWebhook calls and preserves pending updates on webhook removal/polling restart. Two source safety checks PASS. Not deployed or live-restart validated. |
 | Production migration | BLOCKED | Verify recoverable backup, schema compatibility and explicit high-risk migration confirmation. Source is not executed in production. No duplicate order disposition required by this candidate; checkout PR44 remains independently blocked. |
 | Bot menu/confirmation and continuous worker runtime | IN PROGRESS | New worker is not imported/enabled by bot. Customer callback identity, durable confirmation binding, pricing expiry, controlled startup still required. Bounded recovery listing/loop implemented with stop event, deduplication, failure isolation and no automatic unknown recovery; no scheduler is started. |

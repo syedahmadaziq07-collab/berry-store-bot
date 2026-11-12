@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from dataclasses import asdict, dataclass
 from urllib.parse import urlparse
 from uuid import UUID, uuid5
@@ -142,13 +143,14 @@ class MyrVideoJobStore:
 
 
 class MyrVideoWorker:
-    def __init__(self, store, provider, delivery, *, budget_id=None, verified_costs=None, allow_external=False):
+    def __init__(self, store, provider, delivery, *, budget_id=None, verified_costs=None, verified_until=None, allow_external=False):
         self.store, self.provider, self.delivery = store, provider, delivery
         self.allow_external = allow_external is True
         self.budget_id = str(UUID(budget_id)) if budget_id else None
         # Server-reviewed bindings: request hash -> all-in worst-case cost in MYR cents.
         # Never populate this from customer input or an unverified mapping row.
         self.verified_costs = dict(verified_costs or {})
+        self.verified_until = verified_until
 
     def reserve(self, job_id, user_id, quote: JobQuote, arguments):
         q = quote.payload()
@@ -163,7 +165,9 @@ class MyrVideoWorker:
         q = JobQuote(**job["quote"]).payload()
         if request_hash(job["user_id"], q, arguments) != job["request_hash"]:
             raise JobError("Job arguments do not match reservation")
-        if (not self.budget_id or type(self.verified_costs.get(job["request_hash"])) is not int
+        if (not self.budget_id or type(self.verified_until) is not int
+                or not time.time() < self.verified_until <= time.time() + 900
+                or type(self.verified_costs.get(job["request_hash"])) is not int
                 or self.verified_costs[job["request_hash"]] != q["all_in_cost_cents"]):
             raise JobError("Verified parameter-bound cost and approved test budget required")
         claim = self.store.action(job_id, "claim_submit", {"budget_id": self.budget_id})
