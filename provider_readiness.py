@@ -51,8 +51,11 @@ def staging_startup_probe(environ=None,client_factory=httpx.Client,emit=print):
     env=os.environ if environ is None else environ
     service_match=env.get('RENDER_SERVICE_ID')==STAGING_SERVICE
     database_match=env.get('SUPABASE_URL','').rstrip('/')==STAGING_DATABASE
-    emit('BERRY_PROVIDER_READONLY_GATE '+json.dumps({'service_match':service_match,'database_match':database_match}),flush=True)
-    if not service_match or not database_match:
+    mapping_match=env.get('AI_MAPPING_SUPABASE_URL','').rstrip('/')==STAGING_DATABASE
+    emit('BERRY_PROVIDER_READONLY_GATE '+json.dumps({'service_match':service_match,'database_match':database_match,'mapping_match':mapping_match}),flush=True)
+    # Pricing GET never accesses any database. The isolated AI mapping config is its scope.
+    # This does NOT relax business-wallet, controller or generation isolation checks.
+    if not service_match or not (database_match or mapping_match):
         return
     key=env.get('FAL_KEY','') # Used internally for authentication only; never returned/logged.
     if not key:

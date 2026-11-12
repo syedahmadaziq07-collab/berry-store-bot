@@ -1,0 +1,49 @@
+{
+  "status": "PARTIAL",
+  "launch": "NO-GO",
+  "spend_myr": 0,
+  "paid_generations": 0,
+  "pr50": {
+    "head": "4723303a392138bdfe953eb4cd7917fc8b74c478",
+    "merged": "5294c1a9d006ec2794d1abb5315a7cd9bb9393b9",
+    "ci": "6/6 PASS",
+    "deploy": "dep-dbqkm6qfngtc73ft8q30",
+    "live_at": "2026-11-12T05:14:49.992755Z"
+  },
+  "tests": {
+    "backend": 185,
+    "telegram_markup": 1,
+    "actual_sql": [
+      "lifecycle PASS",
+      "consent PASS",
+      "reconciliation PASS",
+      "fairness installed PASS"
+    ],
+    "mock_provider_telegram_only": true
+  },
+  "sql_sha256": {
+    "docs/sql/berry_video_unknown_reconciliation.sql": "d1d2c0bb1638f7878e5a6d99a210a181317227f4e4941b74026326e5b7715176",
+    "docs/sql/verify_video_reconciliation.sql": "8b8787ca6fb94d0b442518dbbeaac4dd1378ac654cc29f94c57ebc243e36ad81",
+    "docs/sql/berry_video_recovery_fairness.sql": "4cc7ae03e5e59eadb27779afce614f4d125de6a9b5f090093162b179b9542330",
+    "docs/sql/verify_video_recovery_fairness.sql": "ae4321addd471b9828091ec3b2198218d8f2ecec054f59c4aba2c7f2cfb14fa1"
+  },
+  "provider_access": "UNVERIFIED: gate skipped pricing probe",
+  "credentials": "FAL_KEY NAME present only",
+  "isolated_project": "cirsdvkfkvypprnmyykk",
+  "post_test_counts": {
+    "jobs": 0,
+    "cases": 0,
+    "budget_grants": 0
+  },
+  "pr53": {
+    "head": "335a4294d9cbcc4f843d4ac09a68898c2bc01bce",
+    "merged": "be80ee39f0c17d481e8dca4c65eff94af8ac9eee",
+    "ci": "4/4 PASS",
+    "deploy": "dep-dbqko8qjnfac73906h60",
+    "live_at": "2026-11-12T05:18:53.332777Z"
+  },
+  "provider_gate": {
+    "service_match": true,
+    "database_match": false
+  }
+}
