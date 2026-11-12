@@ -99,6 +99,16 @@ class ReadinessTests(unittest.TestCase):
             parse_pricing({'prices': [{'endpoint_id': MODELS[0],
                 'unit_price': 0.025, 'unit': 'unknown-unit', 'currency': 'USD'}]}, MODELS[0])
 
+    def test_video_margin_requires_explicit_max_billable_seconds(self):
+        # Fixture values only; never treat 10 requested seconds as a billing cap.
+        self.assertEqual(minimum_video_sale_cents('.0175', '11', '5', '.2', '.05'),
+                         minimum_sale_cents('.1925', '5', '.2', '.05'))
+        for bad in (None, 0, -1, 'NaN', 'Infinity'):
+            with self.assertRaises(ValueError):
+                minimum_video_sale_cents('.0175', bad, '5', '.2', '.05')
+        with self.assertRaises(ValueError):
+            minimum_video_sale_cents(None, '11', '5', '.2', '.05')
+
     def test_http_200_non_json_body_is_not_pricing(self):
         client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text='<html>sensitive-fixture</html>')))
         result = pricing_probe('fixture-key', client)
