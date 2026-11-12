@@ -73,6 +73,21 @@
   network/DB/paid calls.
 - Still NO-GO for paid generation; no migration, wallet write, or deploy.
 
+## 2026-11-12 update 4 — CI failure fixes (workflow run 43239066961)
+- Fixed `pg_temp.claim_submit` PL/pgSQL: `UPDATE ... RETURNING id` without a
+  destination raised `query has no destination for result data`. Now uses
+  `RETURNING id INTO v_row` with `v_row IS NULL` fencing — semantics unchanged
+  (atomic claim to `submission_unknown`, re-claim refused).
+- Fixed `test_wallet_single_debit_and_no_refund_on_unknown`: the original
+  assertion `used=used-400` is schema-legal (result 0 satisfies CHECK(used>=0)),
+  so `CheckViolation not raised` was a faulty test expectation, not a safety
+  gap. Corrected to assert the over-refund (401 > 400 balance) is rejected by
+  CHECK, the budget is untouched after rollback, and — the real safety proof —
+  state fencing prevents any second claim/debit and the job never returns to
+  `reserved`, so no code path can double-debit or auto-refund.
+- Local: step2 63/63 OK (15 CI-only Postgres skips), video_myr 17/17,
+  staging worker 22/22, no-retry 6/6. Pushed for CI re-run on PR #76.
+
 ## 2026-11-12 update — no-retry gate wired toward worker integration
 - New `step2_submission_gate.py`: single sanctioned path from a submittable job
   to one provider POST, enforcing the PR #75 state machine (durable

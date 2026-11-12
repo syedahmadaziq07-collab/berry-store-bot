@@ -109,10 +109,11 @@ class PostgreSQLRollbackTests(unittest.TestCase):
         # can never be replayed as a new submission.
         self.db.execute("""CREATE FUNCTION pg_temp.claim_submit(p_id text) RETURNS boolean
           LANGUAGE plpgsql AS $body$
+          DECLARE v_row text;
           BEGIN
             UPDATE pg_temp.job SET state='submission_unknown'
-             WHERE id=p_id AND state='submitting' RETURNING id;
-            IF NOT FOUND THEN RETURN false; END IF;
+             WHERE id=p_id AND state='submitting' RETURNING id INTO v_row;
+            IF v_row IS NULL THEN RETURN false; END IF;
             RETURN true;
           END $body$""")
         self.assertTrue(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
@@ -141,17 +142,24 @@ class PostgreSQLRollbackTests(unittest.TestCase):
         # submission_unknown path never reverses it automatically.
         self.assertTrue(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
         self.db.execute("UPDATE job SET state='submission_unknown' WHERE id='a'")
-        # Any "refund"-style attempt would need to decrement budget; the
-        # schema forbids used<0 and no code path performs it.
         self.assertEqual(self.db.execute("SELECT used FROM budget").fetchone()[0], 400)
+        # Refund-style decrement is only schema-blocked when it would drive the
+        # balance negative (used=400, refund of 401 > balance is rejected);
+        # smaller decrements are schema-legal, so safety relies on there being
+        # NO code path that decrements -- proven below by state fencing.
         self.db.execute("SAVEPOINT refund_try")
         with self.assertRaises(psycopg.errors.CheckViolation):
-            self.db.execute("UPDATE budget SET used=used-400 WHERE id=1")
+            self.db.execute("UPDATE budget SET used=used-401 WHERE id=1")
         self.db.execute("ROLLBACK TO SAVEPOINT refund_try")
+        # Over-refund attempt left the budget untouched.
         self.assertEqual(self.db.execute("SELECT used FROM budget").fetchone()[0], 400)
-        # A second claim attempt must not double-debit.
+        # A second claim attempt must not double-debit (fencing on state).
         self.assertFalse(self.db.execute("SELECT pg_temp.claim('a')").fetchone()[0])
         self.assertEqual(self.db.execute("SELECT used,generations FROM budget").fetchone(),(400,1))
+        # The job stays in the unknown state: no transition back to 'reserved'
+        # exists, so a resubmission claim (and thus a second debit) is impossible.
+        state = self.db.execute("SELECT state FROM job WHERE id='a'").fetchone()[0]
+        self.assertEqual(state, "submission_unknown")
 
 
 if __name__ == "__main__":
