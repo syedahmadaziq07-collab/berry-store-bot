@@ -8,8 +8,8 @@ Date: 2026-11-12. Owner chose Balanced. Customer launch remains NO-GO. This docu
 | --- | --- | --- |
 | Image Fast | `fal-ai/flux/schnell` | Existing rev4 mapping, disabled; existing 4-credit price invalid |
 | Image Balanced | `fal-ai/flux-2-pro` | Candidate only; verify official schema and account entitlement |
-| Video Balanced | `fal-ai/ltx-2.3/text-to-video` | Candidate only; verify official endpoint, duration, resolution and pricing |
-| Video fallback | `wan/v2.6/text-to-video` | Candidate only; verify exact provider endpoint and entitlement |
+| Video Budget 10s (owner selected) | `minimax/h3-max-turbo/text-to-video` | SELECTED for evaluation, NOT verified or enabled; check endpoint, exact 10s/480p support and authenticated pricing |
+| Video fallback | `fal-ai/ltx-2.3/text-to-video` or `wan/v2.6/text-to-video` | Candidates only; compare if selected MiniMax fails budget/technical gates |
 
 Do not use Wan 2.2 A14B as a long-term default: audit notes provider-announced retirement 2027-01-04. Existing mapping must remain disabled until migrated and verified.
 
@@ -17,14 +17,13 @@ Do not use Wan 2.2 A14B as a long-term default: audit notes provider-announced r
 
 - Image Fast RM1.50 = 1,875 credits
 - Image Balanced RM2.00 = 2,500 credits
-- Video Balanced 6s RM5.00 = 6,250 credits
-- Video Balanced 10s RM6.50 = 8,125 credits
+- Video Budget 10s: RM2.50 = 3,125 credits, **provisional only**; user selected the model, not a verified selling price. Prior estimate US$0.025/s for 480p text-to-video is NOT authenticated billing proof. Reference-to-video screenshot shows US$0.05/s at 480p plus reference input charges; do not substitute that route or price. Confirm exact text-to-video endpoint, duration and all-in margin before setting retail.
 
 1 MYR = 1,250 credits. Actual MYR debit must be ledger-authoritative; credit display is derived. Prices must be validated against the final cost before any enablement.
 
 ## Mandatory cost gate
 
-For each exact model, duration, resolution, image count and parameter set: use authenticated read-only pricing/estimate where available; bind timestamped price and max billable units, account entitlement, usable balance, upper-bound FX, settlement fees, tax, storage, retries and operational/failure allocation. Never infer a maximum from an approximate marketing price.
+For the selected MiniMax text-to-video route, explicitly verify 10-second duration and cheapest supported resolution. For each exact model, duration, resolution, image count and parameter set: use authenticated read-only pricing/estimate where available; bind timestamped price and max billable units, account entitlement, usable balance, upper-bound FX, settlement fees, tax, storage, retries and operational/failure allocation. Never infer a maximum from an approximate marketing price.
 
 Let C be *verified worst-case all-in MYR cost*, f be any revenue-proportional fee fraction (0 <= f < 1), P be retail MYR. Require `P * (1 - f) - C >= RM1.00`. Round required retail price UP to the supported MYR step (currently RM0.02), and fail closed if any input is absent, stale or unbounded. If the owner's draft price fails, propose a revised price for approval; do not silently change or enable.
 
