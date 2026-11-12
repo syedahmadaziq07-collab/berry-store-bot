@@ -50,6 +50,7 @@ class FalProvider:
     def _request(self, method, url, **kwargs):
         try:
             target, headers = self._url(url), self._headers()
+            headers.update(kwargs.pop("extra_headers", {}))
             if self._client is None:
                 self._client = httpx.Client(timeout=30, follow_redirects=False)
             response = self._client.request(method, target, headers=headers, **kwargs)
@@ -58,11 +59,17 @@ class FalProvider:
         except (httpx.HTTPError, ValueError) as exc:
             raise FalProviderError("fal.ai request failed") from exc
 
-    def submit(self, model_id, arguments):
+    def submit(self, model_id, arguments, *, correlation=None):
         if not isinstance(arguments, dict):
             raise FalProviderError("Model arguments must be an object")
         model_id = self._model(model_id)
-        return self._request("POST", "https://queue.fal.run/" + model_id, json=arguments)
+        extra = {}
+        if correlation is not None:
+            if (not isinstance(correlation, dict) or set(correlation) != {"berry_job", "berry_hash", "berry_tenant"}
+                    or any(type(v) is not str or not re.fullmatch(r"[a-z0-9-]{1,64}", v) for v in correlation.values())):
+                raise FalProviderError("Invalid correlation tags")
+            extra["X-Fal-Tags"] = ",".join(k+"="+correlation[k] for k in sorted(correlation))
+        return self._request("POST", "https://queue.fal.run/" + model_id, json=arguments, extra_headers=extra)
 
     def status(self, status_url):
         return self._request("GET", status_url)

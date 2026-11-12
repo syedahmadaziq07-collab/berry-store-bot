@@ -172,6 +172,8 @@ def provider_key_present(names=None):
 def create_app(config=None, store=None, mapping_store=None):
     app = Flask(__name__, static_folder=None)
     print("BERRY_PROVIDER_CONFIG fal_key_present=" + str(provider_key_present()).lower(), flush=True)
+    from provider_readiness import staging_startup_probe
+    staging_startup_probe()
     # Render terminates TLS one trusted proxy hop ahead of the container.
     # Keep remote_addr unchanged; never trust client-supplied X-Forwarded-For.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=1)

@@ -33,6 +33,7 @@ class Store:
             j=self.jobs[key]
             if action=='claim_submit' and j['state']=='reserved':
                 j['state']='submitting';claimed=True;self.claims+=1
+                j['submission_tags']={'berry_job':key,'berry_hash':j['request_hash'],'berry_tenant':self.tenant_id}
             elif action=='queued':j.update(payload,state='queued')
             elif action=='submission_unknown':j['state']='submission_unknown'
             elif action=='succeed':j.update(payload,state='succeeded')
@@ -167,4 +168,26 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
     async def test_recovery_hooks_disabled_by_default(self):
         app=NS(bot_data={})
         await start_video_recovery(app);await stop_video_recovery(app)
+        self.assertNotIn('berry_video_recovery_task',app.bot_data)
+
+class RecoveryShutdownTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shutdown_drains_thread_and_start_is_idempotent(self):
+        import asyncio, threading
+        from types import SimpleNamespace
+        entered=threading.Event();release=threading.Event();calls=[]
+        def recover():
+            calls.append(1);entered.set();release.wait(3)
+        flow=SimpleNamespace(enabled=True,test_user_id=900000088,authorize=lambda _:None,
+                             worker=SimpleNamespace(allow_external=True),recover_once=recover)
+        app=SimpleNamespace(bot_data={'berry_video_flow':flow})
+        await start_video_recovery(app)
+        first=app.bot_data['berry_video_recovery_task']
+        await start_video_recovery(app)
+        self.assertIs(first,app.bot_data['berry_video_recovery_task'])
+        await asyncio.to_thread(entered.wait,1)
+        stopper=asyncio.create_task(stop_video_recovery(app))
+        await asyncio.sleep(.02)
+        self.assertFalse(stopper.done())
+        release.set();await asyncio.wait_for(stopper,2)
+        self.assertEqual(calls,[1])
         self.assertNotIn('berry_video_recovery_task',app.bot_data)

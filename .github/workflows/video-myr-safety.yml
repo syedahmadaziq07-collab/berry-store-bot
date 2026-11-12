@@ -9,6 +9,10 @@ on:
       - tests/test_telegram_video_flow.py
       - tests/telegram_markup_contract.py
       - docs/sql/verify_video_consent.sql
+      - video_reconciliation.py
+      - tests/test_video_reconciliation.py
+      - docs/sql/berry_video_unknown_reconciliation.sql
+      - docs/sql/verify_video_reconciliation.sql
       - video_myr_worker.py
       - telegram_video_delivery.py
       - fal_provider.py
