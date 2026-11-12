@@ -246,3 +246,21 @@ BLOCKED unchanged: hard billable-duration ceiling, FX/fees/OPEX evidence, RM1 ne
 Telegram/provider E2E and isolated business-wallet runtime. No generation, grants, payments or SQL
 migration performed. PR70 proposal remains unapplied. Customer activation and production prohibited.
 NEXT: review/CI PR59, staging-only deploy, sanitized account result and public behavior checks.
+
+### Verified outcome —13 November00:45MYT
+PASS PR59 latest head05202c98:3 CI43261815613/43261815622/43261816415;233 local PASS,12 PG skips.
+Merged d4627501; LIVE dep-dbquq06k1f9s73fe247g at2026-11-12T16:45:14Z.
+PASS fresh pricing GET200: FLUX0.003 USD/megapixels, Wan0.08 USD/seconds, MiniMax0.0175 USD/seconds.
+PASS12 public staging shells and14 unauthorized API guards after deployment; not authenticated E2E.
+BLOCKED NEW VERIFIED: account billing GET403. Existing credential does not authorize this read;
+no balance value or positive-balance conclusion obtained. This is NOT evidence of zero funds or
+inference denial. No permission expansion attempted. Owner-account authorization is required to
+verify balance via official Billing portal or an appropriately scoped secure read-only credential.
+Do not replace a working inference key with a billing-only key or paste any key in chat.
+Evidence: docs/evidence/staging-balance-readiness-20261113.json and staging-balance-public-20261113.json.
+Latest state supersedes older credential_format_invalid instructions: key format and pricing GET
+work. Do NOT ask owner to recreate FAL_KEY merely for pricing. Business database_match=false unchanged.
+STEP2 PARTIAL/launch NO-GO. Hard billing duration, effective FX/fees/OPEX, RM1 NET and real E2E remain
+unverified. PR76 worker integration needs separate review, staging compatibility/SQL validation and
+safe deployment; PR79 production candidate untouched. No production, customer, migration, payment,
+provider inference or budget-grant mutation. RM0/0 paid generations in this iteration.
