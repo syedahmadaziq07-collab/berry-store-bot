@@ -22,7 +22,7 @@ class FalProviderError(RuntimeError):
 class FalProvider:
     def __init__(self, api_key=None, client=None):
         self._key = api_key if api_key is not None else os.environ.get("FAL_KEY", "")
-        self._client = client or httpx.Client(timeout=30, follow_redirects=False)
+        self._client = client
 
     def configured(self):
         return bool(self._key and self._key.strip())
@@ -49,7 +49,10 @@ class FalProvider:
 
     def _request(self, method, url, **kwargs):
         try:
-            response = self._client.request(method, self._url(url), headers=self._headers(), **kwargs)
+            target, headers = self._url(url), self._headers()
+            if self._client is None:
+                self._client = httpx.Client(timeout=30, follow_redirects=False)
+            response = self._client.request(method, target, headers=headers, **kwargs)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as exc:

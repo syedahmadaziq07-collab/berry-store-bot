@@ -69,4 +69,26 @@ PASS: 134 local backend tests and all four PR CI workflows. PR #41 merged; appli
 
 PASS: staging-only products, variants, users, credential metadata, categories and settings schema added. All dashboard COLUMNS fields exist (0 missing). Actual SQL relation/access-control smoke suite PASS; test data rolled back. Eight dashboard integration contract tests PASS. No real account credentials stored, production data copied, dashboard configuration changed or writes enabled. This fixture is not a full production schema clone: live checkout/delivery and tenant-integrity semantics still need end-to-end verification. Authenticated browser E2E remains BLOCKED.
 
-Tenant isolation follow-up PASS: composite foreign keys reject cross-tenant product references for variants, credentials and orders. Actual staging SQL rejection tests passed and rolled back. PR #42 CI remains queued; no merge or app redeploy was attempted while checks are pending.
+Tenant isolation follow-up PASS: composite foreign keys reject cross-tenant product references for variants, credentials and orders. Actual staging SQL rejection tests passed and rolled back. PR #42 is now merged at 1df8302; Render dep-dbqias2fngtc73fmf790 is LIVE. Its PR body retained the old queued note; do not infer a fresh CI PASS from that text.
+
+## Real MYR video consent integration — 12 November MYT
+
+IN PROGRESS: port PR45 controlled Telegram consent integration into staging without enabling it.
+CODE COMPLETE source: bot Confirm/Cancel router, user-bound durable ticket, atomic existing MYR
+job/debit on Confirm, no debit on preview, cancel-before-submit refund, provider terminal failure
+refund, GET recovery, claim-once delivery and explicit recovery startup/shutdown hooks. Default
+build_app has no live controller; no Telegram polling/runtime or paid generation is started.
+
+PASS: actual isolated SQL lifecycle and consent rollback suites: ticket ownership, expiry, cancel,
+duplicate confirm/debit, refund once, overspend rollback, unknown holds, budget caps and audit.
+No customer wallet/order writes. Candidate uses public.ai_wallets / existing MYR RPC; synthetic
+staging wallets remain separate and are not substituted. All candidate DDL/fixtures rolled back.
+PASS: 70 focused production-candidate checks including actual PTB20.7 markup contract. Initial
+host CI failure due missing Telegram UI test dependency fixed with separate pinned UI contract.
+Full staging backend regression: 166 tests PASS. CI, packaging/deploy and post-deploy guards still IN PROGRESS. PR45 head 04025000 has all six CI PASS; its production PR remains draft and unmerged.
+
+BLOCKED: authenticated dashboard session and controlled Telegram/provider access; verified model
+maximum cost, FX/fees and RM1 NET; production backup/rotation/migration/real E2E/owner rollout approval.
+Owner provider cap now RM5 total / at most 5 paid generations from existing authorized balance;
+no purchase/top-up, and no spend without verified worst-case bound. Two unverified production
+receipt orders remain untouched. Payment/generation disabled. LAUNCH NO-GO.
