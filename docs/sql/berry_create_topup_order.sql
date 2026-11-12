@@ -1,3 +1,14 @@
+-- Production execution requires verified backup and payment reconciliation first.
+BEGIN;
+DO $$ BEGIN
+ IF EXISTS (SELECT 1 FROM public.orders WHERE status IN ('pending','waiting','waiting_approval')
+  GROUP BY tenant_id,user_id HAVING count(*)>1) THEN
+  RAISE EXCEPTION 'BLOCKED: reconcile duplicate active orders and receipts before migration';
+ END IF;
+END $$;
+CREATE SCHEMA IF NOT EXISTS berry_private;
+REVOKE ALL ON SCHEMA berry_private FROM PUBLIC,anon,authenticated;
+GRANT USAGE ON SCHEMA berry_private TO service_role;
 -- STAGING REVIEW FIRST. Requires tenants/orders and wallet schema.
 -- Refuse to build if duplicate active data already exists; never delete it.
 -- Protect legacy shop inserts as well as this RPC.
@@ -53,3 +64,5 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.berry_create_topup_order(uuid,bigint,text,uuid,text,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.berry_create_topup_order(uuid,bigint,text,uuid,text,text) TO service_role;
+
+COMMIT;
