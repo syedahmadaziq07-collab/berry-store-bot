@@ -51,6 +51,20 @@ admin-control-center wujud sebagai rujukan keselamatan (bukan langkah bernombor)
   (konsen-sahaja apabila tiada). SQL persetujuan imej kandidat + ujian
   PG16 efemeral (12, CI) dibawa dari PR #77. Ujian integrasi +8 → 30/30.
 - Suite penuh **249 ujian, 0 ralat bukan-Windows**.
+- `feat/prod-step2-completion-20261112` @ (kini): **STEP 3 worker sebenar** —
+  `telegram_image_worker.py` (`MyrImageWorker`): reserve → claim → durable
+  submission_unknown → satu POST melalui WorkerSubmissionGate (no-retry) →
+  poll GET → semak request-id/bilangan imej/URL dipercayai → deliver
+  sendPhoto claim-once → hold ambigu (delivery_unknown). `recover_once`
+  mula semula-selamat; worker kedua tidak menghasilkan POST kedua; lalai
+  lalai dilumpuhkan sepenuhnya. **12/12 ujian lifecycle** (timeout,
+  malformed, unknown hold, duplicate worker, terminal/nonterminal error,
+  URL tidak dipercayai, restart, delivery ambigu). Suite penuh kini
+  **261 ujian, 0 ralat bukan-Windows**. CI diperluas.
+- Baki STEP 3 yang bergantung pada kelulusan: sambungkan MyrImageWorker ke
+  `_install_image_flow` (menggantikan worker lengai) **selepas** kelulusan
+  migrasi SQL + gate runtime (perlu budget/wallet aktif) — arahan melarang
+  mengaktifkannya tanpa kelulusan; kod dan ujian sedia.
 - `docs/ROADMAP_BLOCKER.md` dicipta: STEP 5–12 tidak didefinisikan dalam
   mana-mana bukti repositori (senarai bukti carian lengkap direkodkan);
   tidak direka-reka; perlu input pemilik.
