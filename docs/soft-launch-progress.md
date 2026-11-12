@@ -7,6 +7,7 @@ Recovery batch follow-up: bounded, deduplicated recovery iterations implemented;
 
 | Area | Status | Evidence / remaining work |
 | --- | --- | --- |
+| Shop fixture source merge | BLOCKED | PR #42 head 0f1cdef: all three CI workflows queued with no safety-run jobs allocated. Fixture and tenant constraints are applied/tested ONLY in isolated Supabase staging; source merge awaits CI. GitHub public Actions status is operational as of the 12 November check, so queue root cause remains unknown. |
 | Backend regression suite | PASS | 134 tests in isolated Python environment; all passed. Mock-backed contracts, not customer E2E. |
 | Provider restart recovery | PASS | Queue status/result URLs are durably frozen and bound to model/request. Worker tests resume through GET-only polling; malformed/expired results stay held. Provider traffic mocked; no actual inference or live recovery loop tested. |
 | Durable staging job lifecycle | PASS | Separate synthetic MYR cent wallet and immutable quote/ledger. Actual SQL rollback suite passes claim-once, request binding, definitive-failure refunds, ambiguous-outcome hold and ledger reconciliation. Worker tests cover concurrent submits/deliveries and restart/retry safety. External calls disabled by default. Not wired into customer bot. |
