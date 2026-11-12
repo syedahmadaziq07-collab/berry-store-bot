@@ -232,3 +232,21 @@ No raw responses, secret values, inference, database changes or generation activ
 Business database_match=false remains unchanged; isolated mapping_match=true scopes GET only.
 BLOCKED: maximum billable units, account inference access/balance, FX/fees and RM1 NET still unverified.
 Next: staging CI/review/deploy, inspect sanitized validation reason, then fix confirmed contract mismatch.
+
+## 2026-11-12 STEP2 confirmed pricing parser root cause
+PASS PR58 bb981887:190 tests,3 CI43208001476/43208001673/43208001604.
+Merged staging5c114cdd, deploy dep-dbqq1cd6e07s73fuvej0;11:19:37Z actual sanitized logs:
+all3 HTTP200 fail specifically billing_unit_unsupported. Other row validations passed.
+Root cause: local six-unit enum contradicts provider's documented provider-specific string units.
+Fix: validate bounded printable billing label, preserve it exactly, never assume unit semantics;
+pricing_read_verified explicitly carries cost_ceiling_verified=false. No generation price enabled.
+193 regression tests PASS. Added GET-only account balance probe, emitting boolean only; model
+inference permission and sufficient-budget status remain unverified. Official account billing
+requires billing:usage:read; a403 must stay blocked, never expand key permissions automatically.
+Four actual isolated SQL suites rerun PASS: lifecycle, consent, reconciliation, recovery fairness.
+All fixtures rolled back; after tests jobs0,budget_grants0,reconciliation_cases0. No customer data.
+IN PROGRESS: review/CI/deploy contract correction, actual provider unit/balance result and public checks.
+BLOCKED: MiniMax10s480P output-duration billing ceiling, account fees/FX, RM1 NET, controlled runtime.
+Sources: https://fal.ai/docs/platform-apis/v1/models/pricing
+https://fal.ai/docs/platform-apis/v1/account/billing
+https://fal.ai/models/minimax/h3-max-turbo/text-to-video/api
