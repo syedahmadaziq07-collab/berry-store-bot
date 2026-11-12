@@ -571,9 +571,67 @@ async def _setting(key: str, fallback: str = "") -> str:
 
 # ─── Flask Keep-Alive Server ──────────────────────────────────────────────────
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, make_response
 
 _app = Flask(__name__)
+
+# Phase 2 foundation: optional password-only admin session.
+# This is not yet a replacement for the legacy browser-side Supabase client.
+_ADMIN_SESSION_COOKIE = "berry_admin_session"
+_ADMIN_SESSION_MAX_AGE = 8 * 60 * 60
+_admin_sessions = {}
+_admin_login_attempts = {}
+
+def _admin_session_valid():
+    token = request.cookies.get(_ADMIN_SESSION_COOKIE, "")
+    if not token:
+        return False
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    expiry = _admin_sessions.get(digest, 0)
+    if expiry <= time.time():
+        _admin_sessions.pop(digest, None)
+        return False
+    return True
+
+@_app.route("/api/dashboard/auth/status", methods=["GET"])
+def dashboard_auth_status():
+    return jsonify(ok=True, configured=bool(_get_env("DASHBOARD_LOGIN_PASSWORD")),
+                   authenticated=_admin_session_valid())
+
+@_app.route("/api/dashboard/auth/login", methods=["POST"])
+def dashboard_auth_login():
+    configured = _get_env("DASHBOARD_LOGIN_PASSWORD")
+    if not configured:
+        return jsonify(error="DASHBOARD_LOGIN_PASSWORD is not configured"), 503
+    # Use proxy-independent IP; deployments with shared proxies should add a
+    # trusted-proxy aware rate limiter before production.
+    identity = request.remote_addr or "unknown"
+    now = time.time()
+    attempts = [t for t in _admin_login_attempts.get(identity, []) if now - t < 900]
+    if len(attempts) >= 5:
+        return jsonify(error="Too many attempts; retry in 15 minutes"), 429
+    supplied = str((request.get_json(silent=True) or {}).get("password") or "")
+    if not hmac.compare_digest(supplied, configured):
+        attempts.append(now)
+        _admin_login_attempts[identity] = attempts
+        return jsonify(error="Incorrect password"), 401
+    _admin_login_attempts.pop(identity, None)
+    token = secrets.token_urlsafe(32)
+    _admin_sessions[hashlib.sha256(token.encode()).hexdigest()] = now + _ADMIN_SESSION_MAX_AGE
+    response = make_response(jsonify(ok=True))
+    response.set_cookie(_ADMIN_SESSION_COOKIE, token, max_age=_ADMIN_SESSION_MAX_AGE,
+                        secure=True, httponly=True, samesite="Strict", path="/api/dashboard/")
+    return response
+
+@_app.route("/api/dashboard/auth/logout", methods=["POST"])
+def dashboard_auth_logout():
+    token = request.cookies.get(_ADMIN_SESSION_COOKIE, "")
+    if token:
+        _admin_sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
+    response = make_response(jsonify(ok=True))
+    response.delete_cookie(_ADMIN_SESSION_COOKIE, path="/api/dashboard/")
+    return response
+
 
 @_app.after_request
 def _protect_dashboard_responses(response):
