@@ -2,6 +2,8 @@ name: Production video MYR safety
 on:
   pull_request:
     paths:
+      - bot.py
+      - tests/test_telegram_restart_safety.py
       - video_myr_worker.py
       - telegram_video_delivery.py
       - fal_provider.py
@@ -24,4 +26,6 @@ jobs:
       - run: python -m py_compile bot.py video_myr_worker.py telegram_video_delivery.py fal_provider.py
       - run: python -m unittest discover -s tests -p 'test_*video*.py' -v
       - run: python -m unittest discover -s tests -p 'test_fal_provider.py' -v
+      - run: python -m unittest discover -s tests -p 'test_telegram_restart_safety.py' -v
+      - run: python -m unittest discover -s tests -p 'test_topup_checkout.py' -v
       - run: python -m unittest discover -s tests -p 'test_berry_*py' -v

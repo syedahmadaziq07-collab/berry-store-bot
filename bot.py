@@ -25,55 +25,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Kill Any Other Running Bot Instance ──────────────────────────────────────
-# Runs BEFORE polling starts. Forces Telegram to drop any existing session
-# (other Replit tab, old Render deploy, etc.) so this instance takes over cleanly.
-
-import httpx as _httpx_early
-import os as _os_early
-
-_EARLY_TOKEN = (
-    (_os_early.getenv("BOT_TOKEN") or "").strip() or
-    (_os_early.getenv("TOKEN") or "").strip() or
-    (_os_early.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-)
-
-if _EARLY_TOKEN:
-    try:
-        _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/close",
-            timeout=10,
-        )
-        print("✅ Old sessions closed")
-    except Exception as _e:
-        print(f"⚠️ Could not close old session: {_e}")
-
-    try:
-        _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/deleteWebhook?drop_pending_updates=true",
-            timeout=10,
-        )
-        print("✅ Webhook cleared, pending updates dropped")
-    except Exception as _e:
-        print(f"⚠️ Could not clear webhook: {_e}")
-
-    print("🚀 This instance is now the ONLY running bot!")
-
-    # Log current webhook info for diagnostics
-    try:
-        _wh_resp = _httpx_early.get(
-            f"https://api.telegram.org/bot{_EARLY_TOKEN}/getWebhookInfo",
-            timeout=10,
-        )
-        _wh_data = _wh_resp.json()
-        _wh_result = _wh_data.get("result") or {}
-        print(f"[WEBHOOK_INFO] url={_wh_result.get('url','')!r} "
-              f"has_custom_certificate={_wh_result.get('has_custom_certificate')} "
-              f"pending_update_count={_wh_result.get('pending_update_count')} "
-              f"last_error_date={_wh_result.get('last_error_date')} "
-              f"last_error_message={_wh_result.get('last_error_message','')!r}")
-    except Exception as _e:
-        print(f"[WEBHOOK_INFO] Could not fetch: {_e}")
+# Telegram lifecycle actions belong to main(), after logging/redaction is configured.
+# Importing the module must not close sessions or discard queued customer updates.
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 # Logs to console AND to bot.log file for debugging
@@ -5614,7 +5567,7 @@ def main():
             # Clear any lingering webhook so polling takes over cleanly
             try:
                 _telegram_loop.run_until_complete(
-                    app.bot.delete_webhook(drop_pending_updates=True)
+                    app.bot.delete_webhook(drop_pending_updates=False)
                 )
                 log.info("[WEBHOOK] delete_webhook ok")
             except Exception as exc:
@@ -5632,7 +5585,7 @@ def main():
 
             log.info("[POLLING] started")
             app.run_polling(
-                drop_pending_updates=True,
+                drop_pending_updates=False,
                 allowed_updates=Update.ALL_TYPES,
                 close_loop=False,
             )
