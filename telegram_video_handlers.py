@@ -34,7 +34,7 @@ async def prepare_prompt(update,context,keyboard_factory=None):
     await update.message.reply_text(
         f"🎬 {payload['label']}\n{payload['settings_label']}\n"
         f"Harga: {q['credits']:,} Berry Credits (RM{q['debit_cents']/100:.2f})\n"
-        f"Baki: {ticket['balance_credits']:,} Berry Credits (RM{ticket['balance_myr']})\n"
+        f"Baki: {ticket['balance_credits']} Berry Credits (RM{ticket['balance_myr']})\n"
         f"Prompt: {payload['prompt']}\n\nConfirm untuk debit dan generation; Cancel untuk batal. Quote mempunyai tempoh luput.",
         reply_markup=keyboard_factory([[('✅ Confirm','ai_video_confirm:'+ident),
                                         ('❌ Cancel','ai_video_cancel:'+ident)]]))
