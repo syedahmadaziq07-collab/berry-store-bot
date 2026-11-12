@@ -1,5 +1,28 @@
 # Berry Store — Production Release & Activation Plan (Owner-Approved Scope)
 
+## 0. LIVE ACCEPTANCE BUDGET (owner authorization 2026-11-13)
+
+**RM5.00 (500 cents) TOTAL cumulative ceiling** for AI Image + AI Video
+combined live testing, counting ALL provider charges including failed
+requests, retries, conversion and fees.
+
+Enforcement (implemented, tested):
+- `image_budget_guard.py` (11/11 unit tests): worst-case rejection
+  (`preflight`), RM5 ceiling validation, unknown-outcome full reservation.
+- `docs/sql/berry_ai_test_budget.sql` + rollback: `berry_private.ai_test_budgets`
+  with DB-level `CHECK(cap <= 500)` and `CHECK(used+reserved <= cap)`;
+  `public.berry_ai_budget_claim` RPC: row-lock serialized atomic
+  reservation, worst-case rejection inside the transaction, expiry +
+  max-5-generation gates, service-role-only.
+- PG16 ephemeral CI tests (8 cases): ceiling CHECK, atomic claim, concurrent
+  ×3 → exactly 2 succeed within cap, generation cap, expiry, anon rejected,
+  no wallet table touched.
+
+Rules honored: single combined ledger (not per-model), blind retries
+impossible (no-retry gate), operator must reconcile unknown outcomes (full
+worst-case stays reserved), test account/wallet only, no auto top-up, no
+public rollout. **Spend to date: RM0.00 (no paid requests submitted).**
+
 Owner approval received for: production database migration, real payment
 integration and paid AI activation. This plan executes ONLY verified,
 in-scope operations, starting with restricted test-user access.
