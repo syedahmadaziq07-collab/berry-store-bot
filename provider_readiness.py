@@ -49,7 +49,10 @@ def pricing_probe(key,client):
 
 def staging_startup_probe(environ=None,client_factory=httpx.Client,emit=print):
     env=os.environ if environ is None else environ
-    if env.get('RENDER_SERVICE_ID')!=STAGING_SERVICE or env.get('SUPABASE_URL','').rstrip('/')!=STAGING_DATABASE:
+    service_match=env.get('RENDER_SERVICE_ID')==STAGING_SERVICE
+    database_match=env.get('SUPABASE_URL','').rstrip('/')==STAGING_DATABASE
+    emit('BERRY_PROVIDER_READONLY_GATE '+json.dumps({'service_match':service_match,'database_match':database_match}),flush=True)
+    if not service_match or not database_match:
         return
     key=env.get('FAL_KEY','') # Used internally for authentication only; never returned/logged.
     if not key:

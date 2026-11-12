@@ -89,3 +89,18 @@ It is not the existing Wan mapping. Added candidate to fixed read-only pricing p
 activation or retail update. PR52 points to original d215ebea WIP and is superseded by PR50,
 which fixes its PostgreSQL regex issue and adds actual SQL/regression validation. Do not merge52.
 PR51 remains independently reviewable; its draft retail and public rates are not verified net margin.
+
+## Verified staging milestone,13:14 MYT
+
+PASS PR50 final head4723303: all6 CI workflows43159851040/51055/51075/51076/51099/51204.
+Merged staging5294c1a; Render dep-dbqkm6qfngtc73ft8q30 LIVE05:14:49Z. Installed only isolated
+migration berry_video_unknown_reconciliation_staging_20261112; all3 SQL suites PASS afterinstall.
+No jobs/cases/budget grants remain. Advisor25 INFO service-only RLS/no-policy, no WARN/ERROR.
+FAL_KEY name present=true05:14:45Z. No read-only pricing result emitted: safety gate skipped probe;
+DO NOT claim authentication success or account rejection. Follow-up prints only gate booleans.
+
+Additional safe work: recovery scan fairness migration/test.25 blocked candidates are visited20+5
+without overlap; unknown jobs excluded and money/state unchanged. Initial fixture lacked required
+wallet FK and failed; added isolated zero-balance wallet fixture, rerun PASS. All rolled back.
+Candidate adds last_recovery_scan_at and rotates scanned jobs with FOR UPDATE SKIP LOCKED;
+claim-once submission remains separate. Persistence/CI pending. No external side effects.
