@@ -91,6 +91,18 @@ class TestTrial(unittest.IsolatedAsyncioTestCase):
                         self.ctx.bot.send_message.call_args_list)
         self.assertNotIn("fake-error-secret", sent)
 
+    async def test_submit_failure_logs_only_sanitized_stage(self):
+        self.provider.submit.side_effect = TimeoutError("sensitive-secret-and-url")
+        await self.trial.prepare(self.update, self.ctx)
+        await self.trial.confirm(self.update, self.ctx)
+        with self.assertLogs("berry_admin_minimax_trial", level="WARNING") as captured:
+            await self.tasks.pop()
+        joined = " ".join(captured.output)
+        self.assertIn("stage=provider_submit", joined)
+        self.assertIn("error_class=TimeoutError", joined)
+        self.assertIn("request_id_present=False", joined)
+        self.assertNotIn("sensitive-secret-and-url", joined)
+
     async def test_persisted_checkpoint_blocks_restarted_runner(self):
         await self.trial.prepare(self.update, self.ctx)
         await self.trial.confirm(self.update, self.ctx)
