@@ -115,6 +115,7 @@ class TestTrial(unittest.IsolatedAsyncioTestCase):
         client = httpx.Client(transport=httpx.MockTransport(fake_handler))
         self.addCleanup(client.close)
         self.trial._diag_client = client
+        self.trial.provider = FalProvider(api_key="fixture-key")
         await self.trial.diagnose(self.update, self.ctx)
         answer = self.update.message.reply_text.call_args.args[0]
         self.assertIn("HTTP 200", answer)
@@ -126,6 +127,7 @@ class TestTrial(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(Path(self.path).exists())
 
     async def test_diag_http_status_sanitized(self):
+        self.trial.provider = FalProvider(api_key="fixture-key")
         for status in (401, 403, 429, 500):
             client = httpx.Client(
                 transport=httpx.MockTransport(
