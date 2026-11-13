@@ -58,10 +58,18 @@ class SupabaseQuoteStore:
 
     def create(self, *, quote_id, customer_id, product_key, mapping_revision,
                payload_json, integrity, idempotency_key, expires_at):
+        # PostgREST jsonb parameter must be a JSON object, not a JSON
+        # *string*. Otherwise the stored payload cannot be read as a dict.
+        try:
+            payload = json.loads(payload_json) if isinstance(payload_json, str) else payload_json
+            if not isinstance(payload, dict):
+                raise ValueError("Quotation payload must be an object")
+        except (ValueError, TypeError):
+            raise QuotationError("Quotation payload invalid") from None
         return self._rpc("berry_ai_quote_create", {
             "p_tenant": self.tenant_id, "p_customer": int(customer_id),
             "p_quote": str(quote_id), "p_product": product_key,
-            "p_mapping": int(mapping_revision), "p_payload": payload_json,
+            "p_mapping": int(mapping_revision), "p_payload": payload,
             "p_integrity": integrity, "p_idempotency": idempotency_key,
             "p_expires": expires_at})
 
