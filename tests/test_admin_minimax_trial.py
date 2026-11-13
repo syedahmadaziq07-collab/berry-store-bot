@@ -132,6 +132,29 @@ class TestProviderKey(unittest.TestCase):
         provider = FalProvider(api_key="  example-key\n")
         self.assertEqual(provider._headers()["Authorization"], "Key example-key")
 
+    def test_http_status_is_redacted_and_classified(self):
+        import httpx
+        from fal_provider import FalProviderError
+        for status in (400, 401, 403, 422, 429, 500):
+            with self.subTest(status=status):
+                client = httpx.Client(transport=httpx.MockTransport(
+                    lambda req, s=status: httpx.Response(s, text="secret-token")))
+                provider = FalProvider(api_key="fixture", client=client)
+                with self.assertRaises(FalProviderError) as caught:
+                    provider.submit(MODEL, mini_max_arguments("cat"))
+                self.assertEqual(caught.exception.code, "http_" + str(status))
+                self.assertNotIn("secret-token", str(caught.exception))
+
+    def test_invalid_json_is_classified(self):
+        import httpx
+        from fal_provider import FalProviderError
+        client = httpx.Client(transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, text="not-json")))
+        with self.assertRaises(FalProviderError) as caught:
+            FalProvider(api_key="fixture", client=client).submit(
+                MODEL, mini_max_arguments("cat"))
+        self.assertEqual(caught.exception.code, "invalid_json")
+
     def test_internal_whitespace_never_accepted(self):
         with self.assertRaises(FalProviderError):
             FalProvider(api_key="example\nkey")._headers()
