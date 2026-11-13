@@ -44,7 +44,8 @@ class SupabaseQuoteStore:
             "quote_id": document["quote_id"], "tenant_id": document["tenant_id"],
             "customer_id": document["customer_id"],
             "idempotency_key": idempotency_key,
-            "document": document, "state": document.get("state", "active"),
+            "document": document, "integrity": document["integrity"],
+            "state": document.get("state", "active"),
             "expires_at_epoch": document["expires_at"],
         }
         try:
@@ -92,9 +93,9 @@ class SupabaseQuoteStore:
             "tenant_id": "eq." + str(document["tenant_id"]),
             "customer_id": "eq." + str(document["customer_id"]),
             "state": "eq.active",
-            "document->>integrity": "eq." + document["_old_integrity"],
+            "integrity": "eq." + document["_old_integrity"],
             "select": "quote_id",
-        }, payload={"state": "cancelled",
+        }, payload={"state": "cancelled", "integrity": document["integrity"],
                     "document": {k: v for k, v in document.items()
                                  if k != "_old_integrity"}},
            prefer="return=representation")
