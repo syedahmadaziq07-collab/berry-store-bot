@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'step2_*.py'
+      - 'fal_pricing.py'
+      - 'tests/test_fal_pricing.py'
       - 'video_reconciliation.py'
       - 'ai_wallet_pricing_adapter.py'
       - 'tests/test_step2_*.py'
@@ -11,6 +13,8 @@ on:
   pull_request:
     paths:
       - 'step2_*.py'
+      - 'fal_pricing.py'
+      - 'tests/test_fal_pricing.py'
       - 'video_reconciliation.py'
       - 'ai_wallet_pricing_adapter.py'
       - 'tests/test_step2_*.py'
