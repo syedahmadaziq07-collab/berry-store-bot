@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -22,6 +23,7 @@ MODEL = "minimax/h3-max-turbo/text-to-video"
 MAX_POLL_SECONDS = 600
 POLL_INTERVAL_SECONDS = 5
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
+LOGGER = logging.getLogger(__name__)
 
 
 def mini_max_arguments(prompt: str):
@@ -130,21 +132,28 @@ class AdminMiniMaxTrial:
 
     async def _generate(self, chat_id: int, prompt: str, context):
         request_id = None
+        stage = 'arguments'
         try:
             payload = mini_max_arguments(prompt)
+            stage = 'provider_submit'
             submitted = await asyncio.to_thread(self.provider.submit, MODEL, payload)
+            stage = 'submit_response_validation'
             if not isinstance(submitted, dict):
                 raise ValueError("Unexpected provider submit response")
             request_id = submitted.get("request_id")
             if not isinstance(request_id, str) or not ID_PATTERN.fullmatch(request_id):
                 raise ValueError("Missing provider request ID")
+            stage = 'queue_url_validation'
             receipt = queue_urls(MODEL, request_id,
                                  submitted.get("status_url"), submitted.get("response_url"))
+            stage = "checkpoint_queued"
             await asyncio.to_thread(self._receipt, request_id, "queued")
+            stage = "request_id_notification"
             await context.bot.send_message(
                 chat_id=chat_id, text="✅ Provider request_id: " + request_id)
             end = time.monotonic() + MAX_POLL_SECONDS
             while time.monotonic() < end:
+                stage = "provider_poll"
                 status = await asyncio.to_thread(self.provider.status, receipt["queue_status_url"])
                 if not isinstance(status, dict) or status.get("request_id") not in (None, request_id):
                     raise ValueError("Provider status identity mismatch")
@@ -153,8 +162,11 @@ class AdminMiniMaxTrial:
                     continue
                 if status.get("status") != "COMPLETED" or status.get("error") or status.get("error_type"):
                     raise ValueError("Provider not completed successfully")
+                stage = "provider_result"
                 result = await asyncio.to_thread(self.provider.result, receipt["queue_result_url"])
+                stage = "media_url_validation"
                 video_url = trusted_result_url(result["video"]["url"])
+                stage = "telegram_delivery"
                 await asyncio.to_thread(self.delivery.send, chat_id, "video", video_url)
                 await asyncio.to_thread(self._receipt, request_id, "delivered")
                 await context.bot.send_message(
@@ -165,8 +177,13 @@ class AdminMiniMaxTrial:
             await context.bot.send_message(
                 chat_id=chat_id, text="⏳ Belum siap. request_id: " + request_id +
                 ". Jangan submit lagi; semak provider dahulu.")
-        except Exception:
-            # Never leak provider exception strings, credentials, URLs or prompt.
+        except Exception as exc:
+            # Only fixed stage and exception type; never log exception messages or secrets.
+            LOGGER.warning("[MINIMAX_TRIAL] failed stage=%s error_class=%s request_id_present=%s",
+                           stage, type(exc).__name__ if type(exc).__name__ in
+                           {"FalProviderError", "JobError", "ValueError", "TypeError",
+                            "KeyError", "TimeoutError", "OSError", "RuntimeError"}
+                           else "OtherError", request_id is not None)
             note = (" Request ID: " + request_id) if request_id else ""
             await context.bot.send_message(
                 chat_id=chat_id,
