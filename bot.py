@@ -5506,6 +5506,19 @@ def build_app(video_flow=None) -> Application:
         app.bot_data["berry_video_flow"] = video_flow
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
+    # Explicit owner-only staging smoke test; never activated by merely deploying code.
+    if _get_env("BERRY_MINIMAX_TRIAL_ENABLED").lower() == "true":
+        if _get_env("BERRY_MINIMAX_TRIAL_MODE") != "staging":
+            raise RuntimeError("MiniMax trial requires explicit staging mode")
+        from berry_admin_minimax_trial import AdminMiniMaxTrial
+        trial = AdminMiniMaxTrial(
+            ADMIN_ID, BOT_TOKEN,
+            state_path=_get_env("BERRY_MINIMAX_TRIAL_STATE_PATH",
+                                "/tmp/berry_minimax_trial_once.json"))
+        app.add_handler(CommandHandler("videotest", trial.prepare))
+        app.add_handler(CommandHandler("videotest_confirm", trial.confirm))
+        app.bot_data["berry_minimax_trial"] = trial
+        log.info("[HANDLERS] owner-only MiniMax trial registered")
     app.add_handler(CommandHandler("admin",       cmd_admin))
     app.add_handler(CommandHandler("adminorders", cmd_adminorders))
     app.add_handler(CommandHandler("unsent",      cmd_unsent))

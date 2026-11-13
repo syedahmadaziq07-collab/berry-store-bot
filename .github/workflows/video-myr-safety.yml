@@ -18,6 +18,8 @@ on:
       - video_myr_worker.py
       - telegram_video_delivery.py
       - fal_provider.py
+      - berry_admin_minimax_trial.py
+      - tests/test_admin_minimax_trial.py
       - docs/sql/berry_video_myr_lifecycle.sql
       - docs/sql/verify_video_myr_lifecycle.sql
       - tests/test_video_myr_worker.py
@@ -38,6 +40,7 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_*video*.py' -v
       - run: python -m unittest discover -s tests -p 'telegram_markup_contract.py' -v
       - run: python -m unittest discover -s tests -p 'test_fal_provider.py' -v
+      - run: python -m unittest discover -s tests -p 'test_admin_minimax_trial.py' -v
       - run: python -m unittest discover -s tests -p 'test_telegram_restart_safety.py' -v
       - run: python -m unittest discover -s tests -p 'test_topup_checkout.py' -v
       - run: python -m unittest discover -s tests -p 'test_berry_*py' -v
