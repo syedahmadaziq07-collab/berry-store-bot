@@ -13,7 +13,8 @@ import re
 import time
 from pathlib import Path
 
-from fal_provider import FalProvider
+import httpx
+from fal_provider import FalProvider, FalProviderError
 from staging_job_worker import queue_urls
 from telegram_video_delivery import TelegramVideoDelivery
 from video_myr_worker import trusted_result_url
@@ -40,7 +41,7 @@ def mini_max_arguments(prompt: str):
 class AdminMiniMaxTrial:
     def __init__(self, admin_id: int, bot_token: str, *,
                  state_path="/tmp/berry_minimax_trial_once.json",
-                 provider=None, delivery=None):
+                 provider=None, delivery=None, diag_client=None):
         if type(admin_id) is not int or admin_id <= 0:
             raise ValueError("ADMIN_ID sah diperlukan")
         if not isinstance(bot_token, str) or not bot_token.strip():
@@ -49,6 +50,7 @@ class AdminMiniMaxTrial:
         self.provider = provider if provider is not None else FalProvider()
         self.delivery = delivery if delivery is not None else TelegramVideoDelivery(bot_token)
         self.state_path = Path(state_path)
+        self._diag_client = diag_client
         self._pending = None
         self._attempt_claimed = False
 
@@ -83,6 +85,45 @@ class AdminMiniMaxTrial:
             os.fsync(stream.fileno())
         os.replace(temporary, self.state_path)
 
+    def _pricing_probe(self):
+        """Authenticated read-only GET; does not submit/generate/pay or alter trial state."""
+        try:
+            auth = self.provider._headers()["Authorization"]
+        except FalProviderError:
+            return "fal.ai pricing diagnosis: key_format_invalid"
+        headers = {"Authorization": auth, "Accept": "application/json"}
+        client = self._diag_client
+        close = False
+        if client is None:
+            client = httpx.Client(timeout=12, follow_redirects=False)
+            close = True
+        try:
+            response = client.get(
+                "https://api.fal.ai/v1/models/pricing",
+                params={"endpoint_id": MODEL}, headers=headers)
+            if response.status_code != 200:
+                return "fal.ai pricing diagnosis: HTTP " + str(int(response.status_code))
+            payload = response.json()
+            if not isinstance(payload, dict):
+                return "fal.ai pricing diagnosis: invalid_response"
+            return ("fal.ai pricing diagnosis: HTTP 200. Key boleh baca pricing; "
+                    "ini BUKAN bukti inference berbayar boleh digunakan.")
+        except httpx.TimeoutException:
+            return "fal.ai pricing diagnosis: GET timeout"
+        except httpx.RequestError:
+            return "fal.ai pricing diagnosis: GET transport_error"
+        except ValueError:
+            return "fal.ai pricing diagnosis: invalid_response"
+        finally:
+            if close:
+                client.close()
+
+    async def diagnose(self, update, context):
+        if not self._authorized(update):
+            return
+        result = await asyncio.to_thread(self._pricing_probe)
+        await update.message.reply_text(result)
+
     async def prepare(self, update, context):
         if not self._authorized(update):
             return
@@ -98,6 +139,12 @@ class AdminMiniMaxTrial:
                 "Cara guna: /videotest A white kitten running in a sunny garden")
             return
         self._pending = (prompt, time.monotonic() + 180)
+        if os.environ.get("BERRY_MINIMAX_TRIAL_PAID_ENABLED") != "true":
+            await update.message.reply_text(
+                "🎬 MiniMax Turbo: 10 saat • 480P • balanced • 16:9.\n"
+                "Diagnosis percuma: /videotest_diag\n"
+                "Paid Confirm kini DIKUNCI selepas cubaan terdahulu; tiada request baharu dibenarkan.")
+            return
         await update.message.reply_text(
             "🎬 MiniMax Turbo: 10 saat • 480P • balanced • 16:9.\n"
             "Ini satu request BERBAYAR. Harga standard rujukan sekitar USD0.25 "
@@ -107,6 +154,10 @@ class AdminMiniMaxTrial:
 
     async def confirm(self, update, context):
         if not self._authorized(update):
+            return
+        if os.environ.get("BERRY_MINIMAX_TRIAL_PAID_ENABLED") != "true":
+            await update.message.reply_text(
+                "🔒 Paid generation locked. Gunakan /videotest_diag dan semak fal.ai Usage dahulu.")
             return
         pending = self._pending
         if self._spent() or pending is None or time.monotonic() > pending[1]:
@@ -165,10 +216,11 @@ class AdminMiniMaxTrial:
             await context.bot.send_message(
                 chat_id=chat_id, text="⏳ Belum siap. request_id: " + request_id +
                 ". Jangan submit lagi; semak provider dahulu.")
-        except Exception:
-            # Never leak provider exception strings, credentials, URLs or prompt.
+        except Exception as exc:
+            # Only a safe fixed provider diagnostic code or generic error category.
+            kind = exc.code if isinstance(exc, FalProviderError) else "unclassified"
             note = (" Request ID: " + request_id) if request_id else ""
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⚠️ Keputusan ujian belum disahkan." + note +
+                text="⚠️ Keputusan ujian belum disahkan. Code: " + kind + "." + note +
                      " Jangan submit semula; semak fal.ai Usage/Requests dahulu.")

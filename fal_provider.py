@@ -16,7 +16,10 @@ _REQUEST = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
 
 
 class FalProviderError(RuntimeError):
-    pass
+    """Safe diagnostic category without exposing provider body, URL or credentials."""
+    def __init__(self, message, *, code="provider_error"):
+        super().__init__(message)
+        self.code = code
 
 
 class FalProvider:
@@ -60,8 +63,17 @@ class FalProvider:
             response = self._client.request(method, target, headers=headers, **kwargs)
             response.raise_for_status()
             return response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise FalProviderError("fal.ai request failed") from exc
+        except httpx.HTTPStatusError as exc:
+            # Only the numeric HTTP status is safe to surface. Never log response bodies.
+            status = int(exc.response.status_code)
+            raise FalProviderError("fal.ai request failed", code=f"http_{status}") from None
+        except httpx.TimeoutException:
+            # A timeout does NOT prove the POST failed. Never retry paid submission.
+            raise FalProviderError("fal.ai request outcome unknown", code="timeout_ambiguous") from None
+        except httpx.RequestError:
+            raise FalProviderError("fal.ai transport failed", code="transport_ambiguous") from None
+        except ValueError:
+            raise FalProviderError("fal.ai returned invalid JSON", code="invalid_json") from None
 
     def submit(self, model_id, arguments, *, correlation=None):
         if not isinstance(arguments, dict):

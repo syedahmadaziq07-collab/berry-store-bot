@@ -5781,6 +5781,7 @@ def build_app() -> Application:
             state_path=_get_env("BERRY_MINIMAX_TRIAL_STATE_PATH",
                                 "/tmp/berry_minimax_trial_once.json"))
         app.add_handler(CommandHandler("videotest", trial.prepare))
+        app.add_handler(CommandHandler("videotest_diag", trial.diagnose))
         app.add_handler(CommandHandler("videotest_confirm", trial.confirm))
         app.bot_data["berry_minimax_trial"] = trial
         log.info("[HANDLERS] owner-only MiniMax trial registered")
