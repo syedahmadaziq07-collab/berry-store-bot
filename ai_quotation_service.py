@@ -28,10 +28,11 @@ class QuotationService:
 
     TTL_SECONDS = 600  # 10 minutes
 
-    def __init__(self, signing_key, *, rate_limit_per_minute=6):
+    def __init__(self, signing_key, *, rate_limit_per_minute=6, store=None):
         if not isinstance(signing_key, str) or len(signing_key) < 16:
             raise QuotationError("Quotation signing key required")
         self._key = signing_key.encode()
+        self._store = store
         self._quotes = {}
         self._idempotency = {}
         self._rate = {}
@@ -62,13 +63,17 @@ class QuotationService:
         if idempotency_key is not None:
             if not isinstance(idempotency_key, str) or len(idempotency_key) > 128:
                 raise QuotationError("Idempotency key tidak sah")
-            existing = self._idempotency.get(f"{scope}:{idempotency_key}")
+            existing = (self._store.by_idempotency(tenant_id, customer_id, idempotency_key)
+                        if self._store is not None else self._idempotency.get(f"{scope}:{idempotency_key}"))
             if existing is not None:
-                doc = self._quotes.get(existing)
+                doc = existing if self._store is not None else self._quotes.get(existing)
                 if doc is None or doc.get("state") == "cancelled" or now > doc["expires_at"]:
                     raise QuotationError("Idempotent quotation unavailable; use a new key")
                 if doc["integrity"] != self._tag(doc):
                     raise QuotationError("Quotation integrity failure")
+                if (doc["product_key"] != product_key or doc["aspect_ratio"] != aspect_ratio
+                        or doc["prompt_sha256"] != hashlib.sha256(prompt.strip().encode()).hexdigest()):
+                    raise QuotationError("Idempotency key reused with different parameters")
                 return dict(doc)
         product = get_product(product_key)
         validate_customer_selection(product, aspect_ratio)
@@ -104,6 +109,16 @@ class QuotationService:
             "_fx_timestamp": priced["fx_timestamp"],
         }
         document["integrity"] = self._tag(document)
+        if self._store is not None:
+            saved = self._store.save(document, idempotency_key)
+            # A concurrent request may have won the unique idempotency key.
+            if saved["quote_id"] != document["quote_id"]:
+                if (saved["product_key"] != product_key or saved["aspect_ratio"] != aspect_ratio
+                        or saved["prompt_sha256"] != document["prompt_sha256"]):
+                    raise QuotationError("Idempotency key reused with different parameters")
+                if saved["integrity"] != self._tag(saved) or saved.get("state") == "cancelled" or now > saved["expires_at"]:
+                    raise QuotationError("Existing quotation invalid")
+            return dict(saved)
         self._quotes[quote_id] = document
         if idempotency_key is not None:
             self._idempotency[f"{scope}:{idempotency_key}"] = quote_id
@@ -112,7 +127,8 @@ class QuotationService:
     # ── retrieval / validation ──────────────────────────────────────────────
     def get_valid(self, quote_id, *, tenant_id, customer_id, now=None):
         now = int(time.time()) if now is None else int(now)
-        doc = self._quotes.get(quote_id)
+        doc = (self._store.get(quote_id, tenant_id, customer_id)
+               if self._store is not None else self._quotes.get(quote_id))
         if doc is None:
             raise QuotationError("Quotation tidak ditemui")
         if doc["tenant_id"] != str(tenant_id) or doc["customer_id"] != int(customer_id):
@@ -128,9 +144,13 @@ class QuotationService:
     def cancel(self, quote_id, *, tenant_id, customer_id, now=None):
         doc = self.get_valid(quote_id, tenant_id=tenant_id,
                              customer_id=customer_id, now=now)
+        old_integrity = doc["integrity"]
         doc["state"] = "cancelled"
         doc["integrity"] = self._tag(doc)
-        self._quotes[quote_id] = doc
+        if self._store is not None:
+            self._store.cancel(dict(doc, _old_integrity=old_integrity))
+        else:
+            self._quotes[quote_id] = doc
         return doc
 
     def customer_view(self, document):
