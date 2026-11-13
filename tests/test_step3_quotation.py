@@ -164,6 +164,18 @@ class QuotationServiceTests(unittest.TestCase):
                                  customer_id=900000088, now=NOW + 1)
         self.assertEqual(got["quote_id"], doc["quote_id"])
 
+    def test_cross_tenant_calls_rejected_at_service_boundary(self):
+        other = "22222222-2222-4222-8222-222222222222"
+        with self.assertRaisesRegex(QuotationError, "tenant mismatch"):
+            self.svc.create(**dict(self.kwargs, tenant_id=other))
+        doc = self.svc.create(**self.kwargs)
+        with self.assertRaisesRegex(QuotationError, "tenant mismatch"):
+            self.svc.get_valid(doc["quote_id"], tenant_id=other,
+                               customer_id=900000088, now=NOW + 1)
+        with self.assertRaisesRegex(QuotationError, "tenant mismatch"):
+            self.svc.cancel(doc["quote_id"], tenant_id=other,
+                            customer_id=900000088, now=NOW + 1)
+
     def test_idempotency_returns_same_quote(self):
         a = self.svc.create(**dict(self.kwargs, idempotency_key="tg-update-1"))
         b = self.svc.create(**dict(self.kwargs, idempotency_key="tg-update-1",
