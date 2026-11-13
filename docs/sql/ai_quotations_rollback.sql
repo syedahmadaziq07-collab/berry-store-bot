@@ -6,5 +6,7 @@ DROP FUNCTION IF EXISTS public.berry_ai_quote_cancel(uuid,bigint,uuid);
 DROP FUNCTION IF EXISTS public.berry_ai_quote_get(uuid,bigint,uuid);
 DROP FUNCTION IF EXISTS
  public.berry_ai_quote_create(uuid,bigint,uuid,text,int,jsonb,text,text,timestamptz);
+DROP TABLE IF EXISTS berry_private.ai_quote_rate_limits;
 DROP TABLE IF EXISTS berry_private.ai_quotations;
+-- Deliberately retain berry_private schema: another service may use it later.
 COMMIT;
