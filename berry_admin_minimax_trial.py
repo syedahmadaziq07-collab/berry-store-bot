@@ -14,7 +14,7 @@ import re
 import time
 from pathlib import Path
 
-from fal_provider import FalProvider
+from fal_provider import FalProvider, FalProviderError
 from staging_job_worker import queue_urls
 from telegram_video_delivery import TelegramVideoDelivery
 from video_myr_worker import trusted_result_url
@@ -179,11 +179,13 @@ class AdminMiniMaxTrial:
                 ". Jangan submit lagi; semak provider dahulu.")
         except Exception as exc:
             # Only fixed stage and exception type; never log exception messages or secrets.
-            LOGGER.warning("[MINIMAX_TRIAL] failed stage=%s error_class=%s request_id_present=%s",
+            LOGGER.warning("[MINIMAX_TRIAL] failed stage=%s error_class=%s error_code=%s request_id_present=%s",
                            stage, type(exc).__name__ if type(exc).__name__ in
                            {"FalProviderError", "JobError", "ValueError", "TypeError",
                             "KeyError", "TimeoutError", "OSError", "RuntimeError"}
-                           else "OtherError", request_id is not None)
+                           else "OtherError", getattr(exc, "code", "unknown") if isinstance(exc, FalProviderError)
+                           and re.fullmatch(r"http_[0-9]{3}|http_unexpected|timeout|transport|invalid_json|unknown", getattr(exc, "code", ""))
+                           else "unknown", request_id is not None)
             note = (" Request ID: " + request_id) if request_id else ""
             await context.bot.send_message(
                 chat_id=chat_id,
