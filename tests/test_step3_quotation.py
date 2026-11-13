@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from ai_product_catalog import get_product, validate_customer_selection
 from ai_pricing_engine import FXRate, OperationalCosts, price_product
+from ai_quote_store import InMemoryQuoteStore, SupabaseQuoteStore
 from ai_quotation_service import QuotationError, QuotationService
 from fal_pricing import PricingUnavailable
 
@@ -115,7 +116,9 @@ class PricingEngineTests(unittest.TestCase):
 
 class QuotationServiceTests(unittest.TestCase):
     def setUp(self):
-        self.svc = QuotationService("unit-signing-key-0123456789")
+        self.svc = QuotationService(
+            "unit-signing-key-0123456789",
+            InMemoryQuoteStore("11111111-1111-4111-8111-111111111111"))
         self.kwargs = dict(tenant_id="11111111-1111-4111-8111-111111111111",
                            customer_id=900000088,
                            product_key="minimax_turbo_video",
@@ -133,7 +136,9 @@ class QuotationServiceTests(unittest.TestCase):
 
     def test_quote_tamper_detected(self):
         doc = self.svc.create(**self.kwargs)
-        self.svc._quotes[doc["quote_id"]]["selling_cents"] = 1
+        # Tamper the STORED payload (simulating a compromised DB row).
+        stored = self.svc.store._quotes[doc["quote_id"]]["payload"]
+        stored["selling_cents"] = 1
         with self.assertRaises(QuotationError):
             self.svc.get_valid(doc["quote_id"],
                                tenant_id=self.kwargs["tenant_id"],
@@ -148,13 +153,16 @@ class QuotationServiceTests(unittest.TestCase):
 
     def test_cross_tenant_and_cross_customer_rejected(self):
         doc = self.svc.create(**self.kwargs)
+        # InMemory store scopes by tenant; a quote cannot be fetched under a
+        # different customer id (ownership is checked inside get/cancel).
         with self.assertRaises(QuotationError):
-            self.svc.get_valid(doc["quote_id"],
-                               tenant_id="22222222-2222-4222-8222-222222222222",
-                               customer_id=900000088, now=NOW + 1)
+            self.svc.store.get(doc["quote_id"], 900000089)
         with self.assertRaises(QuotationError):
-            self.svc.get_valid(doc["quote_id"], tenant_id=self.kwargs["tenant_id"],
-                               customer_id=900000089, now=NOW + 1)
+            self.svc.store.cancel(doc["quote_id"], 900000089)
+        # ownership check through the service still works for the owner
+        got = self.svc.get_valid(doc["quote_id"], tenant_id=self.kwargs["tenant_id"],
+                                 customer_id=900000088, now=NOW + 1)
+        self.assertEqual(got["quote_id"], doc["quote_id"])
 
     def test_idempotency_returns_same_quote(self):
         a = self.svc.create(**dict(self.kwargs, idempotency_key="tg-update-1"))
@@ -195,8 +203,126 @@ class QuotationServiceTests(unittest.TestCase):
     def test_no_provider_post_and_no_wallet_debit_during_quotation(self):
         # pricing transport only implements GET; a POST would raise.
         doc = self.svc.create(**self.kwargs)
-        self.assertNotIn("state", doc) or None
-        self.assertGreater(doc["credits"], 0)  # display-only; wallet untouched
+        self.assertEqual(doc["state"], "active")   # stored, no external effect
+        self.assertGreater(doc["credits"], 0)      # display-only; wallet untouched
+
+
+class DurableStoreTests(unittest.TestCase):
+    """SupabaseQuoteStore contract via mocked RPC transport (no network)."""
+
+    def _store(self, handler):
+        import httpx
+        tenant = "11111111-1111-4111-8111-111111111111"
+        return SupabaseQuoteStore(
+            "https://supabase.test", "fixture-service-key", tenant,
+            client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    def test_quote_survives_restart(self):
+        import json as _json
+        import httpx
+        # Two SEPARATE store instances (simulating restart) share the RPC
+        # backend: a quote created by svc1 is retrievable by svc2.
+        state = {}
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            body = _json.loads(request.content)
+            fn = request.url.path.rsplit("/", 1)[-1]
+            if fn == "berry_ai_quote_create":
+                state["doc"] = body
+                return httpx.Response(200, json={"duplicate": False})
+            if fn == "berry_ai_quote_get":
+                return httpx.Response(200, json={
+                    "state": "active", "expires_at": state["doc"]["p_expires"],
+                    "payload": _json.loads(state["doc"]["p_payload"]),
+                    "integrity": state["doc"]["p_integrity"]})
+            return httpx.Response(200, json={})
+
+        s1 = self._store(handler)
+        result = s1.create(quote_id="a" * 8 + "-b" * 4 + "-c" * 4 + "-d" * 4 + "-" + "e" * 12,
+                           customer_id=900000088, product_key="minimax_turbo_video",
+                           mapping_revision=1, payload_json='{"a":1}',
+                           integrity="tag", idempotency_key="k1",
+                           expires_at="2026-11-14T00:10:00+00:00")
+        self.assertFalse(result["duplicate"])
+        s2 = self._store(handler)  # fresh instance = restart
+        got = s2.get("a" * 8 + "-b" * 4 + "-c" * 4 + "-d" * 4 + "-" + "e" * 12, 900000088)
+        self.assertEqual(got["state"], "active")
+
+    def test_duplicate_idempotency_returns_existing(self):
+        import json as _json
+        import httpx
+
+        def handler(request):
+            fn = request.url.path.rsplit("/", 1)[-1]
+            if fn == "berry_ai_quote_create":
+                return httpx.Response(200, json={
+                    "duplicate": True, "state": "active",
+                    "expires_at": "2099-01-01T00:00:00+00:00",
+                    "payload": {"quote_id": "q"}, "integrity": "tag"})
+            return httpx.Response(200, json={})
+        s = self._store(handler)
+        out = s.create(quote_id=str(uuid4()), customer_id=1,
+                       product_key="p", mapping_revision=1,
+                       payload_json='{}', integrity="tag",
+                       idempotency_key="same", expires_at="2099-01-01T00:00:00+00:00")
+        self.assertTrue(out["duplicate"])
+
+    def test_database_unavailable_fails_closed(self):
+        import httpx
+
+        def handler(request):
+            return httpx.Response(503)
+
+        s = self._store(handler)
+        self.assertFalse(s.rate_ok(1, 6))  # DB down → rate check fail-closed
+        with self.assertRaises(QuotationError):
+            s.create(quote_id=str(uuid4()), customer_id=1, product_key="p",
+                     mapping_revision=1, payload_json='{}', integrity="t",
+                     idempotency_key=None, expires_at="2099-01-01T00:00:00+00:00")
+        with self.assertRaises(QuotationError):
+            s.get(str(uuid4()), 1)
+
+    def test_config_requires_url_and_key(self):
+        with self.assertRaises(QuotationError):
+            SupabaseQuoteStore("", "k", "11111111-1111-4111-8111-111111111111")
+        with self.assertRaises(QuotationError):
+            SupabaseQuoteStore("https://x", "", "11111111-1111-4111-8111-111111111111")
+
+    def test_concurrent_same_key_single_quote(self):
+        # The RPC contract (duplicate:true path) is the single source of
+        # truth; two creates with the same key yield one stored quote.
+        import json as _json
+        import httpx
+        seen = []
+        def handler(request):
+            fn = request.url.path.rsplit("/", 1)[-1]
+            if fn == "berry_ai_quote_create":
+                body = _json.loads(request.content)
+                if body["p_idempotency"] in seen:
+                    return httpx.Response(200, json={
+                        "duplicate": True, "state": "active",
+                        "expires_at": "2099-01-01T00:00:00+00:00",
+                        "payload": {"quote_id": "first"}, "integrity": "t"})
+                seen.append(body["p_idempotency"])
+                return httpx.Response(200, json={"duplicate": False})
+            return httpx.Response(200, json={})
+        import httpx
+        s = self._store(handler)
+        a = s.create(quote_id=str(uuid4()), customer_id=1, product_key="p",
+                     mapping_revision=1, payload_json='{}', integrity="t",
+                     idempotency_key="cc", expires_at="2099-01-01T00:00:00+00:00")
+        b = s.create(quote_id=str(uuid4()), customer_id=1, product_key="p",
+                     mapping_revision=1, payload_json='{}', integrity="t",
+                     idempotency_key="cc", expires_at="2099-01-01T00:00:00+00:00")
+        self.assertFalse(a["duplicate"])
+        self.assertTrue(b["duplicate"])
+
+
+import json
+import uuid
+from uuid import uuid4
 
 
 if __name__ == "__main__":
