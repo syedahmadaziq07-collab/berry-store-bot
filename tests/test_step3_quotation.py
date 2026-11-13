@@ -247,7 +247,7 @@ class DurableStoreTests(unittest.TestCase):
             if fn == "berry_ai_quote_get":
                 return httpx.Response(200, json={
                     "state": "active", "expires_at": state["doc"]["p_expires"],
-                    "payload": _json.loads(state["doc"]["p_payload"]),
+                    "payload": state["doc"]["p_payload"],
                     "integrity": state["doc"]["p_integrity"]})
             return httpx.Response(200, json={})
 
@@ -258,6 +258,7 @@ class DurableStoreTests(unittest.TestCase):
                            integrity="tag", idempotency_key="k1",
                            expires_at="2026-11-14T00:10:00+00:00")
         self.assertFalse(result["duplicate"])
+        self.assertEqual(state["doc"]["p_payload"], {"a": 1})
         s2 = self._store(handler)  # fresh instance = restart
         got = s2.get("a" * 8 + "-b" * 4 + "-c" * 4 + "-d" * 4 + "-" + "e" * 12, 900000088)
         self.assertEqual(got["state"], "active")
