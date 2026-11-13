@@ -3979,6 +3979,19 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_ai_studio_section(update, context, data.split(":", 1)[1])
         elif data == "ai_image_prompt":
             await _ai_image_prompt(update, context)
+        elif data == "ai_quote_menu":
+            await _ai_quote_menu(update, context)
+        elif data.startswith("ai_quote_ratio:"):
+            flow = _quote_flow(context)
+            ratio = data.split(":", 1)[1]
+            if flow is None or ratio not in ("16:9", "9:16"):
+                await q.answer("Quotation belum tersedia.", show_alert=True)
+            else:
+                context.user_data["ai_quote_flow"] = flow.start_prompt(
+                    update.effective_user.id, ratio)
+                await _safe_edit_or_send(
+                    update.callback_query,
+                    "📝 Hantar prompt anda sebagai mesej teks (1–1500 aksara).")
         elif data.startswith("ai_image_confirm:"):
             await _ai_image_confirm(update, context, data.split(":", 1)[1])
         elif data.startswith("ai_image_cancel:"):
@@ -4269,6 +4282,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
     except Exception:
         log.warning("[AI_IMAGE] prompt stage handler failed; continuing normal flow")
+
+    # ── Gated AI quotation prompt stage (STEP 3; no wallet, no provider) ─────
+    try:
+        if await _ai_quote_prompt_text(update, context):
+            return
+    except Exception:
+        log.warning("[AI_QUOTE] prompt stage handler failed; continuing normal flow")
 
     # ── Reply keyboard: "🏠 Home" button ──────────────────────────────────────
     if text == "🏠 Home":
@@ -5765,6 +5785,104 @@ def _install_video_flow(app):
 class _SimpleNamespace:
     def __init__(self, **kw):
         self.__dict__.update(kw)
+
+
+def _quote_flow(context) -> object | None:
+    """STEP 3 quotation flow, gated behind BERRY_QUOTE_FLOW_ENABLED=true and
+    required FX/ops config. Returns None when disabled; never constructs a
+    provider or touches any wallet."""
+    if _get_env("BERRY_QUOTE_FLOW_ENABLED") != "true":
+        return None
+    flow = context.application.bot_data.get("berry_quote_flow")
+    if flow is not None:
+        return flow
+    # Build lazily on first use: requires verified FX + operational config.
+    import time as _time
+    from decimal import Decimal as _D
+    from ai_pricing_engine import FXRate as _FXRate, OperationalCosts as _OperationalCosts
+    from ai_quotation_service import QuotationService
+    from telegram_quote_flow import TelegramQuoteFlow
+    from fal_pricing import VerifiedFalPricing
+    fx_raw = _get_env("BERRY_AI_FX_MYR_PER_USD")
+    try:
+        fx = _D(fx_raw)
+        if fx <= 0:
+            raise ValueError()
+    except Exception:
+        log.warning("[AI_QUOTE] FX rate missing/invalid; quote flow disabled")
+        return None
+    ops_fee = _get_env("BERRY_AI_PAYMENT_FEE_FRACTION")
+    ops_fixed = _get_env("BERRY_AI_FIXED_COST_MYR")
+    try:
+        ops_fee_d = _D(ops_fee)
+        ops_fixed_d = _D(ops_fixed)
+        if ops_fee_d < 0 or ops_fixed_d < 0:
+            raise ValueError()
+    except Exception:
+        log.warning("[AI_QUOTE] operational costs missing; quote flow disabled")
+        return None
+    signing_key = _get_env("BERRY_QUOTE_SIGNING_KEY") or BOT_TOKEN
+    if not signing_key or len(signing_key) < 16:
+        log.warning("[AI_QUOTE] signing key too short; quote flow disabled")
+        return None
+    svc = QuotationService(signing_key)
+    pricing = VerifiedFalPricing(_get_env("FAL_KEY") or None)
+    fx_rate = _FXRate(myr_per_usd=fx, source="render-env-config",
+                      timestamp=int(_time.time()),
+                      buffer_fraction=_D("0.02"))
+    ops = _OperationalCosts(payment_gateway_fee_fraction=ops_fee_d,
+                            fixed_operational_myr=ops_fixed_d)
+    flow = TelegramQuoteFlow(svc, pricing, fx_rate=fx_rate, operational=ops)
+    context.application.bot_data["berry_quote_flow"] = flow
+    return flow
+
+
+async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Quotation entry (gated). Fail-closed, no wallet, no provider POST."""
+    flow = _quote_flow(context)
+    if flow is None:
+        await _safe_edit_or_send(
+            update.callback_query,
+            "🎬 AI VIDEO QUOTATION\n━━━━━━━━━━━━━━━━━━\n\n"
+            "🚧 Quotation AI belum tersedia.\n🔒 Tiada caj dikenakan.")
+        return
+    await _safe_edit_or_send(update.callback_query, flow.product_menu_text())
+
+
+class _NS:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Text inside the (gated) quotation prompt stage: builds a server-side
+    quotation. NEVER debits a wallet or submits a provider request. Returns
+    False (not consumed) whenever the gate is off."""
+    stage = (context.user_data or {}).get("ai_quote_flow")
+    if stage is None or stage.get("stage") != "prompt":
+        return False
+    flow = _quote_flow(context)
+    if flow is None:
+        context.user_data.pop("ai_quote_flow", None)
+        return False
+    user = update.effective_user
+    if user is None:
+        return False
+    prompt = (update.message.text or "").strip() if update.message else ""
+    context.user_data.pop("ai_quote_flow", None)
+    try:
+        doc = flow.build_quote(tenant_id=TENANT_ID, customer_id=user.id,
+                               prompt=prompt,
+                               aspect_ratio=stage.get("aspect_ratio", "16:9"),
+                               idempotency_key=f"tg:{update.update_id}")
+        view = flow.svc.customer_view(doc)
+    except Exception:
+        await update.message.reply_text(
+            "⚠️ Quotation tidak dapat dikira sekarang (harga/FX/kos belum "
+            "disahkan sepenuhnya). Tiada debit dibuat.")
+        return True
+    await update.message.reply_text(flow.quote_reply_text(view))
+    return True
 
 
 def build_app() -> Application:
