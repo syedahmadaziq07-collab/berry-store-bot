@@ -4,6 +4,10 @@ on:
     paths:
       - bot.py
       - fal_provider.py
+      - fal_pricing.py
+      - berry_credit_pricing.py
+      - minimax_retail_guard.py
+      - tests/test_minimax_retail_guard.py
       - berry_admin_minimax_trial.py
       - tests/test_admin_minimax_trial.py
       - .github/workflows/admin-minimax-trial.yml
@@ -21,3 +25,4 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_admin_minimax_trial.py' -v
       - run: python -m unittest discover -s tests -p 'test_fal_provider.py' -v
       - run: python -m unittest discover -s tests -p 'test_minimax_contract.py' -v
+      - run: python -m unittest discover -s tests -p 'test_minimax_retail_guard.py' -v
