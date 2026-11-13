@@ -130,5 +130,26 @@ class VerifiedPricingTests(unittest.TestCase):
             p.verified_quote_credits(MODEL, units=10, fx_rate=4.7, confirmed_costs=False)
 
 
+    def test_real_staging_units_megapixels_and_seconds(self):
+        for unit, model in (("megapixels", "fal-ai/flux/schnell"),
+                            ("seconds", "minimax/h3-max-turbo/text-to-video")):
+            with self.subTest(unit=unit):
+                payload = {"prices": [{"endpoint_id": model, "unit_price": 0.0175,
+                                       "unit": unit, "currency": "USD"}]}
+                c = client_with(lambda r, p=payload: httpx.Response(200, json=p))
+                self.assertEqual(VerifiedFalPricing("k", client=c).exact_price(model),
+                                 (0.0175, unit))
+
+    def test_duplicate_and_malformed_rows_fail_closed(self):
+        for rows in ([{"endpoint_id": MODEL, "unit_price": 0.025,
+                       "unit": "seconds", "currency": "USD"}] * 2,
+                     [None, {"endpoint_id": MODEL, "unit_price": 0.025,
+                             "unit": "seconds", "currency": "USD"}]):
+            with self.subTest(rows=rows):
+                c = client_with(lambda r, p=rows: httpx.Response(200, json={"prices": p}))
+                with self.assertRaises(PricingUnavailable):
+                    VerifiedFalPricing("k", client=c).exact_price(MODEL)
+
+
 if __name__ == "__main__":
     unittest.main()

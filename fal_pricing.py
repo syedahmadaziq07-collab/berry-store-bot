@@ -31,7 +31,7 @@ import httpx
 
 PRICING_ORIGIN = "https://api.fal.ai"
 PRICING_PATH = "/v1/models/pricing"
-KNOWN_UNITS = {"image", "megapixel", "video_second", "second", "video", "request"}
+KNOWN_UNITS = {"image", "images", "megapixel", "megapixels", "video_second", "second", "seconds", "video", "videos", "request", "requests"}
 
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_./-]*$")
 
@@ -85,21 +85,22 @@ class VerifiedFalPricing:
         data = self._get(endpoint_id)
         if not isinstance(data, dict) or not isinstance(data.get("prices"), list):
             raise PricingUnavailable("Invalid pricing document shape")
-        for row in data["prices"]:
-            if not isinstance(row, dict):
-                continue
-            if row.get("endpoint_id") != endpoint_id:
-                continue
-            price = row.get("unit_price")
-            unit = row.get("unit")
-            if row.get("currency") != "USD":
-                raise PricingUnavailable("Unexpected pricing currency; refusing to convert blindly")
-            if isinstance(price, bool) or not isinstance(price, (int, float)) or not price > 0:
-                raise PricingUnavailable("Pricing entry is not a positive numeric price")
-            if unit not in KNOWN_UNITS:
-                raise PricingUnavailable("Unknown billing unit")
-            return float(price), unit
-        raise PricingUnavailable("Model not present in pricing document")
+        if any(not isinstance(row, dict) for row in data["prices"]):
+            raise PricingUnavailable("Invalid pricing row shape")
+        matches = [row for row in data["prices"] if row.get("endpoint_id") == endpoint_id]
+        if len(matches) != 1:
+            raise PricingUnavailable("Missing or ambiguous model pricing")
+        row = matches[0]
+        price = row.get("unit_price")
+        unit = row.get("unit")
+        if row.get("currency") != "USD":
+            raise PricingUnavailable("Unexpected pricing currency; refusing to convert blindly")
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or not price > 0:
+            raise PricingUnavailable("Pricing entry is not a positive numeric price")
+        if unit not in KNOWN_UNITS:
+            raise PricingUnavailable("Unknown billing unit")
+        Decimal_price(price)  # Reject NaN and Infinity before building any quote.
+        return float(price), unit
 
     def verified_quote_credits(self, endpoint_id, *, units, fx_rate,
                                extra_cost_myr="0", confirmed_costs=True):
