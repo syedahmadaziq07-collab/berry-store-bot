@@ -5770,6 +5770,9 @@ class _SimpleNamespace:
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
+    # Read-only owner auth check: no fal.ai model submission or wallet action.
+    from berry_fal_authcheck import owner_fal_auth
+    app.add_handler(CommandHandler("falauth", owner_fal_auth))
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     # Single paid MiniMax diagnostic for this bot's ADMIN_ID; disabled by default.
     if _get_env("BERRY_MINIMAX_TRIAL_ENABLED").lower() == "true":
