@@ -30,7 +30,12 @@ class FalProvider:
     def _headers(self):
         if not self.configured():
             raise FalProviderError("FAL_KEY is not configured")
-        return {"Authorization": "Key " + self._key, "Content-Type": "application/json"}
+        # Same outer-whitespace normalization as the successful staging pricing GET.
+        # Embedded whitespace/control bytes are invalid; do not reveal secret contents.
+        key = self._key.strip()
+        if any(ch.isspace() or ord(ch) < 33 or ord(ch) == 127 for ch in key):
+            raise FalProviderError("FAL_KEY format invalid")
+        return {"Authorization": "Key " + key, "Content-Type": "application/json"}
 
     @staticmethod
     def _model(model_id):
