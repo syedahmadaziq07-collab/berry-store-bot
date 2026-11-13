@@ -37,5 +37,7 @@ jobs:
           python -m unittest discover -s tests -p test_step3_quotation.py -v
           python -m unittest discover -s tests -p test_step3_minimax_offer.py -v
           python -m unittest discover -s tests -p test_minimax_retail_guard.py -v
+      - name: Durable quotation store
+        run: python -m py_compile ai_quote_store.py ai_quotation_service.py bot.py
       - name: Production regression guards
         run: python -m unittest discover -s tests -p test_prod_ai_studio_integration.py -v

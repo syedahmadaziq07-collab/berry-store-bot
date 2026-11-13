@@ -5821,15 +5821,34 @@ def _quote_flow(context) -> object | None:
     except Exception:
         log.warning("[AI_QUOTE] operational costs missing; quote flow disabled")
         return None
-    signing_key = _get_env("BERRY_QUOTE_SIGNING_KEY") or BOT_TOKEN
+    signing_key = _get_env("BERRY_QUOTE_SIGNING_KEY")
     if not signing_key or len(signing_key) < 16:
-        log.warning("[AI_QUOTE] signing key too short; quote flow disabled")
+        # NO BOT_TOKEN fallback: the signing key must be a dedicated secret.
+        log.warning("[AI_QUOTE] dedicated signing key required; quote flow disabled")
         return None
-    svc = QuotationService(signing_key)
+    fx_ts_raw = _get_env("BERRY_AI_FX_SOURCE_TIMESTAMP")
+    fx_source = _get_env("BERRY_AI_FX_SOURCE")
+    try:
+        fx_ts = int(fx_ts_raw)
+        if fx_ts <= 0:
+            raise ValueError()
+        if not fx_source:
+            raise ValueError()
+    except Exception:
+        log.warning("[AI_QUOTE] FX source/timestamp required (no app-time "
+                    "fallback); quote flow disabled")
+        return None
+    from ai_quote_store import SupabaseQuoteStore as _SupabaseQuoteStore
+    try:
+        store = _SupabaseQuoteStore(SUPABASE_URL, SUPABASE_SERVICE_KEY, TENANT_ID)
+    except Exception:
+        log.warning("[AI_QUOTE] durable quote store unavailable; disabled")
+        return None
+    svc = QuotationService(signing_key, store)
     pricing = VerifiedFalPricing(_get_env("FAL_KEY") or None)
-    fx_rate = _FXRate(myr_per_usd=fx, source="render-env-config",
-                      timestamp=int(_time.time()),
-                      buffer_fraction=_D("0.02"))
+    fx_rate = _FXRate(myr_per_usd=fx, source=fx_source,
+                      timestamp=fx_ts,
+                      buffer_fraction=_D(_get_env("BERRY_AI_FX_BUFFER") or "0.02"))
     ops = _OperationalCosts(payment_gateway_fee_fraction=ops_fee_d,
                             fixed_operational_myr=ops_fixed_d)
     flow = TelegramQuoteFlow(svc, pricing, fx_rate=fx_rate, operational=ops)
