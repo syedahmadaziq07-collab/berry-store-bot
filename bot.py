@@ -5821,11 +5821,23 @@ def _quote_flow(context) -> object | None:
     except Exception:
         log.warning("[AI_QUOTE] operational costs missing; quote flow disabled")
         return None
-    signing_key = _get_env("BERRY_QUOTE_SIGNING_KEY") or BOT_TOKEN
+    signing_key = _get_env("BERRY_QUOTE_SIGNING_KEY")
     if not signing_key or len(signing_key) < 16:
         log.warning("[AI_QUOTE] signing key too short; quote flow disabled")
         return None
-    svc = QuotationService(signing_key)
+    # Production quotes are durable, never kept only in the Render process.
+    # A missing service credential or database fails closed.
+    from supabase_quote_store import SupabaseQuoteStore
+    service_key = _get_env("SUPABASE_SERVICE_KEY")
+    if not service_key or not SUPABASE_URL or not TENANT_ID:
+        log.warning("[AI_QUOTE] durable Supabase quotation storage not configured")
+        return None
+    try:
+        quote_store = SupabaseQuoteStore(SUPABASE_URL, service_key)
+    except ValueError:
+        log.warning("[AI_QUOTE] invalid durable quotation configuration")
+        return None
+    svc = QuotationService(signing_key, store=quote_store)
     pricing = VerifiedFalPricing(_get_env("FAL_KEY") or None)
     fx_rate = _FXRate(myr_per_usd=fx, source="render-env-config",
                       timestamp=int(_time.time()),
