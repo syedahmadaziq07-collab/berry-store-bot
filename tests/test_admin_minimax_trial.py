@@ -117,12 +117,12 @@ class TestTrial(unittest.IsolatedAsyncioTestCase):
 
 class TestProviderKey(unittest.TestCase):
     def test_outer_whitespace_normalized(self):
-        provider = FalProvider(api_key="  example-key\\n")
+        provider = FalProvider(api_key="  example-key\n")
         self.assertEqual(provider._headers()["Authorization"], "Key example-key")
 
     def test_internal_whitespace_never_accepted(self):
         with self.assertRaises(FalProviderError):
-            FalProvider(api_key="example\\nkey")._headers()
+            FalProvider(api_key="example\nkey")._headers()
 
 
 if __name__ == "__main__":
