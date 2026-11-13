@@ -173,6 +173,25 @@ class QuotationServiceTests(unittest.TestCase):
                               customer_id=900000088, now=NOW + 1)
         self.assertEqual(out["state"], "cancelled")
 
+    def test_cancelled_quote_is_cryptographically_valid_but_unusable(self):
+        doc = self.svc.create(**self.kwargs)
+        cancelled = self.svc.cancel(doc["quote_id"], tenant_id=self.kwargs["tenant_id"],
+                                    customer_id=900000088, now=NOW + 1)
+        self.assertEqual(cancelled["integrity"], self.svc._tag(cancelled))
+        with self.assertRaisesRegex(QuotationError, "dibatalkan"):
+            self.svc.get_valid(doc["quote_id"], tenant_id=self.kwargs["tenant_id"],
+                               customer_id=900000088, now=NOW + 2)
+
+    def test_idempotency_does_not_revive_cancelled_or_expired(self):
+        doc = self.svc.create(**dict(self.kwargs, idempotency_key="key1"))
+        self.svc.cancel(doc["quote_id"], tenant_id=self.kwargs["tenant_id"],
+                        customer_id=900000088, now=NOW + 1)
+        with self.assertRaises(QuotationError):
+            self.svc.create(**dict(self.kwargs, idempotency_key="key1", now=NOW + 2))
+        old = self.svc.create(**dict(self.kwargs, idempotency_key="key2", now=NOW))
+        with self.assertRaises(QuotationError):
+            self.svc.create(**dict(self.kwargs, idempotency_key="key2", now=NOW + 601))
+
     def test_no_provider_post_and_no_wallet_debit_during_quotation(self):
         # pricing transport only implements GET; a POST would raise.
         doc = self.svc.create(**self.kwargs)
