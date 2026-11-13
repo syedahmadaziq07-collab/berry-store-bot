@@ -64,7 +64,12 @@ class QuotationService:
                 raise QuotationError("Idempotency key tidak sah")
             existing = self._idempotency.get(f"{scope}:{idempotency_key}")
             if existing is not None:
-                return dict(self._quotes[existing])
+                doc = self._quotes.get(existing)
+                if doc is None or doc.get("state") == "cancelled" or now > doc["expires_at"]:
+                    raise QuotationError("Idempotent quotation unavailable; use a new key")
+                if doc["integrity"] != self._tag(doc):
+                    raise QuotationError("Quotation integrity failure")
+                return dict(doc)
         product = get_product(product_key)
         validate_customer_selection(product, aspect_ratio)
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1500:
@@ -116,12 +121,15 @@ class QuotationService:
             raise QuotationError("Quotation telah diubah")
         if now > doc["expires_at"]:
             raise QuotationError("Quotation telah luput")
+        if doc.get("state") == "cancelled":
+            raise QuotationError("Quotation telah dibatalkan")
         return dict(doc)
 
     def cancel(self, quote_id, *, tenant_id, customer_id, now=None):
         doc = self.get_valid(quote_id, tenant_id=tenant_id,
                              customer_id=customer_id, now=now)
         doc["state"] = "cancelled"
+        doc["integrity"] = self._tag(doc)
         self._quotes[quote_id] = doc
         return doc
 
