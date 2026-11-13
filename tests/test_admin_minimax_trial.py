@@ -3,6 +3,8 @@ import asyncio
 import json
 import tempfile
 import unittest
+import httpx
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
@@ -22,6 +24,9 @@ def update(user_id=ADMIN, chat_id=ADMIN, chat_type="private"):
 
 class TestTrial(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        self.env_patch = patch.dict("os.environ", {"BERRY_MINIMAX_TRIAL_PAID_ENABLED": "true"})
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.provider = Mock()
@@ -101,6 +106,57 @@ class TestTrial(unittest.IsolatedAsyncioTestCase):
         await other.confirm(self.update, self.ctx)
         self.provider.submit.assert_called_once()
 
+
+    async def test_diagnose_200_readonly_does_not_touch_trial_checkpoint(self):
+        requests = []
+        def fake_handler(req):
+            requests.append(req)
+            return httpx.Response(200, json={"prices": []})
+        client = httpx.Client(transport=httpx.MockTransport(fake_handler))
+        self.addCleanup(client.close)
+        self.trial._diag_client = client
+        await self.trial.diagnose(self.update, self.ctx)
+        answer = self.update.message.reply_text.call_args.args[0]
+        self.assertIn("HTTP 200", answer)
+        self.assertIn("BUKAN bukti inference", answer)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].method, "GET")
+        self.assertTrue(str(requests[0].url).startswith("https://api.fal.ai/v1/models/pricing"))
+        self.provider.submit.assert_not_called()
+        self.assertFalse(Path(self.path).exists())
+
+    async def test_diag_http_status_sanitized(self):
+        for status in (401, 403, 429, 500):
+            client = httpx.Client(
+                transport=httpx.MockTransport(
+                    lambda req, status=status: httpx.Response(status, text="secret-token-please-hide")))
+            self.trial._diag_client = client
+            await self.trial.diagnose(self.update, self.ctx)
+            msg = self.update.message.reply_text.call_args.args[0]
+            self.assertIn("HTTP " + str(status), msg)
+            self.assertNotIn("secret-token", msg)
+            client.close()
+        self.provider.submit.assert_not_called()
+
+    async def test_paid_gate_blocks_even_when_preview_exists_and_checkpoint_missing(self):
+        await self.trial.prepare(self.update, self.ctx)
+        with patch.dict("os.environ", {"BERRY_MINIMAX_TRIAL_PAID_ENABLED": "false"}):
+            await self.trial.confirm(self.update, self.ctx)
+        self.assertFalse(Path(self.path).exists())
+        self.assertEqual(len(self.tasks), 0)
+        self.provider.submit.assert_not_called()
+
+    async def test_failure_sanitizes_provider_status(self):
+        self.provider.submit.side_effect = FalProviderError(
+            "fake-secret-in-exception", code="http_403")
+        await self.trial.prepare(self.update, self.ctx)
+        await self.trial.confirm(self.update, self.ctx)
+        await self.tasks.pop()
+        text = " ".join(str(c.kwargs.get("text","")) for c in
+                        self.ctx.bot.send_message.call_args_list)
+        self.assertIn("http_403", text)
+        self.assertNotIn("fake-secret", text)
+
     async def test_bad_provider_urls_hold_without_retry(self):
         self.provider.submit.return_value = {
             "request_id": "fixture_123",
@@ -119,6 +175,19 @@ class TestProviderKey(unittest.TestCase):
     def test_outer_whitespace_normalized(self):
         provider = FalProvider(api_key="  example-key\n")
         self.assertEqual(provider._headers()["Authorization"], "Key example-key")
+
+
+    def test_http_errors_keep_numeric_status_only(self):
+        def call(_):
+            return httpx.Response(403, text="provider-secret-sensitive")
+        client = httpx.Client(transport=httpx.MockTransport(call))
+        self.addCleanup(client.close)
+        provider = FalProvider(api_key="fixture-key", client=client)
+        with self.assertRaises(FalProviderError) as raised:
+            provider.submit(MODEL, mini_max_arguments("test prompt"))
+        self.assertEqual(raised.exception.code, "http_403")
+        self.assertNotIn("provider-secret", str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
 
     def test_internal_whitespace_never_accepted(self):
         with self.assertRaises(FalProviderError):
