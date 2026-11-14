@@ -126,6 +126,13 @@ class TurnitinFlow:
         if not self.private(update):
             await self.respond(update, "🔐 Turnitin Services hanya tersedia dalam private chat.")
             return
+        if self.admin_only and update.effective_user.id != self.admin_id:
+            await self.respond(
+                update,
+                "📑 Turnitin Services\n\n"
+                "Similarity Check dan AI Writing Check sedang disediakan. "
+                "Belum menerima tempahan atau bayaran pelanggan.")
+            return
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         try:
             plans = await self.call("catalog")
@@ -347,6 +354,10 @@ class TurnitinFlow:
         if not self.private(update): return False
         uid=update.effective_user.id
         oid=str(context.user_data.get("pending_receipt") or "")
+        # A pending Browse Shop/Berry Credits receipt takes precedence. Never
+        # treat its PDF as a different paid Turnitin assignment.
+        if oid and not ORDER_RE.fullmatch(oid):
+            return False
         if ORDER_RE.fullmatch(oid):
             if doc.mime_type not in RECEIPT_MIMES or (doc.file_size or 0)>MAX_RECEIPT:
                 await update.effective_message.reply_text("⚠️ Resit PDF/JPG/PNG maksimum 10MB.")
