@@ -44,5 +44,11 @@ jobs:
           python -m unittest discover -s tests -p test_step3_telegram_quote_ui.py -v
       - name: Durable quotation store
         run: python -m py_compile ai_quote_store.py ai_quotation_service.py bot.py
+      - name: Automatic FX provider and per-quote freshness
+        run: |
+          python -m unittest discover -s tests -p test_fx_rate_provider.py -v
+          python -m unittest discover -s tests -p test_fresh_fx_per_quote.py -v
+      - name: Environment readiness audit (presence-only, no secrets)
+        run: python -m unittest discover -s tests -p test_ai_env_audit.py -v
       - name: Production regression guards
         run: python -m unittest discover -s tests -p test_prod_ai_studio_integration.py -v
