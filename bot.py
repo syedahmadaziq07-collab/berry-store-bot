@@ -4388,7 +4388,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 err_msg = await context.bot.send_message(chat_id, "⚠️ Tiada order aktif untuk dibatalkan.", reply_markup=back_shop())
                 track_flow_message(context, err_msg, "error_message")
                 return
-            # Cancel order FIRST, then clean up old messages (so failure doesn't lose old content)
+            # Turnitin uses its private atomic state transition so a cancelled
+            # QR checkout never strands an unfinished Turnitin job.
+            if str(order_id).startswith("TT"):
+                await _turnitin_callback(update, context, "turnitin:cancel:" + order_id)
+                return
+            # Cancel Browse Shop order FIRST, then clean up old messages.
             await cancel_order(update, context, order_id)
             try:
                 await delete_flow_messages(context, context.bot, chat_id, user_id,
