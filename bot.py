@@ -151,6 +151,30 @@ TESTIMONIALS_CHANNEL_ID   = -1003850553745
 TESTIMONIALS_CHANNEL_ID_2 = -1003831715755
 _bot_settings:   dict         = {}
 
+
+def _channel_announcements_enabled() -> bool:
+    """Fail closed if private ledger or explicit channel release flag is absent."""
+    return bool(_get_env("BERRY_CHANNEL_ANNOUNCEMENTS_ENABLED") == "true"
+                and TENANT_ID and SUPABASE_URL and SUPABASE_SERVICE_KEY)
+
+
+async def _announce_channel_event(context, kind: str, event_id: str, text: str):
+    if not _channel_announcements_enabled():
+        return
+    from berry_channel_announcements import AnnouncementLedger, announce_async
+    ledger = None
+    try:
+        ledger = AnnouncementLedger(SUPABASE_URL, SUPABASE_SERVICE_KEY, TENANT_ID)
+        await announce_async(
+            context.bot, ledger, kind=kind, event_id=str(event_id), text=text,
+            channel_ids=(TESTIMONIALS_CHANNEL_ID, TESTIMONIALS_CHANNEL_ID_2))
+    except Exception as exc:
+        log.warning("[CHANNEL] %s announcement unavailable: %s",
+                    kind, type(exc).__name__)
+    finally:
+        if ledger is not None:
+            ledger.close()
+
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
 log.info("=" * 50)
@@ -1472,6 +1496,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         log.info(f"[START] welcome_sent=true")
 
+        # Channel CTA deep links: complete /start registration and force-join
+        # first, then open the requested in-bot destination.
+        start_payload = context.args[0] if getattr(context, "args", None) else ""
+        if start_payload == "browse_shop":
+            await show_shop(update, context)
+        elif start_payload == "ai_studio":
+            await show_ai_video(update, context)
+
         # STEP 3: Send notification to admin after saving
         try:
             now_str = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
@@ -2488,6 +2520,23 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                          f"\\nOrder: {order_id}\\nSemak baki dalam My Wallet.")
             except Exception as exc:
                 log.warning("[TOPUP] Approval notification failed: %s", type(exc).__name__)
+        # Announce only after the atomic Supabase RPC confirms a completed
+        # order with its matching credited wallet transaction. Re-approvals
+        # cannot duplicate posts because every channel has a durable claim.
+        try:
+            credits = int(result["credits"])
+            amount = Decimal(str(result["amount"]))
+            await _announce_channel_event(
+                context, "topup", order_id,
+                "🍓 BERRY CREDITS TOP UP\\n\\n"
+                "✅ Payment verified by admin!\\n"
+                "👤 Buyer: Customer\\n"
+                f"💰 Top Up: RM{amount:.2f}\\n"
+                f"🍓 Credits Added: +{credits:,} Berry Credits\\n\\n"
+                "🎬 Explore Berry AI Studio!")
+        except Exception as exc:
+            log.warning("[TOPUP] Channel announcement skipped: %s",
+                        type(exc).__name__)
         return {"order": result}
     try:
         def approve_tx():
@@ -3208,10 +3257,15 @@ def _ai_video_back_button(callback: str) -> InlineKeyboardMarkup:
 
 async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin-only AI Studio hub, with clear sections and a preview balance."""
+    sender = (update.callback_query.edit_message_text if update.callback_query
+              else update.message.reply_text)
     if not _ai_video_is_admin(update):
-        await _safe_edit_or_send(
-            update.callback_query, "🚧 AI Studio belum dibuka kepada pelanggan.",
-            reply_markup=back_home(),
+        await sender(
+            "🚧 AI Studio belum dibuka kepada pelanggan.\\n"
+            "Generation berbayar belum diaktifkan.\\n"
+            "Sementara itu, boleh browse produk di kedai.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🛍 Browse Shop", callback_data="shop")]]),
         )
         return
     context.user_data.pop("ai_video_flow", None)
@@ -3222,8 +3276,7 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if balance is not None
         else "Wallet belum disambungkan ke Supabase.\n\n"
     )
-    await _safe_edit_or_send(
-        update.callback_query,
+    await sender(
         "🍓 BERRY AI STUDIO\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "✨ Welcome to Berry AI Studio!\n\n"
@@ -3891,13 +3944,7 @@ async def _post_testimonial(context, order: dict):
             total=total_completed,
         )
 
-        await context.bot.send_message(chat_id=TESTIMONIALS_CHANNEL_ID, text=text)
-        log.info(f"[TESTIMONIAL] Posted to channel 1 successfully")
-        try:
-            await context.bot.send_message(chat_id=TESTIMONIALS_CHANNEL_ID_2, text=text)
-            log.info(f"[TESTIMONIAL] Posted to channel 2 successfully")
-        except Exception as exc:
-            log.warning(f"[TESTIMONIAL] Failed to post to channel 2: {_safe_error(exc)}")
+        await _announce_channel_event(context, "shop", str(order_id), text)
     except Exception as exc:
         log.error(f"[TESTIMONIAL] Failed: {_safe_error(exc)}")
 
