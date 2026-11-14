@@ -27,12 +27,12 @@ class TurnitinServiceTests(TestCase):
         for src in (BOT, FLOW, ADMIN):
             ast.parse(src)
 
-    def test_loading_one_percent_each_thirty_seconds(self):
+    def test_loading_reaches_99_percent_in_fifteen_minutes(self):
         now = datetime(2026, 11, 14, 8, 0, tzinfo=timezone.utc)
         started = now.isoformat()
-        for sec, expected in [(0, 0), (29, 0), (30, 1), (59, 1),
-                              (60, 2), (90, 3), (900, 30),
-                              (2970, 99), (12000, 99)]:
+        for sec, expected in [(0, 0), (9, 0), (29, 3), (30, 3),
+                              (60, 6), (90, 9), (300, 33), (450, 49),
+                              (899, 98), (900, 99), (12000, 99)]:
             self.assertEqual(
                 elapsed_estimate(started, now + timedelta(seconds=sec)),
                 expected, f"seconds={sec}")
@@ -41,8 +41,10 @@ class TurnitinServiceTests(TestCase):
     def test_progress_represents_timer_not_scan(self):
         m = progress_message("TTAAAAAAAAAAAAAAAAAAAAAAAA", 20)
         self.assertIn("20%", m)
-        self.assertIn("30 saat", m)
-        self.assertIn("bukan progress scan Turnitin", m)
+        self.assertIn("Anggaran menunggu", m)
+        self.assertEqual(len(m.splitlines()), 5)
+        self.assertNotIn("progress scan Turnitin", m)
+        self.assertNotIn("setiap 30 saat", m)
         self.assertNotIn("100%", m)
         self.assertIn("99%", progress_message("TTTEST", 99))
         completed = progress_message("TTTEST", 100)
@@ -69,10 +71,10 @@ class TurnitinServiceTests(TestCase):
         payload = bot.edit_message_text.await_args.kwargs
         self.assertEqual(payload["chat_id"],123)
         self.assertEqual(payload["message_id"],765)
-        self.assertIn("3%",payload["text"])
+        self.assertIn("10%",payload["text"])
         markers = [c for c in calls if c[0] == "progress_mark"]
         self.assertEqual(len(markers),1)
-        self.assertEqual(markers[0][1]["p_percent"],3)
+        self.assertEqual(markers[0][1]["p_percent"],10)
 
     def test_privacy_and_stock_rules(self):
         self.assertIn("ENABLE ROW LEVEL SECURITY", SQL)
