@@ -2,7 +2,7 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from berry_anonymous_support import AnonymousSupport, SupportStore, reply_target
 
@@ -109,7 +109,8 @@ class SupportRelayTests(unittest.IsolatedAsyncioTestCase):
     async def test_admin_close_notifies_customer(self):
         u = self.update(uid=42)
         ctx = SimpleNamespace(bot=self.bot, args=["12345"])
-        await self.flow.admin_close(u, ctx)
+        with patch("berry_anonymous_support.support_keyboard", return_value=object()):
+            await self.flow.admin_close(u, ctx)
         self.store.close.assert_awaited_once_with(12345)
         self.assertEqual(self.bot.send_message.await_args.kwargs["chat_id"], 12345)
 

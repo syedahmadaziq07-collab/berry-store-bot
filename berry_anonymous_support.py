@@ -212,7 +212,10 @@ class AnonymousSupport:
         except Exception as exc:
             LOG.warning("[SUPPORT] session lookup failed: %s", type(exc).__name__)
             return False
-        if not active or message.text == "🏠 Home":
+        if not active:
+            return False
+        if message.text == "🏠 Home":
+            await self.store.close(user.id)
             return False
         username = f"@{user.username}" if user.username else "Tiada username"
         header = f"📩 BERRY SUPPORT\n🆔 Telegram ID: {user.id}\n👤 Customer: {username}"
