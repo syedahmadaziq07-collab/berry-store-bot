@@ -25,7 +25,8 @@ const pageTitles: Record<PageId, { en: string; bm: string }> = {
   wallets: { en: 'AI Wallets & Ledger', bm: 'Dompet AI & Lejar Baki' },
   'bot-settings': { en: 'Telegram Bot Control Center', bm: 'Pusat Kawalan Bot Telegram' },
   broadcast: { en: 'Telegram Marketing Broadcast', bm: 'Siaran Pemasaran Telegram' },
-  referrals: { en: 'Referral Program & Vouchers', bm: 'Program Rujukan & Baucar' },
+  referrals: { en: 'Turnitin Services', bm: 'Perkhidmatan Turnitin' },
+  turnitin: { en: 'Turnitin Services', bm: 'Perkhidmatan Turnitin' },
   monitoring: { en: 'System Monitoring & Audit', bm: 'Pemantauan Sistem & Log Audit' },
 };
 
