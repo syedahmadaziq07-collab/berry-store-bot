@@ -2528,11 +2528,11 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
             amount = Decimal(str(result["amount"]))
             await _announce_channel_event(
                 context, "topup", order_id,
-                "🍓 BERRY CREDITS TOP UP\\n\\n"
-                "✅ Payment verified by admin!\\n"
-                "👤 Buyer: Customer\\n"
-                f"💰 Top Up: RM{amount:.2f}\\n"
-                f"🍓 Credits Added: +{credits:,} Berry Credits\\n\\n"
+                "🍓 BERRY CREDITS TOP UP\n\n"
+                "✅ Payment verified by admin!\n"
+                "👤 Buyer: Customer\n"
+                f"💰 Top Up: RM{amount:.2f}\n"
+                f"🍓 Credits Added: +{credits:,} Berry Credits\n\n"
                 "🎬 Explore Berry AI Studio!")
         except Exception as exc:
             log.warning("[TOPUP] Channel announcement skipped: %s",
@@ -3261,8 +3261,8 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
               else update.message.reply_text)
     if not _ai_video_is_admin(update):
         await sender(
-            "🚧 AI Studio belum dibuka kepada pelanggan.\\n"
-            "Generation berbayar belum diaktifkan.\\n"
+            "🚧 AI Studio belum dibuka kepada pelanggan.\n"
+            "Generation berbayar belum diaktifkan.\n"
             "Sementara itu, boleh browse produk di kedai.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🛍 Browse Shop", callback_data="shop")]]),
