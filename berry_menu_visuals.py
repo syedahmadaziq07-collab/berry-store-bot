@@ -46,55 +46,63 @@ _APP_ICONS = (
     ("prime video", "📺", "PRIME"),
 )
 
+# Exact names allowed for the bot owner's /setemoji mapping. Persisted IDs
+# come from genuine Telegram custom_emoji MessageEntity objects only.
+AVAILABLE_ICON_KEYS = frozenset({
+    *(key for _, _, key in _APP_ICONS),
+    "FIRE", "WAVE", "CHART", "SPARKLE", "WALLET", "PRODUCT"
+})
 
-def icon(key: str, fallback: str) -> str:
-    """Telegram <tg-emoji> is opt-in: never assume Premium or valid IDs."""
+
+def icon(key: str, fallback: str, custom_ids: dict | None = None) -> str:
+    """Telegram custom emoji opt-in; the owner must provide real emoji IDs."""
     if os.getenv("BERRY_ANIMATED_EMOJI_ENABLED", "").strip().lower() == "true":
-        raw = os.getenv("BERRY_EMOJI_" + key.upper() + "_ID", "").strip()
+        raw = str((custom_ids or {}).get(key.upper()) or
+                  os.getenv("BERRY_EMOJI_" + key.upper() + "_ID", "")).strip()
         if _CUSTOM_EMOJI_ID.fullmatch(raw):
             return f'<tg-emoji emoji-id="{raw}">{escape(fallback)}</tg-emoji>'
     return escape(fallback)
 
 
-def product_icon(product_name: str) -> str:
+def product_icon(product_name: str, custom_ids: dict | None = None) -> str:
     normal = str(product_name or "").casefold()
     for phrase, fallback, key in _APP_ICONS:
         if phrase in normal:
-            return icon(key, fallback)
-    return icon("PRODUCT", "📦")
+            return icon(key, fallback, custom_ids)
+    return icon("PRODUCT", "📦", custom_ids)
 
 
 def welcome_message(*, welcome: str, first_name: str, username: str,
                     telegram_id: int, total_users: int, total_sold: int,
-                    updated: str) -> str:
+                    updated: str, custom_ids: dict | None = None) -> str:
     return (
-        f"{icon('FIRE', '🔥')} <b>BERRY STORE</b> {icon('FIRE', '🔥')}\n"
+        f"{icon('FIRE', '🔥', custom_ids)} <b>BERRY STORE</b> {icon('FIRE', '🔥', custom_ids)}\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"{escape(str(welcome))}\n\n"
-        f"{icon('WAVE', '👋')} Hi, <b>{escape(str(first_name))}</b>!\n"
+        f"{icon('WAVE', '👋', custom_ids)} Hi, <b>{escape(str(first_name))}</b>!\n"
         "Your Trusted Digital Hub ✨\n\n"
         "👤 <b>YOUR ACCOUNT</b>\n"
         f"└ Username: @{escape(str(username or 'tiada'))}\n"
         f"└ ID: <code>{int(telegram_id)}</code>\n\n"
-        f"{icon('CHART', '📊')} <b>STORE STATS</b>\n"
+        f"{icon('CHART', '📊', custom_ids)} <b>STORE STATS</b>\n"
         f"└ Total Users: <b>{int(total_users):,}</b>\n"
         f"└ Total Sold: <b>{int(total_sold):,}</b> units\n\n"
-        f"{icon('SPARKLE', '✨')} Pilih menu di bawah untuk mula!\n"
+        f"{icon('SPARKLE', '✨', custom_ids)} Pilih menu di bawah untuk mula!\n"
         f"<i>Updated: {escape(str(updated))}</i>"
     )
 
 
-def shop_header(title: str) -> str:
+def shop_header(title: str, custom_ids: dict | None = None) -> str:
     return (
-        f"{icon('FIRE', '🔥')} <b>{escape(str(title))}</b> "
-        f"{icon('FIRE', '🔥')}\n"
+        f"{icon('FIRE', '🔥', custom_ids)} <b>{escape(str(title))}</b> "
+        f"{icon('FIRE', '🔥', custom_ids)}\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
     )
 
 
-def shop_line(index: int, name: str, stock: int) -> str:
+def shop_line(index: int, name: str, stock: int, custom_ids: dict | None = None) -> str:
     return (
-        f"{product_icon(name)} <b>{int(index)}.</b> "
+        f"{product_icon(name, custom_ids)} <b>{int(index)}.</b> "
         f"{escape(str(name))} "
         f"(<code>{int(stock)}</code> qty.)\n"
     )
@@ -107,14 +115,15 @@ def shop_footer(text: str) -> str:
     )
 
 
-def ai_studio_message(*, balance: str, wallet_status: str) -> str:
+def ai_studio_message(*, balance: str, wallet_status: str,
+                      custom_ids: dict | None = None) -> str:
     return (
-        f"{icon('SPARKLE', '✨')} <b>BERRY AI STUDIO</b> "
-        f"{icon('SPARKLE', '✨')}\n"
+        f"{icon('SPARKLE', '✨', custom_ids)} <b>BERRY AI STUDIO</b> "
+        f"{icon('SPARKLE', '✨', custom_ids)}\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"{icon('WAVE', '👋')} Welcome to Berry AI Studio!\n"
+        f"{icon('WAVE', '👋', custom_ids)} Welcome to Berry AI Studio!\n"
         "🎬 Create • 🎨 Imagine • 🪄 Transform\n\n"
-        f"{icon('WALLET', '💰')} <b>Your Balance:</b> {escape(str(balance))}\n"
+        f"{icon('WALLET', '💰', custom_ids)} <b>Your Balance:</b> {escape(str(balance))}\n"
         f"{escape(str(wallet_status))}"
         "Pilih studio yang kau nak explore 👇\n\n"
         "🔒 <i>Admin preview — tiada paid generation atau caj.</i>"
