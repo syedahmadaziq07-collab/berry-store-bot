@@ -21,12 +21,14 @@ class VerifiedVideoOffer:
 
 
 class TelegramVideoFlow:
-    def __init__(self, worker, offer_builder, *, test_user_id, enabled=False):
+    def __init__(self, worker, offer_builder, *, test_user_id, enabled=False,
+                 on_delivered=None):
         if type(test_user_id) is not int or test_user_id<=0:
             raise JobError('Controlled test identity required')
         self.worker, self.offer_builder = worker, offer_builder
         self.test_user_id = test_user_id
         self.enabled = enabled is True
+        self.on_delivered = on_delivered if callable(on_delivered) else None
 
     def authorize(self, user_id, private=True):
         if not self.enabled or user_id != self.test_user_id or private is not True:
@@ -82,6 +84,13 @@ class TelegramVideoFlow:
             job=self.worker.submit(ticket_id,job['arguments'])
         if job and job['state']=='queued': job=self.worker.poll(ticket_id)
         if job and job['state']=='succeeded': job=self.worker.deliver(ticket_id)
+        # Announce only after the durable worker confirms Telegram delivery.
+        # Never let a channel notification failure affect the paid job state.
+        if job and job.get('state') == 'delivered' and self.on_delivered:
+            try:
+                self.on_delivered(ticket_id)
+            except Exception:
+                pass
         return dict(result,job=job)
 
     def cancel(self, user_id, ticket_id):
