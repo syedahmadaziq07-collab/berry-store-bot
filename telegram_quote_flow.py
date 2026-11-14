@@ -71,7 +71,8 @@ class TelegramQuoteFlow:
                 f"Durasi: {view['duration_seconds']} saat • {view['resolution']}\n"
                 f"Nisbah: {view['aspect_ratio']}\n\n"
                 f"Harga: {view['price_myr']}\n"
-                f"Berry Credits: {view['credits']:,}\n\n"
+                f"Berry Credits: {view['credits']:,}\n"
+                f"Quote ID: {view['quote_id']}\n\n"
                 f"⏳ Quote sah sehingga "
                 f"{view['expires_at']} (10 minit).\n"
                 "🔒 Ini quotation sahaja — tiada debit atau penjanaan dibuat.")
