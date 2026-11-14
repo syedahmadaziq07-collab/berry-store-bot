@@ -70,5 +70,33 @@ class QuoteMenuUITests(unittest.TestCase):
         self.assertIn('callback_data="ai_quote_ratio:9:16"', source)
 
 
+    def test_input_type_goes_to_model_choice_first(self):
+        source = self._source()
+        section = source.split('if section == "video":', 1)[1].split(
+            'elif section == "topup":', 1)[0]
+        self.assertIn('callback_data="ai_video_models:15"', section)
+        self.assertIn('callback_data="ai_video_text"', section)
+        self.assertNotIn('callback_data="ai_video_duration"', section)
+        self.assertNotIn('Teks → Video (akan datang)', section)
+
+    def test_text_to_video_shows_reviewed_minimax_model_and_remains_gated(self):
+        source = self._source()
+        section = source.split("async def show_ai_video_text(", 1)[1].split(
+            "async def show_ai_video_duration(", 1)[0]
+        self.assertIn('get_product("minimax_turbo_video")', section)
+        self.assertIn('callback_data="ai_quote_menu"', section)
+        self.assertIn('BERRY_QUOTE_FLOW_ENABLED', section)
+        self.assertNotIn("provider.submit", section)
+        self.assertNotIn("wallet_debit", section)
+
+    def test_image_to_video_model_preview_is_not_paid(self):
+        source = self._source()
+        section = source.split("async def show_ai_video_models(", 1)[1].split(
+            "async def show_ai_video_ratio(", 1)[0]
+        self.assertIn("Gemini Omni Flash", section)
+        self.assertIn("Tiada caj", section)
+        self.assertIn('callback_data="ai_studio:video"', section)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3242,8 +3242,8 @@ async def show_ai_studio_section(
             "Pilih jenis input:"
         )
         buttons = [
-            [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_duration")],
-            [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
+            [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_models:15")],
+            [InlineKeyboardButton("✍️ Teks → Video", callback_data="ai_video_text")],
         ]
         # Quotation is read-only; only display its entry when the owner
         # explicitly enables the production quote gate.
@@ -3564,18 +3564,40 @@ async def _store_topup_receipt(update, context, oid: str, file_id: str, as_docum
 
 
 async def show_ai_video_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Do not offer an unsupported text-to-video generation flow."""
+    """Select a reviewed Text-to-Video model before its quotation settings.
+
+    Preview only; this function cannot debit a wallet or call the provider.
+    """
     if not _ai_video_is_admin(update):
         return
     context.user_data.pop("ai_video_flow", None)
+    from ai_product_catalog import get_product
+    product = get_product("minimax_turbo_video")
+    if _get_env("BERRY_QUOTE_FLOW_ENABLED") != "true":
+        await _safe_edit_or_send(
+            update.callback_query,
+            "✍️ TEKS → VIDEO\n━━━━━━━━━━━━━━━━━━\n\n"
+            "🚧 Quotation belum diaktifkan. Tiada caj dikenakan.",
+            reply_markup=_ai_video_back_button("ai_studio:video"),
+        )
+        return
     await _safe_edit_or_send(
         update.callback_query,
-        "✍️ TEKS → VIDEO\n\n"
-        "Feature ini sedang dirancang.\n"
-        "Buat masa ni, cuba Gambar → Video dahulu.",
-        reply_markup=_ai_video_back_button("ai_video"),
+        "✍️ TEKS → VIDEO\n━━━━━━━━━━━━━━━━━━\n"
+        "Langkah 1 — Pilih model\n\n"
+        f"🎬 {product.name}\n"
+        f"• Durasi: {product.duration_seconds} saat\n"
+        f"• Resolution: {product.resolution}\n"
+        "• Input: prompt teks\n"
+        "• Quotation sahaja, tiada penjanaan berbayar\n\n"
+        "Harga ditentukan oleh pricing engine selepas semakan FX/kos.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 MiniMax H3 Max Turbo — 10s",
+                                  callback_data="ai_quote_menu")],
+            [InlineKeyboardButton("⬅️ Video Studio",
+                                  callback_data="ai_studio:video")],
+        ]),
     )
-
 
 async def show_ai_video_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Group models by duration before showing individual options or prices."""
@@ -3625,7 +3647,7 @@ async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYP
         update.callback_query,
         "🤖 PILIH MODEL\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "Langkah 2/3 — Video 15 saat\n\n"
+        "Langkah 1/3 — Pilih model (Gambar → Video)\n\n"
         "🔥 Gemini Omni Flash\n"
         "• Durasi: 15 saat\n"
         "• Kualiti: 720p\n"
@@ -3637,7 +3659,7 @@ async def show_ai_video_models(update: Update, context: ContextTypes.DEFAULT_TYP
         "🔒 Demo sahaja. Tiada caj.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🔥 Pilih Gemini Omni Flash", callback_data="ai_video_ratio")],
-            [InlineKeyboardButton("⬅️ Tukar Durasi", callback_data="ai_video_duration")],
+            [InlineKeyboardButton("⬅️ Pilih Jenis Input", callback_data="ai_studio:video")],
         ]),
     )
 
@@ -3651,7 +3673,7 @@ async def show_ai_video_ratio(update: Update, context: ContextTypes.DEFAULT_TYPE
         update.callback_query,
         "🎬 GEMINI OMNI FLASH\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "Langkah 3/3 — Tetapan Video\n\n"
+        "Langkah 2/3 — Tetapan Video\n\n"
         "⏱ Durasi: 15 saat\n"
         "📺 Resolution: 720p\n"
         "🔊 Audio: tersedia\n"
