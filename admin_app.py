@@ -398,6 +398,61 @@ def create_app(config=None, store=None, mapping_store=None):
     def referrals():
         return jsonify(database.read("users"))
 
+    def turnitin_rpc(name, payload):
+        """Private, service-role Turnitin RPC; never exposes assignment file IDs."""
+        if not database.configured():
+            raise BackendUnavailable("Supabase Turnitin belum dikonfigurasi")
+        if name not in {"admin_view", "admin_edit"}:
+            raise BackendUnavailable("Turnitin action not allowed")
+        try:
+            response = database.client.post(
+                f"{database.url}/rest/v1/rpc/berry_turnitin_{name}",
+                headers={**database.headers(), "Content-Type": "application/json"},
+                json={"p_tenant": database.tenant, **payload},
+                timeout=20, follow_redirects=False)
+            if response.status_code != 200:
+                raise BackendUnavailable("Turnitin RPC belum tersedia atau transaksi tidak dibenarkan")
+            result = response.json()
+            if not isinstance(result, dict):
+                raise BackendUnavailable("Respons Turnitin tidak sah")
+            return result
+        except (httpx.HTTPError, ValueError):
+            raise BackendUnavailable("Gagal sambung Supabase Turnitin") from None
+
+    @app.get(PREFIX + "/turnitin")
+    def get_turnitin():
+        return jsonify(turnitin_rpc("admin_view", {}))
+
+    @app.patch(PREFIX + "/turnitin/plans/<code>")
+    def update_turnitin_plan(code):
+        """Global CSRF, authenticated session and isolated DB gate apply."""
+        if code not in ("similarity", "ai"):
+            return jsonify(error="Pelan Turnitin tidak sah"), 404
+        payload = request.get_json(silent=True)
+        required = {"title","description","price_myr","stock","enabled","turnaround_minutes"}
+        if not isinstance(payload, dict) or set(payload) != required:
+            return jsonify(error="Semua 6 field pelan diperlukan"), 400
+        try:
+            title, desc = payload["title"], payload["description"]
+            amount = Decimal(str(payload["price_myr"]))
+            stock, minutes, enabled = payload["stock"], payload["turnaround_minutes"], payload["enabled"]
+            if (not isinstance(title, str) or not 3 <= len(title) <= 100
+                or not isinstance(desc, str) or not 10 <= len(desc) <= 2000
+                or not amount.is_finite() or amount < 0 or amount > 9999
+                or type(stock) is not int or not 0 <= stock <= 100000
+                or type(minutes) is not int or not 1 <= minutes <= 1440
+                or type(enabled) is not bool
+                or (enabled and (stock < 1 or amount <= 0))):
+                raise ValueError("invalid input")
+        except (InvalidOperation, ValueError, TypeError):
+            return jsonify(error="Harga, stok atau butiran pelan tidak sah"), 400
+        payload["price_myr"] = str(amount)
+        result = turnitin_rpc("admin_edit", {
+            "p_code": code, "p_payload": payload,
+            "p_key": g.idempotency_key, "p_actor": "gemini-admin"})
+        audit("turnitin_plan_edit", f"plan={code}; DB idempotency verified")
+        return jsonify(result)
+
     @app.get(PREFIX + "/shop/categories")
     def categories():
         return jsonify(database.read("categories"))
