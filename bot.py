@@ -1339,13 +1339,13 @@ def main_kb(user_id: int | None = None):
             [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
              InlineKeyboardButton("🎬 AI Video", callback_data="ai_video")],
             [InlineKeyboardButton("📦 My Orders", callback_data="myorders"),
-             InlineKeyboardButton("👥 Referral", callback_data="referral")],
+             InlineKeyboardButton("📑 Turnitin", callback_data="turnitin")],
             [InlineKeyboardButton("💬 Support", callback_data="support")],
         ])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
          InlineKeyboardButton("📦 My Orders",   callback_data="myorders")],
-        [InlineKeyboardButton("👥 Referral",    callback_data="referral"),
+        [InlineKeyboardButton("📑 Turnitin",    callback_data="turnitin"),
          InlineKeyboardButton("💬 Support",     callback_data="support")],
     ])
 
@@ -2329,6 +2329,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user    = update.effective_user
     file_id = update.message.photo[-1].file_id
+    if str(order_id).startswith("TT"):
+        flow = _turnitin_service(context)
+        if flow is None:
+            await update.message.reply_text("🔒 Servis Turnitin belum tersedia.")
+            return
+        await flow.receipt(update, context, str(order_id), file_id)
+        return
     if str(order_id).startswith("BT"):
         if not _topup_enabled():
             await update.message.reply_text("⚠️ Top Up belum aktif.")
@@ -2878,6 +2885,11 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             caption="⛔ Bukan admin.", reply_markup=None)
         return
 
+    if str(order_id).startswith("TT"):
+        flow = _turnitin_service(context)
+        if flow:
+            await flow.approve(update, context, str(order_id))
+        return
     if str(order_id).startswith("BT"):
         # A failed atomic RPC must NOT remove the admin's retry controls.
         # The RPC itself is idempotent, including simultaneous double-approves.
@@ -2921,6 +2933,11 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             caption="⛔ Bukan admin.", reply_markup=None)
         return
 
+    if str(order_id).startswith("TT"):
+        flow = _turnitin_service(context)
+        if flow:
+            await flow.approve(update, context, str(order_id), rejected=True)
+        return
     if str(order_id).startswith("BT"):
         try:
             await _reject_order_core(context, order_id)
@@ -2957,6 +2974,60 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         caption=(update.callback_query.message.caption or "") + "\n\n❌ REJECTED", reply_markup=None)
 
 # ─── Referral / Support / Home ────────────────────────────────────────────────
+
+def _turnitin_service(context):
+    """Flow installed only when tenant service is configured; never implicit checkout."""
+    if _get_env("BERRY_TURNITIN_MENU_ENABLED") != "true":
+        return None
+    return context.application.bot_data.get("berry_turnitin_flow")
+
+
+async def _turnitin_callback(update, context, action: str):
+    flow = _turnitin_service(context)
+    if flow is None:
+        await _safe_edit_or_send(update.callback_query,
+            "📑 Turnitin Services sedang disediakan.\n"
+            "Similarity dan AI Writing Check belum dibuka kepada pelanggan.",
+            reply_markup=back_home())
+        return
+    if action == "turnitin": return await flow.menu(update, context)
+    if action == "turnitin:orders": return await flow.orders(update, context)
+    if action == "turnitin:locked":
+        return await _safe_edit_or_send(update.callback_query,
+            "🔒 Checkout Turnitin belum dibuka. Tiada bayaran dibuat.",
+            reply_markup=back_home())
+    if action.startswith("turnitin:plan:"):
+        return await flow.plan(update, context, action.rsplit(":", 1)[-1])
+    if action.startswith("turnitin:buy:"):
+        return await flow.checkout(update, context, action.rsplit(":", 1)[-1])
+    if action.startswith("turnitin:upload:"):
+        return await flow.upload_prompt(update, context, action.split(":", 2)[-1])
+    if action.startswith("turnitin:status:"):
+        return await flow.show_status(update, context, action.split(":", 2)[-1])
+    if action.startswith("turnitin:cancel:"):
+        return await flow.cancel(update, context, action.split(":", 2)[-1])
+
+
+async def _turnitin_document_router(update, context):
+    flow = _turnitin_service(context)
+    if flow is not None:
+        doc = update.effective_message.document
+        if doc and await flow.document(update, context, doc):
+            return
+    await handle_topup_document(update, context)
+
+
+async def _turnitin_admin_report_command(update, context):
+    flow = _turnitin_service(context)
+    if flow is not None:
+        await flow.admin_command(update, context)
+
+
+async def _turnitin_tick(context):
+    flow = _turnitin_service(context)
+    if flow is not None:
+        await flow.tick(context)
+
 
 async def show_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -4085,7 +4156,9 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.info(f"[COMPAT] normalized paid_ → paid: order_id={suffix!r}")
 
     try:
-        if   data == "home":               await show_home(update, context)
+        if data == "turnitin" or data.startswith("turnitin:"):
+            await _turnitin_callback(update, context, data)
+        elif data == "home":               await show_home(update, context)
         elif data == "shop":               await show_shop(update, context)
         elif data == "ai_video":           await show_ai_video(update, context)
         elif data.startswith("ai_topup_checkout:"):
@@ -4163,7 +4236,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("ai_video_photo:"):
             await request_ai_video_photo(update, context, data.split(":", 1)[1])
         elif data == "myorders":           await my_orders(update, context)
-        elif data == "referral":           await show_referral(update, context)
+        elif data == "referral":           await _turnitin_callback(update, context, "turnitin")
         elif data == "support":            await show_support(update, context)
         elif data == "qty_display":        pass
 
@@ -6210,6 +6283,19 @@ def build_app() -> Application:
 
     app.add_handler(CommandHandler("quotefx", owner_quote_fx))
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
+    if _get_env("BERRY_TURNITIN_MENU_ENABLED") == "true":
+        try:
+            from berry_turnitin_flow import TurnitinBackend, TurnitinFlow
+            backend = TurnitinBackend(SUPABASE_URL, SUPABASE_SERVICE_KEY, TENANT_ID)
+            app.bot_data["berry_turnitin_flow"] = TurnitinFlow(
+                backend, ADMIN_ID,
+                checkout_enabled=_get_env("BERRY_TURNITIN_CHECKOUT_ENABLED") == "true",
+                admin_only=_get_env("BERRY_TURNITIN_ADMIN_ONLY", "true") != "false",
+                payment_page=send_payment_page)
+            log.info("[TURNITIN] menu configured; checkout gate and admin-only restrictions active")
+        except Exception as exc:
+            log.warning("[TURNITIN] disabled due to missing config: %s", type(exc).__name__)
+
     # Single paid MiniMax diagnostic for this bot's ADMIN_ID; disabled by default.
     if _get_env("BERRY_MINIMAX_TRIAL_ENABLED").lower() == "true":
         if _get_env("BERRY_MINIMAX_TRIAL_MODE") != "staging":
@@ -6251,9 +6337,12 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("extendtenant", cmd_extendtenant))
     app.add_handler(CommandHandler("suspendtenant", cmd_suspendtenant))
     app.add_handler(CommandHandler("activatetenant", cmd_activatetenant))
+    app.add_handler(MessageHandler(
+        filters.Regex(r"^/(?:Turnitin|turnitin)[0-9A-F]{24}$") & filters.TEXT,
+        _turnitin_admin_report_command))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_topup_document))
+    app.add_handler(MessageHandler(filters.Document.ALL, _turnitin_document_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)); log.info("[HANDLERS] message handler registered")
     app.add_error_handler(on_error)
     # ── Controlled AI Video flow (disabled unless explicitly configured) ─────
@@ -6272,6 +6361,11 @@ def build_app() -> Application:
     log.info("─" * 35)
     # ── Background job: auto-cancel expired pending orders every 15 minutes ──
     if app.job_queue is not None:
+        if "berry_turnitin_flow" in app.bot_data:
+            app.job_queue.run_repeating(
+                _turnitin_tick, interval=30, first=30,
+                name="turnitin_wait_status_30s")
+            log.info("[TURNITIN] estimated progress ticker enabled (30s, cap 99)")
         app.job_queue.run_repeating(
             _auto_cancel_expired_orders,
             interval=15 * 60,   # every 15 minutes
