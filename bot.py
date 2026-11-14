@@ -3245,6 +3245,13 @@ async def show_ai_studio_section(
             [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_duration")],
             [InlineKeyboardButton("✍️ Teks → Video (akan datang)", callback_data="ai_video_text")],
         ]
+        # Quotation is read-only; only display its entry when the owner
+        # explicitly enables the production quote gate.
+        if _get_env("BERRY_QUOTE_FLOW_ENABLED") == "true":
+            buttons.append([
+                InlineKeyboardButton("🧾 MiniMax 10s Quotation",
+                                     callback_data="ai_quote_menu")
+            ])
     elif section == "topup":
         text = (
             "💳 BERRY CREDITS — TOP UP\n"
@@ -5865,7 +5872,14 @@ async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎬 AI VIDEO QUOTATION\n━━━━━━━━━━━━━━━━━━\n\n"
             "🚧 Quotation AI belum tersedia.\n🔒 Tiada caj dikenakan.")
         return
-    await _safe_edit_or_send(update.callback_query, flow.product_menu_text())
+    await _safe_edit_or_send(
+        update.callback_query, flow.product_menu_text(),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 16:9", callback_data="ai_quote_ratio:16:9"),
+             InlineKeyboardButton("📱 9:16", callback_data="ai_quote_ratio:9:16")],
+            [InlineKeyboardButton("⬅️ Video Studio", callback_data="ai_studio:video")],
+        ]),
+    )
 
 
 class _NS:

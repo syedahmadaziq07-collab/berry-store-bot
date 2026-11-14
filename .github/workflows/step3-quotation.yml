@@ -10,6 +10,8 @@ on:
       - 'step3_minimax_offer.py'
       - 'tests/test_step3_quotation.py'
       - 'tests/test_step3_minimax_offer.py'
+      - 'tests/test_step3_telegram_quote_ui.py'
+      - 'bot.py'
       - '.github/workflows/step3-quotation.yml'
   pull_request:
     paths:
@@ -20,6 +22,8 @@ on:
       - 'step3_minimax_offer.py'
       - 'tests/test_step3_quotation.py'
       - 'tests/test_step3_minimax_offer.py'
+      - 'tests/test_step3_telegram_quote_ui.py'
+      - 'bot.py'
       - '.github/workflows/step3-quotation.yml'
   workflow_dispatch:
 jobs:
@@ -37,6 +41,7 @@ jobs:
           python -m unittest discover -s tests -p test_step3_quotation.py -v
           python -m unittest discover -s tests -p test_step3_minimax_offer.py -v
           python -m unittest discover -s tests -p test_minimax_retail_guard.py -v
+          python -m unittest discover -s tests -p test_step3_telegram_quote_ui.py -v
       - name: Durable quotation store
         run: python -m py_compile ai_quote_store.py ai_quotation_service.py bot.py
       - name: Production regression guards
