@@ -4850,6 +4850,41 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
         log.error("[POLLING_ERROR] InvalidToken: Telegram token rejected by API.")
         return
 
+# ─── /emojiid: inspect genuine Telegram custom emojis (admin only) ────────────
+
+async def cmd_emojiid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Return custom_emoji_id from an admin-selected inline Telegram emoji.
+
+    Usage: Send custom emoji as a message to the bot, reply /emojiid.
+    No IDs are guessed or persisted; no customer-facing changes occur.
+    """
+    if (not update.effective_user or update.effective_user.id != ADMIN_ID
+            or not update.effective_chat or update.effective_chat.type != "private"):
+        return
+    msg = update.effective_message
+    original = msg.reply_to_message or msg
+    entities = tuple(original.entities or ()) + tuple(original.caption_entities or ())
+    ids = list(dict.fromkeys(str(e.custom_emoji_id) for e in entities
+                             if e.type == "custom_emoji" and e.custom_emoji_id))
+    if not ids:
+        await msg.reply_text(
+            "🖼️ Tak jumpa Custom Emoji ID.\n\n"
+            "Cara: hantar logo daripada Telegram Custom Emoji pack "
+            "(bukan sticker besar atau gambar), kemudian REPLY mesej itu "
+            "dengan /emojiid.\n"
+            "Pastikan akaun Telegram kau boleh menggunakan custom emoji.")
+        return
+    await msg.reply_text(
+        "✅ Custom Emoji ID ditemui:\n"
+        + "\n".join(ids[:12])
+        + "\n\nUntuk CapCut: BERRY_EMOJI_CAPCUT_ID=<ID>\n"
+          "Untuk api: BERRY_EMOJI_FIRE_ID=<ID>\n"
+          "Untuk tangan: BERRY_EMOJI_WAVE_ID=<ID>\n"
+          "Simpan melalui Render Environment selepas disahkan; "
+          "BERRY_ANIMATED_EMOJI_ENABLED=true diperlukan."
+    )
+
+
 # ─── /addcred ─────────────────────────────────────────────────────────────────
 
 async def cmd_addcred(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6207,6 +6242,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("setqr",      cmd_setqr))
     app.add_handler(CommandHandler("setbanner",  cmd_setbanner))
     app.add_handler(CommandHandler("reloadsettings", cmd_reloadsettings))
+    app.add_handler(CommandHandler("emojiid", cmd_emojiid))
     app.add_handler(CommandHandler("checksetup", cmd_checksetup))
     app.add_handler(CommandHandler("shopdebug",  cmd_shopdebug))
     app.add_handler(CommandHandler("newtenant",  cmd_newtenant))
