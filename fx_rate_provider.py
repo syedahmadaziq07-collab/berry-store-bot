@@ -5,13 +5,13 @@ https://api.frankfurter.dev/v2/rate/usd/myr
   - Reference/mid-market rates from central banks and official sources.
   - Published daily (weekends carry the last trading day's date, handled by
     the freshness policy below).
-  - Response: {"amount":1.0,"base":"USD","date":"YYYY-MM-DD","rates":{"MYR":4.x}}
+  - v2 single-pair response: {"date":"YYYY-MM-DD","base":"USD","quote":"MYR","rate":4.x}
 
-Freshness policy: the published `date` is converted to a publication
-timestamp at 16:00 MYT. A rate is FRESH when its publication is within
-MAX_PUBLISHED_AGE (default 4 calendar days, covering weekends + a market
-holiday) AND not in the future. Never accepts a stale rate unboundedly;
-never fabricates freshness.
+Freshness policy: v2 provides a reference DATE, not a publication timestamp.
+For the legacy FXRate(timestamp) interface we use midnight UTC of the source
+reference date as a conservative age anchor, never an invented publication
+hour. The rate is accepted only within the configured age window and fails
+closed on longer holidays or data outages.
 
 Money math is Decimal. Rate type is REFERENCE (mid-market), NOT a
 transaction rate; the configurable FX buffer provides conservatism.
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 import httpx
@@ -30,8 +30,6 @@ from ai_pricing_engine import FXRate
 
 SOURCE = "frankfurter.dev-v2-reference"
 ENDPOINT = "https://api.frankfurter.dev/v2/rate/usd/myr"
-PUBLICATION_HOUR_MYT = 16  # conservative daily-publication convention
-MYT_UTC_OFFSET_HOURS = 8
 DEFAULT_MAX_PUBLISHED_AGE_DAYS = 4     # daily rate: covers weekend + 1 holiday
 DEFAULT_CACHE_TTL_SECONDS = 1800       # 30 min between network fetches
 DEFAULT_TIMEOUT_SECONDS = 10
@@ -67,40 +65,38 @@ class FXRateProvider:
 
     @staticmethod
     def _published_timestamp(date_str, now=None):
+        """Conservative UTC-day age anchor for the API's reference DATE.
+
+        Frankfurter v2 returns no actual publication time. In particular,
+        do not pretend 16:00 MYT is a published timestamp or overwrite it
+        with the current application time.
+        """
         try:
-            d = datetime.strptime(date_str, "%Y-%m-%d")
+            d = datetime.strptime(date_str, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc)
         except (ValueError, TypeError):
-            raise FXRateUnavailable("Invalid FX published date") from None
-        published = d.replace(hour=PUBLICATION_HOUR_MYT) - timedelta(
-            hours=MYT_UTC_OFFSET_HOURS)
-        ts = int(published.replace(tzinfo=timezone.utc).timestamp())
-        # Never return a future publication time: if the provider already
-        # published TODAY's date before the nominal 16:00 MYT cut, clamp to
-        # the start of that day (conservative: older, never fabricated).
+            raise FXRateUnavailable("Invalid FX reference date") from None
+        ts = int(d.timestamp())
         now = time.time() if now is None else now
         if ts > now:
-            start = (d - timedelta(hours=MYT_UTC_OFFSET_HOURS)).replace(
-                hour=0, minute=0, second=0)
-            ts = int(start.replace(tzinfo=timezone.utc).timestamp())
-            if ts > now:  # date itself is in the future → reject
-                raise FXRateUnavailable("FX published timestamp in the future")
+            raise FXRateUnavailable("FX reference date in the future")
         return ts
 
     def _parse(self, payload):
+        # /v2/rate/{base}/{quote} returns a FLAT object, unlike /v1/latest.
         if not isinstance(payload, dict):
             raise FXRateUnavailable("Invalid FX response schema")
-        rates = payload.get("rates")
         date = payload.get("date")
-        if payload.get("base") != "USD" or not isinstance(rates, dict) \
-                or "MYR" not in rates or not isinstance(date, str):
+        if payload.get("base") != "USD" or payload.get("quote") != "MYR" \
+                or "rate" not in payload or not isinstance(date, str):
             raise FXRateUnavailable("Invalid FX currency pair or schema")
         try:
-            value = Decimal(str(rates["MYR"]))
+            value = Decimal(str(payload["rate"]))
         except (InvalidOperation, ValueError, TypeError):
             raise FXRateUnavailable("Invalid FX rate value") from None
         if not value.is_finite() or value <= 0:
             raise FXRateUnavailable("Non-positive or non-finite FX rate")
-        return value, self._published_timestamp(date)
+        return value, self._published_timestamp(date, now=int(self._clock()))
 
     def _fetch(self):
         last_exc = None
