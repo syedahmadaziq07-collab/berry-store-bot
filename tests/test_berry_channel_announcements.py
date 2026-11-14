@@ -52,7 +52,7 @@ class ChannelAnnouncementTests(unittest.TestCase):
         self.assertIn("ON CONFLICT DO NOTHING", SQL)
         self.assertIn("o.status='completed'", SQL)
         self.assertIn("t.idempotency_key='berry-topup:'||o.id", SQL)
-        self.assertIn("state='delivered'", SQL)
+        self.assertIn("state=''delivered''", SQL)
         self.assertIn("ENABLE ROW LEVEL SECURITY", SQL)
         self.assertIn("SECURITY INVOKER", SQL)
         self.assertIn("FROM PUBLIC,anon,authenticated", SQL)
