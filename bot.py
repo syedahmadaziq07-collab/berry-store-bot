@@ -3293,7 +3293,7 @@ async def show_ai_studio_section(
             "⚡ Creator · RM10 — 12,500 credits\n"
             "💎 Pro · RM20 — 25,000 credits\n"
             "👑 Studio · RM50 — 62,500 credits\n\n"
-            ("✅ QR payment + admin approval. Kredit masuk selepas "
+            + ("✅ QR payment + admin approval. Kredit masuk selepas "
              "pengesahan admin." if _topup_enabled() else
              "🔒 Pembayaran masih OFF sehingga checkout selamat diuji.")
         )
