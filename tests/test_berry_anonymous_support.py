@@ -132,6 +132,8 @@ class IntegrationContractTests(unittest.TestCase):
         self.assertIn('CommandHandler("reply", cmd_support_reply)', bot)
         self.assertIn('CommandHandler("close", cmd_support_close)', bot)
         self.assertIn('callback_data="support"', bot)
+        self.assertIn("text=AnonymousSupport.MENU", bot)
+        self.assertIn('InlineKeyboardButton("💬 Start Chat", callback_data="support:start")', bot)
         self.assertIn('await _send_post_order_support(context, int(delivery["user_id"]))', bot)
         self.assertIn('await _send_post_order_support(context, int(result["user_id"]))', bot)
         self.assertIn('await _send_post_order_support(context, int(buyer_id))', bot)
