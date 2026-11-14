@@ -58,6 +58,16 @@ class PricingEngineTests(unittest.TestCase):
         self.assertGreaterEqual(out["debit_cents"] - out["total_cost_cents"], 100)
         self.assertEqual(out["credits"] % 25, 0)
 
+    def test_approved_rm020_fixed_buffer_and_zero_gateway_fee(self):
+        ops = OperationalCosts(
+            payment_gateway_fee_fraction=Decimal("0.00"),
+            fixed_operational_myr=Decimal("0.20"))
+        quote = price_product(get_product("minimax_turbo_video"), pricing_doc(),
+                              fx_rate=FX, operational=ops, now=NOW)
+        self.assertEqual(quote["selling_cents"], 252)
+        self.assertEqual(quote["credits"], 3150)
+        self.assertGreaterEqual(quote["estimated_margin_cents"], 100)
+
     def test_standard_floor_used_over_lower_promo_rate(self):
         promo = price_product(get_product("minimax_turbo_video"),
                               pricing_doc(price=0.0175),
