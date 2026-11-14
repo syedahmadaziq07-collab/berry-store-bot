@@ -4841,6 +4841,10 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
     log.exception("[TELEGRAM_ERROR] update=%s error=%s", update, context.error)
     if isinstance(context.error, Conflict):
         log.error("[POLLING_ERROR] Conflict: Another bot instance is using the same token.")
+        # PTB run_polling() can return cleanly after getUpdates conflicts.
+        # Record the cause so main() retries instead of exiting permanently.
+        if getattr(context, "application", None) is not None:
+            context.application.bot_data["_berry_polling_conflict"] = True
         return
     if isinstance(context.error, InvalidToken):
         log.error("[POLLING_ERROR] InvalidToken: Telegram token rejected by API.")
@@ -6330,6 +6334,14 @@ def main():
                 close_loop=False,
             )
             log.info("[POLLING] stopped")
+            if app.bot_data.pop("_berry_polling_conflict", False):
+                # Another consumer may still be winding down after Render
+                # zero-downtime deploy. Back off; preserve pending updates.
+                log.warning("[POLLING] Conflict recovery in %ss (no queued updates dropped)",
+                            retry_delay)
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_delay)
+                continue
             log.info("Bot berhenti dengan bersih.")
             break
 
