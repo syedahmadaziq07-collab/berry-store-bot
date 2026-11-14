@@ -1335,6 +1335,7 @@ from telegram import (
 from telegram.error import Conflict, InvalidToken
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
@@ -1392,32 +1393,56 @@ def build_product_keyboard(products: list) -> ReplyKeyboardMarkup:
 # ─── Membership gate ──────────────────────────────────────────────────────────
 
 async def _check_membership(bot, user_id: int) -> bool:
-    """Check if user is a member of REQUIRED_CHANNEL. Returns True if user can proceed."""
-    if not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", ""):
+    """Require channel membership for customer actions; fail closed on API errors."""
+    if ADMIN_ID and user_id == ADMIN_ID:
         return True
+    if not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", ""):
+        log.error("[MEMBERSHIP] Required channel is not configured")
+        return False
     try:
         member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-        return member.status in ("member", "administrator", "creator")
+        return member.status in ("member", "administrator", "creator") or (
+            member.status == "restricted" and bool(getattr(member, "is_member", False))
+        )
     except Exception as exc:
-        if "Member list is inaccessible" in str(exc):
-            log.warning("[MEMBERSHIP] Channel inaccessible. Bot may not be admin/member of REQUIRED_CHANNEL.")
-        else:
-            log.warning(f"[MEMBERSHIP] Check failed for user {user_id}: {exc}")
-        return True
+        # Telegram only guarantees this API for other users when bot is channel admin.
+        log.warning("[MEMBERSHIP] Unable to verify user %s: %s", user_id, _safe_error(exc))
+        return False
+
 
 async def _send_join_message(update: Update):
     text = (
-        "🔒 To continue, please join our channel first:\n"
-        f"• {REQUIRED_CHANNEL}\n\n"
-        "After joining, send /start again."
+        "🍓 Nak masuk Berry Store? Join channel kami dulu ya!\n\n"
+        "📢 @berrystorrel\n\n"
+        "Dah join? Tekan 'Saya Dah Join' untuk buka menu kedai. ✨"
     )
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📢 Join Channel", url=REQUIRED_CHANNEL_URL)],
+        [InlineKeyboardButton("✅ Saya Dah Join", callback_data="verify_join")],
     ])
-    if update.message:
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text(text, reply_markup=kb)
+        except Exception:
+            await update.callback_query.message.reply_text(text, reply_markup=kb)
+    elif update.message:
         await update.message.reply_text(text, reply_markup=kb)
-    elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=kb)
+
+
+async def _force_join_message_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Block private commands, messages, receipts and files before business handlers."""
+    if not update.effective_user or not update.effective_message:
+        return
+    if ADMIN_ID and update.effective_user.id == ADMIN_ID:
+        return
+    # /start checks membership itself and remembers the selected deep link.
+    if re.match(r"^/start(?:@\w+)?(?:\s|$)",
+                update.effective_message.text or "", re.IGNORECASE):
+        return
+    if not await _check_membership(context.bot, update.effective_user.id):
+        await _send_join_message(update)
+        raise ApplicationHandlerStop
+
 
 # ─── /start ───────────────────────────────────────────────────────────────────
 
@@ -1431,31 +1456,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[START] admin_id={ADMIN_ID}")
     log.info(f"[START] required_channel={REQUIRED_CHANNEL}")
 
-    # ── Force-join membership check ────────────────────────────────────────
-    enable_fj = (await _setting("enable_force_join", "false")).lower() == "true"
-    log.info(f"[FORCE_JOIN] tenant_id={TENANT_ID} enable_force_join={enable_fj} channel={REQUIRED_CHANNEL}")
-
-    membership_ok = True
-    if not enable_fj:
-        log.info(f"[FORCE_JOIN] action=skipped")
-    else:
-        channel_empty = not REQUIRED_CHANNEL or REQUIRED_CHANNEL.lower() in ("none", "null", "")
-        if channel_empty:
-            log.info(f"[FORCE_JOIN] action=skipped channel_empty")
-        else:
-            try:
-                member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
-                membership_ok = member.status in ("member", "administrator", "creator")
-                log.info(f"[FORCE_JOIN] action={'checked_passed' if membership_ok else 'checked_failed'}")
-            except Exception as exc:
-                if "Member list is inaccessible" in str(exc):
-                    log.warning(f"[FORCE_JOIN] action=inaccessible_log_only")
-                else:
-                    log.warning(f"[FORCE_JOIN] action=failed error={_safe_error(exc)}")
-
-    if not membership_ok:
+    # Mandatory at /start, before any welcome, menu or deep-link action.
+    if not await _check_membership(context.bot, user.id):
+        payload = context.args[0] if getattr(context, "args", None) else ""
+        if payload in ("browse_shop", "ai_studio", "turnitin"):
+            context.user_data["force_join_pending_start"] = payload
         await _send_join_message(update)
         return
+    context.user_data.pop("force_join_pending_start", None)
 
     # ── Proceed with /start ────────────────────────────────────────────────
     try:
@@ -4127,6 +4135,25 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         log.exception(f"[BUTTON] Failed to answer callback query data={data!r}")
 
+    # Guard every button, including stale shop/order buttons from old messages.
+    if data == "verify_join":
+        if not await _check_membership(context.bot, update.effective_user.id):
+            await _send_join_message(update)
+            return
+        pending = context.user_data.pop("force_join_pending_start", "")
+        if pending == "browse_shop":
+            await show_shop(update, context)
+        elif pending == "ai_studio":
+            await show_ai_video(update, context)
+        elif pending == "turnitin":
+            await _turnitin_callback(update, context, "turnitin")
+        else:
+            await show_home(update, context)
+        return
+    if not await _check_membership(context.bot, update.effective_user.id):
+        await _send_join_message(update)
+        return
+
     # ── Rate limit check — edit message since answer() already consumed alert ──
     if _is_rate_limited(update.effective_user.id):
         try:
@@ -6249,6 +6276,12 @@ async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TY
 
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
+    # Runs before all private command/text/photo/document handlers.
+    # /start handles its own gate to preserve deep-link destinations.
+    app.add_handler(
+        MessageHandler(filters.ChatType.PRIVATE, _force_join_message_guard),
+        group=-1,
+    )
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
     # Read-only owner auth check: no fal.ai model submission or wallet action.
     from berry_fal_authcheck import owner_fal_auth
