@@ -245,7 +245,7 @@ BEGIN
  UPDATE berry_private.turnitin_jobs SET state='delivering',updated_at=now() WHERE order_id=p_order_id;
  RETURN jsonb_build_object('order_id',p_order_id,'user_id',j.user_id,'plan',j.plan_code,
    'progress_message_id',j.progress_message_id);
-END $;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_delivery_complete(
  p_tenant uuid,p_order_id text,p_file_id text
@@ -262,7 +262,7 @@ END $$;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_cancel(
  p_tenant uuid,p_user bigint,p_order_id text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
 DECLARE j berry_private.turnitin_jobs%ROWTYPE;
 BEGIN
  IF current_user NOT IN ('service_role','postgres') THEN RAISE EXCEPTION 'server only' USING ERRCODE='42501'; END IF;
@@ -274,11 +274,11 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'order cannot cancel'; END IF;
  UPDATE berry_private.turnitin_jobs SET state='cancelled',updated_at=now() WHERE order_id=p_order_id;
  RETURN jsonb_build_object('order_id',p_order_id,'state','cancelled');
-END $;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_customer_orders(
  p_tenant uuid,p_user bigint
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
 DECLARE v jsonb;
 BEGIN
  IF current_user NOT IN ('service_role','postgres') THEN RAISE EXCEPTION 'server only' USING ERRCODE='42501'; END IF;
@@ -289,7 +289,7 @@ BEGIN
        FROM berry_private.turnitin_jobs
        WHERE tenant_id=p_tenant AND user_id=p_user ORDER BY updated_at DESC LIMIT 10) s;
  RETURN v;
-END $;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_customer_status(
  p_tenant uuid,p_order_id text,p_user bigint
