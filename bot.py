@@ -4278,9 +4278,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "ai_quote_menu":
             await _ai_quote_menu(update, context)
         elif data.startswith("ai_quote_ratio:"):
-            flow = _quote_flow(context)
+            # Even a forged/stale callback cannot enter the quote prompt.
+            flow = _quote_flow(context) if _quote_preview_owner(update) else None
             ratio = data.split(":", 1)[1]
-            if ratio not in ("16:9", "9:16"):
+            if not _quote_preview_owner(update):
+                await q.answer("AI quotation belum tersedia.", show_alert=True)
+            elif ratio not in ("16:9", "9:16"):
                 await q.answer("Nisbah aspek tidak disokong.", show_alert=True)
             elif flow is None and _quote_preview_owner(update):
                 context.user_data["ai_quote_flow"] = {
@@ -6250,7 +6253,12 @@ def _quote_preview_owner(update) -> bool:
 
 
 async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Quote menu, or owner-only UI preview while operational costs are unset."""
+    """Admin-only quote menu; never expose unfinished pricing to customers."""
+    if not _quote_preview_owner(update):
+        await _safe_edit_or_send(
+            update.callback_query,
+            "🚧 Quotation AI belum tersedia kepada pelanggan. Tiada caj dikenakan.")
+        return
     flow = _quote_flow(context)
     if flow is None:
         if _quote_preview_owner(update):
@@ -6298,6 +6306,10 @@ async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TY
     stage = (context.user_data or {}).get("ai_quote_flow")
     if stage is None or stage.get("stage") not in ("prompt", "preview_prompt"):
         return False
+    if not _quote_preview_owner(update):
+        # Clear stale stage when admin access or feature flag was revoked.
+        context.user_data.pop("ai_quote_flow", None)
+        return True
     if stage.get("stage") == "preview_prompt":
         # Consume the preview prompt locally: NEVER invoke pricing, store or fal.
         context.user_data.pop("ai_quote_flow", None)
@@ -6326,10 +6338,11 @@ async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TY
     prompt = (update.message.text or "").strip() if update.message else ""
     context.user_data.pop("ai_quote_flow", None)
     try:
-        doc = flow.build_quote(tenant_id=TENANT_ID, customer_id=user.id,
-                               prompt=prompt,
-                               aspect_ratio=stage.get("aspect_ratio", "16:9"),
-                               idempotency_key=f"tg:{update.update_id}")
+        # Pricing/FX/RPC are synchronous HTTP; run off the Telegram event loop.
+        doc = await asyncio.to_thread(
+            flow.build_quote, tenant_id=TENANT_ID, customer_id=user.id,
+            prompt=prompt, aspect_ratio=stage.get("aspect_ratio", "16:9"),
+            idempotency_key=f"tg:{update.update_id}")
         view = flow.svc.customer_view(doc)
     except Exception:
         await update.message.reply_text(

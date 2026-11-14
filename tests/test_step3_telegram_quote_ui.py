@@ -70,7 +70,7 @@ class QuoteMenuUITests(unittest.TestCase):
 
     def test_enabled_quote_menu_has_usable_ratio_buttons(self):
         result = self._invoke(SimpleNamespace(
-            product_menu_text=lambda: "MiniMax menu"))
+            product_menu_text=lambda: "MiniMax menu"), preview=True)
         self.assertEqual(result["text"], "MiniMax menu")
         callbacks = [button.callback_data
                      for row in result["markup"].inline_keyboard
@@ -78,6 +78,23 @@ class QuoteMenuUITests(unittest.TestCase):
         self.assertIn("ai_quote_ratio:16:9", callbacks)
         self.assertIn("ai_quote_ratio:9:16", callbacks)
         self.assertIn("ai_studio:video", callbacks)
+
+    def test_non_owner_cannot_open_enabled_quote_menu(self):
+        result = self._invoke(SimpleNamespace(
+            product_menu_text=lambda: "DO NOT LEAK"), preview=False)
+        self.assertIn("belum tersedia", result["text"])
+        self.assertNotIn("DO NOT LEAK", result["text"])
+
+    def test_ratio_and_prompt_are_owner_only_even_with_stale_callback(self):
+        source = self._source()
+        ratio = source.split('elif data.startswith("ai_quote_ratio:"):', 1)[1].split(
+            'elif data.startswith("ai_image_confirm:"):', 1)[0]
+        self.assertIn("if not _quote_preview_owner(update)", ratio)
+        self.assertIn("flow = _quote_flow(context) if _quote_preview_owner(update) else None", ratio)
+        prompt = source.split("async def _ai_quote_prompt_text(", 1)[1].split(
+            "def build_app()", 1)[0]
+        self.assertIn("if not _quote_preview_owner(update)", prompt)
+        self.assertIn("await asyncio.to_thread(", prompt)
 
     def test_disabled_quote_menu_fails_closed(self):
         result = self._invoke(None)
