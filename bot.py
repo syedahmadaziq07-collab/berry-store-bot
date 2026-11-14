@@ -4006,7 +4006,16 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("ai_quote_ratio:"):
             flow = _quote_flow(context)
             ratio = data.split(":", 1)[1]
-            if flow is None or ratio not in ("16:9", "9:16"):
+            if ratio not in ("16:9", "9:16"):
+                await q.answer("Nisbah aspek tidak disokong.", show_alert=True)
+            elif flow is None and _quote_preview_owner(update):
+                context.user_data["ai_quote_flow"] = {
+                    "stage": "preview_prompt", "aspect_ratio": ratio}
+                await _safe_edit_or_send(
+                    update.callback_query,
+                    "📝 ADMIN PREVIEW — Hantar prompt (1–1500 aksara).\\n"
+                    "Harga tidak dikira. Tiada caj dikenakan.")
+            elif flow is None:
                 await q.answer("Quotation belum tersedia.", show_alert=True)
             else:
                 context.user_data["ai_quote_flow"] = flow.start_prompt(
@@ -5892,14 +5901,43 @@ def _quote_flow(context) -> object | None:
     return flow
 
 
+def _quote_preview_owner(update) -> bool:
+    """Allow only owner in private chat to preview ratio/prompt before costs."""
+    user = getattr(update, "effective_user", None)
+    chat = getattr(update, "effective_chat", None)
+    return bool(_get_env("BERRY_QUOTE_FLOW_ENABLED") == "true"
+                and ADMIN_ID and user is not None and chat is not None
+                and user.id == ADMIN_ID and chat.id == ADMIN_ID
+                and chat.type == "private")
+
+
 async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Quotation entry (gated). Fail-closed, no wallet, no provider POST."""
+    """Quote menu, or owner-only UI preview while operational costs are unset."""
     flow = _quote_flow(context)
     if flow is None:
-        await _safe_edit_or_send(
-            update.callback_query,
-            "🎬 AI VIDEO QUOTATION\n━━━━━━━━━━━━━━━━━━\n\n"
-            "🚧 Quotation AI belum tersedia.\n🔒 Tiada caj dikenakan.")
+        if _quote_preview_owner(update):
+            from ai_product_catalog import get_product
+            product = get_product("minimax_turbo_video")
+            await _safe_edit_or_send(
+                update.callback_query,
+                "🎬 MiniMax Turbo Video — ADMIN PREVIEW\\n"
+                "━━━━━━━━━━━━━━━━━━\\n\\n"
+                f"{product.duration_seconds} saat • {product.resolution}\\n"
+                "Pilih nisbah aspek untuk semak langkah prompt.\\n\\n"
+                "⚠️ Kos belum disahkan: harga, Berry Credits dan Quote ID "
+                "tidak akan dijana. Tiada caj.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🎬 16:9", callback_data="ai_quote_ratio:16:9"),
+                     InlineKeyboardButton("📱 9:16", callback_data="ai_quote_ratio:9:16")],
+                    [InlineKeyboardButton("⬅️ Video Studio",
+                                          callback_data="ai_studio:video")],
+                ]),
+            )
+        else:
+            await _safe_edit_or_send(
+                update.callback_query,
+                "🎬 AI VIDEO QUOTATION\\n━━━━━━━━━━━━━━━━━━\\n\\n"
+                "🚧 Quotation AI belum tersedia.\\n🔒 Tiada caj dikenakan.")
         return
     await _safe_edit_or_send(
         update.callback_query, flow.product_menu_text(),
@@ -5909,7 +5947,6 @@ async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Video Studio", callback_data="ai_studio:video")],
         ]),
     )
-
 
 class _NS:
     def __init__(self, **kw):
@@ -5921,8 +5958,26 @@ async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TY
     quotation. NEVER debits a wallet or submits a provider request. Returns
     False (not consumed) whenever the gate is off."""
     stage = (context.user_data or {}).get("ai_quote_flow")
-    if stage is None or stage.get("stage") != "prompt":
+    if stage is None or stage.get("stage") not in ("prompt", "preview_prompt"):
         return False
+    if stage.get("stage") == "preview_prompt":
+        # Consume the preview prompt locally: NEVER invoke pricing, store or fal.
+        context.user_data.pop("ai_quote_flow", None)
+        if not _quote_preview_owner(update):
+            return True
+        prompt = (update.message.text or "").strip() if update.message else ""
+        if not (1 <= len(prompt) <= 1500):
+            await update.message.reply_text(
+                "⚠️ Prompt mesti antara 1 hingga 1500 aksara. "
+                "Sila mulakan preview semula.")
+        else:
+            await update.message.reply_text(
+                "✅ ADMIN PREVIEW PASS\\n"
+                f"MiniMax Turbo Video • {stage['aspect_ratio']}\\n"
+                f"Prompt diterima: {len(prompt)} aksara.\\n\\n"
+                "Harga/Quote ID belum dijana kerana kos belum disahkan. "
+                "Tiada quotation, debit atau paid generation.")
+        return True
     flow = _quote_flow(context)
     if flow is None:
         context.user_data.pop("ai_quote_flow", None)
@@ -5967,6 +6022,40 @@ def build_app() -> Application:
         await update.message.reply_text(format_report(audit_environment()))
 
     app.add_handler(CommandHandler("quoteenv", owner_quote_env))
+    # Owner-only, read-only FX network probe; independent of gateway/ops costs.
+    async def owner_quote_fx(update, context):
+        user = getattr(update, "effective_user", None)
+        chat = getattr(update, "effective_chat", None)
+        admin_id = int(_get_env("ADMIN_ID", "0") or "0")
+        if (not admin_id or user is None or chat is None
+                or user.id != admin_id or chat.id != admin_id
+                or chat.type != "private"):
+            return
+        try:
+            from datetime import datetime, timezone
+            from decimal import Decimal
+            from fx_rate_provider import FXRateProvider
+
+            buffer = Decimal(_get_env("BERRY_AI_FX_BUFFER") or "0.02")
+            provider = FXRateProvider(buffer_fraction=buffer)
+            # FX uses a synchronous HTTP client; do not block Telegram's event loop.
+            rate = await asyncio.to_thread(provider.get_rate)
+            ref_date = datetime.fromtimestamp(
+                rate.timestamp, tz=timezone.utc).date().isoformat()
+            await update.message.reply_text(
+                "[AI_QUOTE] automatic FX: PASS\\n"
+                f"USD/MYR reference: {rate.myr_per_usd}\\n"
+                f"Source: {rate.source}\\n"
+                f"Reference date: {ref_date}\\n"
+                f"Buffer: {rate.buffer_fraction}\\n\\n"
+                "Read-only check. Tiada quotation, debit atau paid generation.")
+        except Exception as exc:
+            log.warning("[AI_QUOTE] FX probe failed (%s)", type(exc).__name__)
+            await update.message.reply_text(
+                "[AI_QUOTE] automatic FX: FAIL (unavailable/invalid/stale).\\n"
+                "Semak sambungan Render dan log. Tiada caj dikenakan.")
+
+    app.add_handler(CommandHandler("quotefx", owner_quote_fx))
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     # Single paid MiniMax diagnostic for this bot's ADMIN_ID; disabled by default.
     if _get_env("BERRY_MINIMAX_TRIAL_ENABLED").lower() == "true":
