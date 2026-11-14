@@ -46,6 +46,27 @@ class QuoteMenuUITests(unittest.TestCase):
             SimpleNamespace(callback_query=object()), SimpleNamespace()))
         return captured
 
+    def test_reply_text_includes_persisted_quote_id(self):
+        from telegram_quote_flow import TelegramQuoteFlow
+        flow = TelegramQuoteFlow(None, None,
+                                 fx_provider=lambda: None, operational=None)
+        quote_id = "11111111-1111-4111-8111-111111111111"
+        view = {
+            "quote_id": quote_id,
+            "product_name": "MiniMax Turbo Video",
+            "duration_seconds": 10,
+            "resolution": "480P",
+            "aspect_ratio": "16:9",
+            "price_myr": "RM3.00",
+            "credits": 3750,
+            "expires_at": "2026-11-14T03:00:00+00:00",
+        }
+        response = flow.quote_reply_text(view)
+        self.assertIn(quote_id, response)
+        self.assertIn("RM3.00", response)
+        self.assertIn("3,750", response)
+        self.assertIn("tiada debit", response)
+
     def test_enabled_quote_menu_has_usable_ratio_buttons(self):
         result = self._invoke(SimpleNamespace(
             product_menu_text=lambda: "MiniMax menu"))
