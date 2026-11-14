@@ -41,6 +41,11 @@ class QuotationService:
         self.store = store
         self._limit = rate_limit_per_minute
 
+    def _check_tenant(self, tenant_id):
+        # Store is bound to one tenant; callers may not substitute another.
+        if str(tenant_id) != str(self.store.tenant_id):
+            raise QuotationError("Quotation tenant mismatch")
+
     def _tag(self, document):
         core = {k: v for k, v in document.items() if k != "integrity"}
         canonical = json.dumps(core, sort_keys=True, separators=(",", ":"))
@@ -50,6 +55,7 @@ class QuotationService:
                prompt, pricing, fx_rate, operational, now=None,
                idempotency_key=None, planning_seconds=None):
         now = int(time.time()) if now is None else int(now)
+        self._check_tenant(tenant_id)
         if idempotency_key is not None and (
                 not isinstance(idempotency_key, str) or len(idempotency_key) > 128):
             raise QuotationError("Idempotency key tidak sah")
@@ -115,6 +121,7 @@ class QuotationService:
 
     # ── retrieval / validation (durable, ownership enforced by RPC) ─────────
     def get_valid(self, quote_id, *, tenant_id, customer_id, now=None):
+        self._check_tenant(tenant_id)
         now = int(time.time()) if now is None else int(now)
         try:
             UUID(str(quote_id))
@@ -133,6 +140,7 @@ class QuotationService:
         return dict(payload)
 
     def cancel(self, quote_id, *, tenant_id, customer_id, now=None):
+        self._check_tenant(tenant_id)
         try:
             UUID(str(quote_id))
         except (ValueError, TypeError, AttributeError):

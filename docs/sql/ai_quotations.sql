@@ -72,7 +72,7 @@ BEGIN
  RETURN jsonb_build_object('duplicate', true, 'state', existing.state,
    'expires_at', existing.expires_at, 'payload', existing.payload,
    'integrity', existing.integrity);
-END $;
+END $$;
 REVOKE ALL ON FUNCTION
  public.berry_ai_quote_create(uuid,bigint,uuid,text,int,jsonb,text,text,timestamptz)
  FROM PUBLIC,anon,authenticated;

@@ -164,6 +164,18 @@ class QuotationServiceTests(unittest.TestCase):
                                  customer_id=900000088, now=NOW + 1)
         self.assertEqual(got["quote_id"], doc["quote_id"])
 
+    def test_cross_tenant_calls_rejected_at_service_boundary(self):
+        other = "22222222-2222-4222-8222-222222222222"
+        with self.assertRaisesRegex(QuotationError, "tenant mismatch"):
+            self.svc.create(**dict(self.kwargs, tenant_id=other))
+        doc = self.svc.create(**self.kwargs)
+        with self.assertRaisesRegex(QuotationError, "tenant mismatch"):
+            self.svc.get_valid(doc["quote_id"], tenant_id=other,
+                               customer_id=900000088, now=NOW + 1)
+        with self.assertRaisesRegex(QuotationError, "tenant mismatch"):
+            self.svc.cancel(doc["quote_id"], tenant_id=other,
+                            customer_id=900000088, now=NOW + 1)
+
     def test_idempotency_returns_same_quote(self):
         a = self.svc.create(**dict(self.kwargs, idempotency_key="tg-update-1"))
         b = self.svc.create(**dict(self.kwargs, idempotency_key="tg-update-1",
@@ -235,7 +247,7 @@ class DurableStoreTests(unittest.TestCase):
             if fn == "berry_ai_quote_get":
                 return httpx.Response(200, json={
                     "state": "active", "expires_at": state["doc"]["p_expires"],
-                    "payload": _json.loads(state["doc"]["p_payload"]),
+                    "payload": state["doc"]["p_payload"],
                     "integrity": state["doc"]["p_integrity"]})
             return httpx.Response(200, json={})
 
@@ -246,6 +258,7 @@ class DurableStoreTests(unittest.TestCase):
                            integrity="tag", idempotency_key="k1",
                            expires_at="2026-11-14T00:10:00+00:00")
         self.assertFalse(result["duplicate"])
+        self.assertEqual(state["doc"]["p_payload"], {"a": 1})
         s2 = self._store(handler)  # fresh instance = restart
         got = s2.get("a" * 8 + "-b" * 4 + "-c" * 4 + "-d" * 4 + "-" + "e" * 12, 900000088)
         self.assertEqual(got["state"], "active")
