@@ -1496,14 +1496,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         log.info(f"[START] welcome_sent=true")
 
-        # Channel CTA deep links: complete /start registration and force-join
-        # first, then open the requested in-bot destination.
-        start_payload = context.args[0] if getattr(context, "args", None) else ""
-        if start_payload == "browse_shop":
-            await show_shop(update, context)
-        elif start_payload == "ai_studio":
-            await show_ai_video(update, context)
-
         # STEP 3: Send notification to admin after saving
         try:
             now_str = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d/%m/%Y %H:%M")
@@ -1540,6 +1532,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             log.warning(f"Promo message failed: {e}")
+
+        # Channel CTA deep links. Route LAST so the selected screen is the
+        # bottom-most reply instead of the generic /start advertisement.
+        start_payload = context.args[0] if getattr(context, "args", None) else ""
+        if start_payload == "browse_shop":
+            await show_shop(update, context)
+        elif start_payload == "ai_studio":
+            await show_ai_video(update, context)
     except Exception as exc:
         log.exception(f"[START_ERROR] user_id={user.id} tenant_id={TENANT_ID}: {_safe_error(exc)}")
         try:
