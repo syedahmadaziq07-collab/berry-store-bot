@@ -124,6 +124,12 @@ class QuoteMenuUITests(unittest.TestCase):
         self.assertIn("9:16", replies[0])
         self.assertIn("Tiada quotation", replies[0])
 
+    def test_admin_prompt_instruction_renders_real_newline(self):
+        source = self._source()
+        # Python source needs one backslash-n escape, not two literal slashes.
+        self.assertIn(r'aksara).\n"', source)
+        self.assertNotIn(r'aksara).\\n"', source)
+
     def test_fx_probe_is_owner_only_and_read_only(self):
         source = self._source()
         self.assertIn('CommandHandler("quotefx", owner_quote_fx)', source)
