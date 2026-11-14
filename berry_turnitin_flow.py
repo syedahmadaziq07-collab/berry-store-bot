@@ -22,6 +22,8 @@ LOG = logging.getLogger(__name__)
 ORDER_RE = re.compile(r"^TT[0-9A-F]{24}$")
 MAX_RECEIPT = 10 * 1024 * 1024
 MAX_ASSIGNMENT = 20 * 1024 * 1024
+PROGRESS_STEP_SECONDS = 30
+PROGRESS_MAX_WAITING = 99
 ASSIGNMENT_MIMES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -42,8 +44,26 @@ def elapsed_estimate(submitted_at: str | None, now: datetime | None = None) -> i
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
     now = now or datetime.now(timezone.utc)
-    minutes = max(0, int((now - when).total_seconds() // 60))
-    return min(99, math.ceil(minutes * 99 / 15))
+    elapsed_seconds = max(0, int((now - when).total_seconds()))
+    return min(PROGRESS_MAX_WAITING, elapsed_seconds // PROGRESS_STEP_SECONDS)
+
+
+def progress_message(order_id: str, percent: int) -> str:
+    """Attractive status animation; the percentage is a TIMER, not an API scan."""
+    value = max(0, min(100, int(percent)))
+    filled = value // 10
+    bar = "▰" * filled + "▱" * (10 - filled)
+    if value == 100:
+        return (f"✅ REPORT DELIVERED — 100%\n"
+                f"Order: {order_id}\n"
+                f"{bar} 100%\n"
+                "📩 Report telah berjaya dihantar.")
+    return (f"📑 Assignment sedang diproses\n"
+            f"Order: {order_id}\n\n"
+            f"{bar} {value}%\n"
+            "⏳ Status anggaran: +1% setiap 30 saat\n"
+            "Ini timer menunggu, bukan progress scan Turnitin.\n"
+            "Akan kekal 99% sehingga report berjaya dihantar.")
 
 
 class TurnitinBackend:
@@ -318,9 +338,10 @@ class TurnitinFlow:
             return
         pct=elapsed_estimate(j.get("submitted_at")) if j["state"]=="processing" else (
             100 if j["state"]=="delivered" else 0)
-        await self.respond(update,f"📑 Order {oid}\nStatus: {j['state']}\n"
-                           f"⏳ Anggaran tempoh menunggu: {pct}% (bukan live Turnitin scan)\n"
-                           "Jika belum siap, status akan kekal sehingga owner hantar report.")
+        await self.respond(update,
+            progress_message(oid, pct) if j["state"] in ("processing", "delivered") else
+            f"📑 Order {oid}\nStatus: {j['state']}\n"
+            "Fail hanya diproses selepas bayaran dan upload disahkan.")
 
     async def document(self,update,context,doc):
         if not self.private(update): return False
@@ -360,9 +381,7 @@ class TurnitinFlow:
             return True
         context.user_data.pop("turnitin_assignment_order",None)
         msg=await update.effective_message.reply_text(
-            f"📑 Assignment diterima!\nOrder: {oid}\n"
-            "⏳ Anggaran masa menunggu: 0% (bukan progress scan sebenar)\n"
-            "Kebiasaan sekitar 15 minit. Akan kekal 99% jika report belum siap.")
+            progress_message(oid, 0))
         try:
             await self.call("progress_attach",p_order_id=oid,p_message_id=msg.message_id)
         except TurnitinError:
@@ -442,7 +461,7 @@ class TurnitinFlow:
             try:
                 await context.bot.edit_message_text(
                     chat_id=int(target["user_id"]),message_id=int(mid),
-                    text=f"✅ REPORT DELIVERED — 100%\nOrder: {oid}")
+                    text=progress_message(oid, 100))
             except Exception:
                 pass
         await update.effective_message.reply_text(
@@ -461,10 +480,7 @@ class TurnitinFlow:
             try:
                 await context.bot.edit_message_text(
                     chat_id=int(j["user_id"]),message_id=int(mid),
-                    text=f"📑 Assignment sedang diproses\nOrder: {j['order_id']}\n"
-                         f"⏳ Anggaran masa menunggu: {target}%\n"
-                         "Bukan progress Turnitin sebenar. "
-                         "Selepas 15 minit status kekal 99% sehingga report siap.")
+                    text=progress_message(j["order_id"], target))
             except Exception as exc:
                 LOG.warning("[TURNITIN] progress update failed: %s",type(exc).__name__)
                 continue
