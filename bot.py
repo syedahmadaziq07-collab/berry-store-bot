@@ -2517,7 +2517,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                 await context.bot.send_message(
                     chat_id=int(result["user_id"]),
                     text=f"🍓 Top Up diluluskan! +{int(Decimal(str(result['amount']))*1250):,} Berry Credits."
-                         f"\\nOrder: {order_id}\\nSemak baki dalam My Wallet.")
+                         f"\nOrder: {order_id}\nSemak baki dalam My Wallet.")
             except Exception as exc:
                 log.warning("[TOPUP] Approval notification failed: %s", type(exc).__name__)
         # Announce only after the atomic Supabase RPC confirms a completed
