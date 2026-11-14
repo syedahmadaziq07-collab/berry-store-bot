@@ -4919,9 +4919,9 @@ async def cmd_setemoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = (context.args[0].strip().upper() if context.args else "")
     if key not in AVAILABLE_ICON_KEYS:
         await msg.reply_text(
-            "Usage: reply custom emoji, kemudian /setemoji CAPCUT\\n"
+            "Usage: reply custom emoji, kemudian /setemoji CAPCUT\n"
             "Contoh key: CAPCUT, CHATGPT, NETFLIX, CANVA, SPOTIFY, "
-            "ADOBE, YOUTUBE, FIRE, WAVE, SPARKLE.\\n"
+            "ADOBE, YOUTUBE, FIRE, WAVE, SPARKLE.\n"
             "Logo mesti Telegram Custom Emoji — bukan PNG atau sticker besar.")
         return
     source = msg.reply_to_message
@@ -4957,8 +4957,8 @@ async def cmd_setemoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     release = _get_env("BERRY_ANIMATED_EMOJI_ENABLED").lower() == "true"
     await msg.reply_text(
-        f"✅ Logo {key} disimpan.\\n"
-        f"Custom Emoji ID: {ids[0]}\\n"
+        f"✅ Logo {key} disimpan.\n"
+        f"Custom Emoji ID: {ids[0]}\n"
         + ("Mode logo real ON — semak Browse Shop /start."
            if release else
            "Mode logo real masih OFF untuk semua pelanggan. "
@@ -5005,9 +5005,9 @@ async def cmd_emojistatus(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         _bot_settings.get("menu_emoji_" + k.lower(), "")).strip()))
     gate = _get_env("BERRY_ANIMATED_EMOJI_ENABLED").lower() == "true"
     await update.effective_message.reply_text(
-        f"🖼️ REAL APP LOGOS: {len(mapped)}/{len(AVAILABLE_ICON_KEYS)} mapped\\n"
-        f"Render live gate: {'ON' if gate else 'OFF'}\\n"
-        f"Configured: {', '.join(mapped) if mapped else 'None'}\\n\\n"
+        f"🖼️ REAL APP LOGOS: {len(mapped)}/{len(AVAILABLE_ICON_KEYS)} mapped\n"
+        f"Render live gate: {'ON' if gate else 'OFF'}\n"
+        f"Configured: {', '.join(mapped) if mapped else 'None'}\n\n"
         "Hantar logo Telegram Custom Emoji, reply /setemoji CAPCUT, "
         "kemudian /emojitest CAPCUT.")
 
