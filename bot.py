@@ -4013,7 +4013,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "stage": "preview_prompt", "aspect_ratio": ratio}
                 await _safe_edit_or_send(
                     update.callback_query,
-                    "📝 ADMIN PREVIEW — Hantar prompt (1–1500 aksara).\\n"
+                    "📝 ADMIN PREVIEW — Hantar prompt (1–1500 aksara).\n"
                     "Harga tidak dikira. Tiada caj dikenakan.")
             elif flow is None:
                 await q.answer("Quotation belum tersedia.", show_alert=True)
