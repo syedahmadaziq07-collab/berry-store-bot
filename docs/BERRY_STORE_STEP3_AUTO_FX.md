@@ -14,9 +14,10 @@ Branch: `feat/step3-auto-fx-and-env-audit-20261114` (dari main `01399d7`).
    - Sumber: `https://api.frankfurter.dev/v2/rate/usd/myr` (rujukan
      bank-pusat/mid-market, berdokumen, **tiada kunci API**).
    - Kadar `Decimal`; skema `{base,date,rates.MYR}` disahkan ketat.
-   - Kesegaran: tarikh terbitan → timestamp penerbitan 16:00 MYT
-     (dikepang supaya tidak pernah masa depan); tetingkap **4 hari**
-     (hujung minggu + 1 cuti); kadar lapuk → fail-closed.
+   - Kesegaran: API v2 memberi **tarikh rujukan**, bukan actual publication timestamp.
+     Sistem menukar tarikh rujukan kepada 00:00 UTC sebagai **conservative age anchor**,
+     bukan mendakwa ia waktu sebenar terbit. Tetingkap **4 hari**;
+     kadar lapuk / cuti lebih lama → fail-closed.
    - Cache 30 min + tetapan semasa; **had belanjakan-fetch** (≤10/5 min);
      timeout 10s; cubaan semula terkawal ×2; thread-safe (kunci).
    - **Tidak pernah** `timestamp = time.time()` menyamar kadar lama.
@@ -32,10 +33,17 @@ Branch: `feat/step3-auto-fx-and-env-audit-20261114` (dari main `01399d7`).
    **tanpa sebarang nilai rahsia** (diuji untuk ketiadaan nilai rahsia).
 
 ## Ujian (semua LULUS; suite penuh 332 ujian, 0 ralat bukan-Windows)
-- `test_fx_rate_provider.py` 11/11 — segar, lapuk, masa-depan, timeout,
+- `test_fx_rate_provider.py` (termasuk v2 schema regression) — segar, lapuk, masa-depan, timeout,
   skema tidak sah, pasangan mata wang salah, hujung-minggu, cache+TTL
   tetapan semasa, konkuren thread-safe, Decimal, validasi pembina.
 - `test_fresh_fx_per_quote.py` 3/3 — FX segar setiap quote; snapshot beku
   berbeza; provider gagal/None → gagal-tutup.
 - `test_ai_env_audit.py` 8/8 — termasuk "tiada nilai rahsia dalam laporan".
 - Regresi: quotation 26/26, UI 6/6, integrasi prod OK.
+
+## Verification note — v2 contract correction
+API `/v2/rate/usd/myr` returns one flat object with `date`, `base`,
+`quote` and `rate`, not the v1 `rates` dictionary. Regression tests now
+use a v2-shaped MockTransport response and reject v1-shaped payloads.
+The rate is a blended **reference** rate, not a guaranteed payable transaction
+rate. The configured FX buffer and estimated margin require owner approval.
