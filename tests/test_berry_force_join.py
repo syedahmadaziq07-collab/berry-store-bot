@@ -104,7 +104,7 @@ class ForceJoinTests(unittest.IsolatedAsyncioTestCase):
     def test_private_message_guard_is_registered_early(self):
         app = BOT[BOT.index("def build_app()"):BOT.index('app.add_handler(CommandHandler("ping"')]
         self.assertIn("MessageHandler(filters.ChatType.PRIVATE, _force_join_message_guard)", app)
-        self.assertIn("group=-1", app)
+        self.assertIn("group=-2", app)
 
 
 if __name__ == "__main__":

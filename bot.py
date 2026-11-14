@@ -69,7 +69,7 @@ BASE_DIR            = os.path.dirname(os.path.abspath(__file__))
 PRODUCTS_CACHE_FILE = os.path.join(BASE_DIR, "products_cache.json")
 TENANT_ID           = _get_env("TENANT_ID")
 
-TENANT_TABLES = {"products", "product_variants", "orders", "credentials", "users", "bot_settings", "push_subscriptions", "rental_payments", "points", "ai_wallets", "ai_wallet_transactions"}
+TENANT_TABLES = {"berry_support_sessions", "products", "product_variants", "orders", "credentials", "users", "bot_settings", "push_subscriptions", "rental_payments", "points", "ai_wallets", "ai_wallet_transactions"}
 
 def _ensure_tenant_filter(table: str, params: str = "") -> str:
     if TENANT_ID and table in TENANT_TABLES:
@@ -178,6 +178,7 @@ async def _announce_channel_event(context, kind: str, event_id: str, text: str):
 
 async def _announce_turnitin_delivered(context, order_id: str, delivery: dict):
     """Only called after Telegram delivered the PDF AND the DB confirmed it."""
+    await _send_post_order_support(context, int(delivery["user_id"]))
     from berry_channel_announcements import delivery_text
     name = delivery.get("product_name") or (
         "Turnitin Similarity Check" if delivery.get("plan") == "similarity"
@@ -1459,11 +1460,19 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Mandatory at /start, before any welcome, menu or deep-link action.
     if not await _check_membership(context.bot, user.id):
         payload = context.args[0] if getattr(context, "args", None) else ""
-        if payload in ("browse_shop", "ai_studio", "turnitin"):
+        if payload in ("browse_shop", "ai_studio", "turnitin", "support"):
             context.user_data["force_join_pending_start"] = payload
         await _send_join_message(update)
         return
     context.user_data.pop("force_join_pending_start", None)
+
+    # /start exits any active Support chat before opening the store.
+    flow = _support_flow(context)
+    if flow and user.id != ADMIN_ID:
+        try:
+            await flow.leave(user.id)
+        except Exception as exc:
+            log.warning("[SUPPORT] start close unavailable: %s", type(exc).__name__)
 
     # ── Proceed with /start ────────────────────────────────────────────────
     try:
@@ -1543,13 +1552,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             log.warning(f"Admin start notify failed: {e}")
 
-        # STEP 4: Promo message (always sent, never configurable)
-        try:
-            await update.message.reply_text(
-                "Want an auto-order bot for your own shop? PM @berryrc to rent one 🚀"
-            )
-        except Exception as e:
-            log.warning(f"Promo message failed: {e}")
+        # No personal owner contact is advertised in customer /start.
 
         # Channel CTA deep links. Route LAST so the selected screen is the
         # bottom-most reply instead of the generic /start advertisement.
@@ -1560,6 +1563,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_ai_video(update, context)
         elif start_payload == "turnitin":
             await _turnitin_callback(update, context, "turnitin")
+        elif start_payload == "support":
+            await cmd_support_menu(update, context)
     except Exception as exc:
         log.exception(f"[START_ERROR] user_id={user.id} tenant_id={TENANT_ID}: {_safe_error(exc)}")
         try:
@@ -1597,7 +1602,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log.error(f"[SHOP] cache fallback age_s={age}: {_safe_error(exc)}", exc_info=True)
         else:
             log.error(f"[SHOP] no cache: {_safe_error(exc)}", exc_info=True)
-            msg = "⚠️ Gagal muatkan produk. Sila cuba lagi atau hubungi @berryrc"
+            msg = "⚠️ Gagal muatkan produk. Sila cuba lagi atau tekan 💬 Support dalam bot"
             if update.callback_query:
                 await update.callback_query.edit_message_text(msg, reply_markup=back_home())
             else:
@@ -1965,14 +1970,14 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             context.user_data.pop(lock_user, None)
             log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
             await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-            err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc", reply_markup=back_shop())
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
             track_flow_message(context, err_msg, "error_message")
             return
 
     if not p:
         context.user_data.pop(lock_user, None)
         await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc", reply_markup=back_shop())
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
         track_flow_message(context, err_msg, "error_message")
         return
 
@@ -2088,7 +2093,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         context.user_data.pop(lock_user, None)
         log.warning(f"Supabase create_order insert: {_safe_error(exc)}")
         await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc", reply_markup=back_shop())
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
         track_flow_message(context, err_msg, "error_message")
         return
 
@@ -2551,6 +2556,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                          f"\nOrder: {order_id}\nSemak baki dalam My Wallet.")
             except Exception as exc:
                 log.warning("[TOPUP] Approval notification failed: %s", type(exc).__name__)
+            await _send_post_order_support(context, int(result["user_id"]))
         # Announce only after the atomic Supabase RPC confirms a completed
         # order with its matching credited wallet transaction. Re-approvals
         # cannot duplicate posts because every channel has a durable claim.
@@ -2726,6 +2732,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                         chat_id=order["user_id"],
                         text=full_msg,
                     )
+                cred_sent = True
             except Exception as exc:
                 log.warning(f"[AUTO DELIVERY] credential send failed — {_safe_error(exc)}", exc_info=True)
                 cred_sent = False
@@ -2766,6 +2773,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                 )
             except Exception as exc:
                 log.warning(f"Auto delivery admin notify: {_safe_error(exc)}")
+            await _send_post_order_support(context, int(order["user_id"]))
             return
 
         # Fallback: no cred found OR send failed
@@ -2783,7 +2791,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                         "✅ Pembayaran anda telah disahkan!\n\n"
                         "Akaun akan dihantar secepat mungkin 🚀\n"
                         "(biasanya dalam masa 1 jam)\n\n"
-                        "Ada masalah? DM admin: @berryrc 🙌"
+                        "Ada masalah? Tekan 💬 Support dalam bot 🙌"
                     ),
                 )
             except Exception as exc:
@@ -2795,7 +2803,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                 await context.bot.send_message(
                     chat_id=order["user_id"],
                     text=(
-                        "📋 Untuk slot ini, sila PM admin @berryrc dengan maklumat berikut:\n\n"
+                        "📋 Untuk slot ini, sila hantar maklumat berikut melalui 💬 Support dalam bot:\n\n"
                         "✦ 𝗣𝗥𝗜𝗩𝗔𝗧𝗘 𝗦𝗟𝗢𝗧 𝗣𝗥𝗢𝗙𝗜𝗟𝗘 𝗢𝗡𝗟𝗬 ✦\n"
                         "┆𑣲 name : \n"
                         "┆𑣲 pin 4 digit : \n"
@@ -2827,14 +2835,14 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         try:
             await context.bot.send_message(
                 chat_id=order["user_id"],
-                text=await _setting(
+                text=(await _setting(
                     "delivery_msg",
                     "✅ Pembayaran anda telah disahkan!\n\n"
                     "✅ Payment dah confirm!\n\n"
                     "Akaun akan dihantar secepat mungkin 🚀\n"
                     "(biasanya laju je, tak lebih dari 1 jam 😉)\n\n"
-                    "Kalau lebih 1 jam tak dapat apa-apa, jangan segan terus DM admin: @berryrc ya 🙌"
-                ),
+                    "Kalau lebih 1 jam tak dapat apa-apa, tekan 💬 Support dalam bot ya 🙌"
+                )).replace("@" + "berryrc", "💬 Support dalam bot"),
             )
         except Exception as exc:
             log.warning(f"Notify user approve: {_safe_error(exc)}")
@@ -2895,7 +2903,7 @@ async def _reject_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
     log.info(f"Order {order_id} rejected by admin")
     try:
         await context.bot.send_message(chat_id=order["user_id"],
-            text=await _setting("reject_msg", "⚠️ Bayaran ditolak.\nHubungi support untuk bantuan."))
+            text=(await _setting("reject_msg", "⚠️ Bayaran ditolak.\nHubungi support untuk bantuan.")).replace("@" + "berryrc", "💬 Support dalam bot"))
     except Exception as exc:
         log.warning(f"Notify user reject: {_safe_error(exc)}")
     return {"order": order}
@@ -2995,6 +3003,51 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     await update.callback_query.edit_message_caption(
         caption=(update.callback_query.message.caption or "") + "\n\n❌ REJECTED", reply_markup=None)
 
+# ─── Anonymous Berry Support (customer-only private Telegram relay) ───────────
+from berry_anonymous_support import AnonymousSupport, SupportStore
+
+
+def _support_flow(context):
+    return context.application.bot_data.get("berry_support_flow")
+
+
+async def _send_post_order_support(context, user_id: int):
+    """Final customer-only Support intro after success; never post to channel."""
+    try:
+        await context.bot.send_message(
+            chat_id=int(user_id),
+            text=AnonymousSupport.MENU,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 Start Chat", callback_data="support:start")],
+            ]),
+        )
+    except Exception as exc:
+        log.warning("[SUPPORT] post-order CTA failed: %s", type(exc).__name__)
+
+async def _support_message_router(update, context):
+    flow = _support_flow(context)
+    if flow and await flow.relay(update, context):
+        raise ApplicationHandlerStop
+
+
+async def cmd_support_reply(update, context):
+    flow = _support_flow(context)
+    if flow:
+        await flow.admin_reply(update, context)
+
+
+async def cmd_support_close(update, context):
+    flow = _support_flow(context)
+    if flow:
+        await flow.admin_close(update, context)
+
+
+async def cmd_support_menu(update, context):
+    flow = _support_flow(context)
+    if flow:
+        await flow.menu(update, context)
+
+
 # ─── Referral / Support / Home ────────────────────────────────────────────────
 
 def _turnitin_service(context):
@@ -3063,18 +3116,18 @@ async def show_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.warning(f"show_referral error: {_safe_error(exc)}")
         try:
             await update.callback_query.edit_message_text(
-                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc",
+                "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot",
                 reply_markup=back_home())
         except Exception:
             pass
 
 
 async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _support_username = await _setting('support_username', '@berryrc')
-    _support_hours = await _setting('support_hours', '9am – 11pm')
-    await update.callback_query.edit_message_text(
-        f"💬 SUPPORT\n─────────────────────\nHubungi admin:\n• Telegram: {_support_username}\n\nMasa operasi: {_support_hours}",
-        reply_markup=back_home())
+    flow = _support_flow(context)
+    if not flow:
+        await _safe_edit_or_send(update.callback_query, "⚠️ Support belum tersedia. Cuba lagi.")
+        return
+    await flow.menu(update, context)
 
 
 # ─── Berry AI Studio wallet (read-only until payment integration) ──────────────
@@ -4147,12 +4200,22 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_ai_video(update, context)
         elif pending == "turnitin":
             await _turnitin_callback(update, context, "turnitin")
+        elif pending == "support":
+            await cmd_support_menu(update, context)
         else:
             await show_home(update, context)
         return
     if not await _check_membership(context.bot, update.effective_user.id):
         await _send_join_message(update)
         return
+    # Leaving support for another menu closes the chat to protect order uploads.
+    if data not in ("support", "support:start", "support:end"):
+        flow = _support_flow(context)
+        if flow and update.effective_user.id != ADMIN_ID:
+            try:
+                await flow.leave(update.effective_user.id)
+            except Exception as exc:
+                log.warning("[SUPPORT] navigation close unavailable: %s", type(exc).__name__)
 
     # ── Rate limit check — edit message since answer() already consumed alert ──
     if _is_rate_limited(update.effective_user.id):
@@ -4279,6 +4342,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "myorders":           await my_orders(update, context)
         elif data == "referral":           await _turnitin_callback(update, context, "turnitin")
         elif data == "support":            await show_support(update, context)
+        elif data == "support:start":      await _support_flow(context).start(update, context)
+        elif data == "support:end":        await _support_flow(context).end(update, context)
         elif data == "qty_display":        pass
 
         elif data.startswith("product_"):
@@ -4465,7 +4530,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await delete_flow_messages(context, context.bot, update.effective_chat.id, update.effective_user.id, ["error_message"])
             err_msg = await q.message.reply_text(
-                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi @berryrc"
+                "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot"
             )
             track_flow_message(context, err_msg, "error_message")
         except Exception:
@@ -4684,7 +4749,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{details}\n\n"
                 f"⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
                 f"📌 Tempoh: {duration}\n"
-                f"💬 Ada masalah? Hubungi: @berryrc"
+                f"💬 Ada masalah? Tekan 💬 Support dalam bot"
             ),
         )
         await update.message.reply_text(f"✅ Maklumat akaun berjaya dihantar kepada pembeli (Order: {order_id})")
@@ -4696,6 +4761,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as exc:
             log.warning(f"[UNSENT] mark sent failed: {_safe_error(exc)}")
         log.info(f"Account details sent for order {order_id} → buyer {buyer_id}")
+        await _send_post_order_support(context, int(buyer_id))
     except Exception as exc:
         log.warning(f"Send account details error: {_safe_error(exc)}")
         await update.message.reply_text(f"⚠️ Gagal hantar kepada pembeli: {_safe_error(exc)}")
@@ -6276,10 +6342,21 @@ async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TY
 
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
+    if TENANT_ID and SUPABASE_SERVICE_KEY and ADMIN_ID:
+        app.bot_data["berry_support_flow"] = AnonymousSupport(
+            SupportStore(sb_admin_get, sb_admin_upsert, sb_admin_patch, TENANT_ID),
+            ADMIN_ID,
+        )
+    else:
+        log.warning("[SUPPORT] disabled: missing tenant, service key or admin")
     # Runs before all private command/text/photo/document handlers.
     # /start handles its own gate to preserve deep-link destinations.
     app.add_handler(
         MessageHandler(filters.ChatType.PRIVATE, _force_join_message_guard),
+        group=-2,
+    )
+    app.add_handler(
+        MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, _support_message_router),
         group=-1,
     )
     app.add_handler(CommandHandler("ping",        cmd_ping)); log.info("[HANDLERS] ping registered")
@@ -6335,6 +6412,9 @@ def build_app() -> Application:
 
     app.add_handler(CommandHandler("quotefx", owner_quote_fx))
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
+    app.add_handler(CommandHandler("support", cmd_support_menu))
+    app.add_handler(CommandHandler("reply", cmd_support_reply))
+    app.add_handler(CommandHandler("close", cmd_support_close))
     if _get_env("BERRY_TURNITIN_MENU_ENABLED") == "true":
         try:
             from berry_turnitin_flow import TurnitinBackend, TurnitinFlow
