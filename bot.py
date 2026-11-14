@@ -2301,7 +2301,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         rows = await _run_supabase("topup.photo.lookup", lambda: sb_admin_get(
             "orders", f"select=*&id=eq.{order_id}&user_id=eq.{user.id}&limit=1"), attempts=1)
-        if not rows or not _topup_plan_for_order(rows[0]):
+        if not rows or not _topup_plan_for_order(rows[0]) or rows[0].get("status") != "pending":
             await update.message.reply_text("⚠️ Order top-up tidak sah.")
             return
         await _store_topup_receipt(update, context, order_id, file_id)
@@ -2792,7 +2792,7 @@ async def _reject_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
             raise RuntimeError("Topup disabled")
         def reject_topup():
             updated = sb_admin_patch("orders",
-                f"id=eq.{order_id}&status=eq.waiting_approval",
+                f"id=eq.{order_id}&status=eq.waiting_approval&receipt_file_id=not.is.null",
                 {"status": "rejected"})
             if not updated:
                 raise RuntimeError("Order not awaiting approval")
@@ -2827,6 +2827,26 @@ async def approve_order(update: Update, context: ContextTypes.DEFAULT_TYPE, orde
             caption="⛔ Bukan admin.", reply_markup=None)
         return
 
+    if str(order_id).startswith("BT"):
+        # A failed atomic RPC must NOT remove the admin's retry controls.
+        # The RPC itself is idempotent, including simultaneous double-approves.
+        try:
+            await _approve_order_core(context, order_id)
+        except Exception as exc:
+            log.warning("[TOPUP] approval failed: %s", type(exc).__name__)
+            await update.callback_query.message.reply_text(
+                "⚠️ Top Up belum diluluskan. Semak transaksi dan cuba semula "
+                "menggunakan butang Approve pada resit asal.")
+            return
+        try:
+            original = update.callback_query.message.caption or ""
+            await update.callback_query.edit_message_caption(
+                caption=original + "\n\n✅ APPROVED (Berry Credits credited)",
+                reply_markup=None)
+        except Exception as exc:
+            log.warning("[TOPUP] approve UI update failed: %s", type(exc).__name__)
+        return
+
     # ── Instant loading feedback ───────────────────────────────────────────────
     try:
         await update.callback_query.edit_message_caption(
@@ -2848,6 +2868,24 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     if update.effective_user.id != ADMIN_ID:
         await update.callback_query.edit_message_caption(
             caption="⛔ Bukan admin.", reply_markup=None)
+        return
+
+    if str(order_id).startswith("BT"):
+        try:
+            await _reject_order_core(context, order_id)
+        except Exception as exc:
+            log.warning("[TOPUP] rejection failed: %s", type(exc).__name__)
+            await update.callback_query.message.reply_text(
+                "⚠️ Top Up belum ditolak. Sila semak status dan "
+                "cuba semula pada resit asal.")
+            return
+        try:
+            original = update.callback_query.message.caption or ""
+            await update.callback_query.edit_message_caption(
+                caption=original + "\n\n❌ REJECTED (No credits granted)",
+                reply_markup=None)
+        except Exception as exc:
+            log.warning("[TOPUP] reject UI update failed: %s", type(exc).__name__)
         return
 
     # ── Instant loading feedback ───────────────────────────────────────────────
@@ -3255,8 +3293,9 @@ async def show_ai_studio_section(
             "⚡ Creator · RM10 — 12,500 credits\n"
             "💎 Pro · RM20 — 25,000 credits\n"
             "👑 Studio · RM50 — 62,500 credits\n\n"
-            "🔒 Pembayaran belum dibuka sehingga kredit automatik "
-            "selepas admin approve siap diuji."
+            + ("✅ QR payment + admin approval. Kredit masuk selepas "
+             "pengesahan admin." if _topup_enabled() else
+             "🔒 Pembayaran masih OFF sehingga checkout selamat diuji.")
         )
         buttons = [
             [InlineKeyboardButton("🍓 Starter · RM5", callback_data="ai_topup_plan:starter")],
@@ -3421,6 +3460,14 @@ async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if not plan:
         return
     name, amount, credits = plan
+    checkout_info = (
+        "✅ Bayar menggunakan QR Browse Shop. "
+        "Upload resit, kemudian admin mesti SAHKAN transaksi sebelum "
+        "Berry Credits dikreditkan."
+        if _topup_enabled() else
+        "🚧 Checkout belum diaktifkan. Tiada caj dibuat. "
+        "Butang Confirm hanya akan berfungsi selepas ujian keselamatan selesai."
+    )
     await _safe_edit_or_send(
         update.callback_query,
         f"🧾 PENGESAHAN TOP UP\n━━━━━━━━━━━━━━━━━━\n\n"
@@ -3428,9 +3475,7 @@ async def show_ai_topup_plan(update: Update, context: ContextTypes.DEFAULT_TYPE,
         f"Jumlah: RM{amount:.2f}\n"
         f"Berry Credits: {credits:,}\n"
         f"Kadar: RM1 = 1,250 credits\n\n"
-        "🚧 Checkout belum diaktifkan. Tiada caj dibuat. "
-        "Selepas integrasi pembayaran dan auto-credit diuji, "
-        "butang Confirm akan memaparkan QR yang sama seperti Browse Shop.",
+        + checkout_info,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Confirm & Pay", callback_data=f"ai_topup_checkout:{plan_key}")],
             [InlineKeyboardButton("⬅️ Pilih Plan Lain", callback_data="ai_studio:topup")],
@@ -3460,6 +3505,13 @@ async def checkout_ai_topup(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if not _topup_enabled():
         await update.callback_query.message.reply_text(
             "🚧 Checkout belum diaktifkan. Sila cuba lagi selepas pengumuman rasmi.")
+        return
+    # Rollout defaults to admin-only; a separate explicit flag is required
+    # before any real customer can initiate a manual QR payment.
+    if (_get_env("BERRY_TOPUP_ADMIN_ONLY", "true") != "false"
+            and update.effective_user.id != ADMIN_ID):
+        await update.callback_query.message.reply_text(
+            "🔒 Top Up masih dalam ujian admin. Tiada bayaran diterima.")
         return
     plan = BERRY_TOPUP_PLANS.get(key)
     if not plan:
@@ -3522,7 +3574,7 @@ async def handle_topup_document(update: Update, context: ContextTypes.DEFAULT_TY
     if not _topup_plan_for_order(order) or order.get("status") != "pending":
         await update.message.reply_text("⚠️ Resit hanya boleh dihantar untuk top-up yang masih pending.")
         return
-    if doc.mime_type not in ("application/pdf", "image/jpeg", "image/png") or doc.file_size > 10*1024*1024:
+    if doc.mime_type not in ("application/pdf", "image/jpeg", "image/png") or (doc.file_size or 0) > 10*1024*1024:
         await update.message.reply_text("⚠️ Hantar resit PDF/JPG/PNG maksimum 10MB.")
         return
     await _store_topup_receipt(update, context, oid, doc.file_id, as_document=True)
