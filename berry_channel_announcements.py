@@ -8,22 +8,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from uuid import UUID
 
 import httpx
 
 LOG = logging.getLogger(__name__)
-BOT_USERNAME = "berryshopps_bot"
-ALLOWED_EVENTS = {"shop", "topup", "video"}
-LINKS = {
-    "shop": "https://t.me/berryshopps_bot?start=browse_shop",
-    "topup": "https://t.me/berryshopps_bot?start=ai_studio",
-    "video": "https://t.me/berryshopps_bot?start=ai_studio",
+ALLOWED_EVENTS = {"shop", "topup", "video", "turnitin"}
+START_PAYLOADS = {
+    "shop": "browse_shop",
+    "topup": "ai_studio",
+    "video": "ai_studio",
+    "turnitin": "turnitin",
 }
 BUTTONS = {
     "shop": "🛍 Browse Shop",
     "topup": "🎬 AI Studio",
     "video": "🎬 AI Studio",
+    "turnitin": "📑 Check Turnitin",
 }
 
 
@@ -31,21 +33,49 @@ class AnnouncementUnavailable(RuntimeError):
     pass
 
 
-def action_link(kind: str):
+def action_link(kind: str, bot_username: str):
     if kind not in ALLOWED_EVENTS:
         raise AnnouncementUnavailable("Unknown announcement event")
-    return BUTTONS[kind], LINKS[kind]
+    if not isinstance(bot_username, str):
+        raise AnnouncementUnavailable("Telegram bot username unavailable")
+    username = bot_username.lstrip("@")
+    if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]{4,31}", username):
+        raise AnnouncementUnavailable("Invalid Telegram bot username")
+    return BUTTONS[kind], f"https://t.me/{username}?start={START_PAYLOADS[kind]}"
 
 
-def channel_keyboard(kind: str):
+def channel_keyboard(kind: str, bot_username: str):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    label, url = action_link(kind)
+    label, url = action_link(kind, bot_username)
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, url=url)]])
 
 
-def button_payload(kind: str):
-    label, url = action_link(kind)
+def button_payload(kind: str, bot_username: str):
+    label, url = action_link(kind, bot_username)
     return {"inline_keyboard": [[{"text": label, "url": url}]]}
+
+
+def mask_buyer(username) -> str:
+    """Never publish an identifiable customer handle or Telegram ID."""
+    if not isinstance(username, str) or not username.strip():
+        return "Customer"
+    name = re.sub(r"[^a-zA-Z0-9_]", "", username.strip().lstrip("@"))
+    return name[:2] + "******" if len(name) > 2 else "Customer"
+
+
+def delivery_text(*, buyer, product, quantity=1, total=None) -> str:
+    """Single group format for delivered products, AI work and reports."""
+    product = re.sub(r"\s+", " ", str(product or "Berry Store")).strip()[:120]
+    qty = quantity if type(quantity) is int and 1 <= quantity <= 100000 else 1
+    sold = total if type(total) is int and 0 <= total <= 1000000000 else "?"
+    return ("🍓 BERRY STORE | AUTO BOT\n\n"
+            "🎉 New successful order delivered!\n\n"
+            f"👤 Buyer: {mask_buyer(buyer)}\n"
+            f"📦 Product: {product}\n"
+            f"📋 Quantity: {qty}\n"
+            "━━━━━━━━━━━━━\n"
+            f"🔥 Total sold: {sold} units\n\n"
+            "Nak order juga? Tekan button di bawah 👇")
 
 
 class AnnouncementLedger:
@@ -111,6 +141,11 @@ async def announce_async(bot, ledger, *, kind, event_id, text, channel_ids):
     """For Telegram bot.py shop / manual-approved top-up announcements."""
     if not isinstance(text, str) or not text or len(text) > 4000:
         raise AnnouncementUnavailable("Invalid announcement text")
+    username = getattr(bot, "username", None)
+    if not username:
+        me = await bot.get_me()
+        username = getattr(me, "username", None)
+    keyboard = channel_keyboard(kind, username)
     for channel_id in channel_ids:
         try:
             claimed = await asyncio.to_thread(ledger.claim, kind, event_id, channel_id)
@@ -118,7 +153,7 @@ async def announce_async(bot, ledger, *, kind, event_id, text, channel_ids):
                 continue
             try:
                 message = await bot.send_message(
-                    chat_id=channel_id, text=text, reply_markup=channel_keyboard(kind))
+                    chat_id=channel_id, text=text, reply_markup=keyboard)
             except Exception as exc:
                 LOG.warning("[CHANNEL] Telegram send uncertain for %s: %s; no retry",
                             kind, type(exc).__name__)
@@ -146,6 +181,14 @@ def announce_video_delivered_sync(ledger, *, token, job_id, channel_ids):
             "✅ AI Video successfully generated and delivered!\n"
             "🍓 Discover what you can create at Berry Store.")
     with httpx.Client(timeout=12, follow_redirects=False) as client:
+        try:
+            identity = client.get(f"https://api.telegram.org/bot{token}/getMe")
+            identity.raise_for_status()
+            username = identity.json()["result"]["username"]
+            keyboard = button_payload("video", username)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AnnouncementUnavailable):
+            LOG.warning("[CHANNEL] Cannot resolve delivery bot username; skipping")
+            return
         for channel_id in channel_ids:
             try:
                 if not ledger.claim("video", job_id, channel_id):
@@ -154,7 +197,7 @@ def announce_video_delivered_sync(ledger, *, token, job_id, channel_ids):
                     r = client.post(
                         f"https://api.telegram.org/bot{token}/sendMessage",
                         json={"chat_id": channel_id, "text": text,
-                              "reply_markup": button_payload("video")},
+                              "reply_markup": keyboard},
                         timeout=12, follow_redirects=False)
                     r.raise_for_status()
                     data = r.json()

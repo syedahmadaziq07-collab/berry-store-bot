@@ -98,12 +98,13 @@ class TurnitinBackend:
 
 class TurnitinFlow:
     def __init__(self, backend, admin_id: int, *, checkout_enabled=False,
-                 admin_only=True, payment_page=None):
+                 admin_only=True, payment_page=None, on_delivered=None):
         self.backend = backend
         self.admin_id = int(admin_id)
         self.checkout_enabled = checkout_enabled is True
         self.admin_only = admin_only is True
         self.payment_page = payment_page
+        self.on_delivered = on_delivered
 
     def allowed(self, user_id: int):
         return bool(self.checkout_enabled and self.admin_id > 0
@@ -475,6 +476,12 @@ class TurnitinFlow:
                     text=progress_message(oid, 100))
             except Exception:
                 pass
+        if self.on_delivered is not None:
+            try:
+                await self.on_delivered(context, oid, target)
+            except Exception as exc:
+                LOG.warning("[TURNITIN] optional announcement unavailable: %s",
+                            type(exc).__name__)
         await update.effective_message.reply_text(
             f"✅ Report {oid} berjaya dihantar kepada pelanggan. Status DELIVERED.")
 

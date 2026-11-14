@@ -11,6 +11,7 @@ BOT = (ROOT / "bot.py").read_text(encoding="utf-8")
 ANN = (ROOT / "berry_channel_announcements.py").read_text(encoding="utf-8")
 FLOW = (ROOT / "telegram_video_flow.py").read_text(encoding="utf-8")
 SQL = (ROOT / "docs/sql/berry_channel_announcements.sql").read_text(encoding="utf-8")
+TURNITIN_SQL = (ROOT / "docs/sql/berry_turnitin_delivered_announcements.sql").read_text(encoding="utf-8")
 
 
 class ChannelAnnouncementTests(unittest.TestCase):
@@ -19,8 +20,21 @@ class ChannelAnnouncementTests(unittest.TestCase):
             ast.parse(value)
 
     def test_event_specific_telegram_buttons(self):
-        self.assertIn("https://t.me/berryshopps_bot?start=browse_shop", ANN)
-        self.assertIn("https://t.me/berryshopps_bot?start=ai_studio", ANN)
+        from berry_channel_announcements import (
+            AnnouncementUnavailable, action_link, delivery_text, mask_buyer)
+        self.assertEqual(action_link("shop", "berrystorrel"),
+                         ("🛍 Browse Shop", "https://t.me/berrystorrel?start=browse_shop"))
+        self.assertEqual(action_link("topup", "@berrystorrel")[1],
+                         "https://t.me/berrystorrel?start=ai_studio")
+        self.assertEqual(action_link("video", "berrystorrel")[1],
+                         "https://t.me/berrystorrel?start=ai_studio")
+        self.assertEqual(action_link("turnitin", "berrystorrel"),
+                         ("📑 Check Turnitin", "https://t.me/berrystorrel?start=turnitin"))
+        self.assertEqual(mask_buyer("MiLongName"), "Mi******")
+        self.assertNotIn("MiLongName", delivery_text(buyer="MiLongName", product="Turnitin Similarity", total=218))
+        self.assertIn("218 units", delivery_text(buyer="MiLongName", product="Turnitin Similarity", total=218))
+        with self.assertRaises(AnnouncementUnavailable):
+            action_link("turnitin", "not a username")
         self.assertIn('"shop": "🛍 Browse Shop"', ANN)
         self.assertIn('"topup": "🎬 AI Studio"', ANN)
         self.assertIn('"video": "🎬 AI Studio"', ANN)
@@ -30,6 +44,8 @@ class ChannelAnnouncementTests(unittest.TestCase):
         self.assertIn('await show_shop(update, context)', BOT)
         self.assertIn('elif start_payload == "ai_studio":', BOT)
         self.assertIn('await show_ai_video(update, context)', BOT)
+        self.assertIn('elif start_payload == "turnitin":', BOT)
+        self.assertIn('await _turnitin_callback(update, context, "turnitin")', BOT)
         self.assertIn("else update.message.reply_text", BOT)
         self.assertIn("AI Studio belum dibuka kepada pelanggan", BOT)
 
@@ -59,6 +75,16 @@ class ChannelAnnouncementTests(unittest.TestCase):
         self.assertIn("service_role", SQL)
         self.assertNotIn("DROP TABLE", SQL.upper())
 
+    def test_turnitin_only_claims_after_confirmed_report_delivery(self):
+        self.assertIn("CHECK (event_type IN ('shop','topup','video','turnitin'))", TURNITIN_SQL)
+        self.assertIn("j.state='delivered' AND j.report_file_id IS NOT NULL", TURNITIN_SQL)
+        self.assertIn("j.delivered_at IS NOT NULL AND o.status='completed'", TURNITIN_SQL)
+        self.assertIn("ON CONFLICT DO NOTHING", TURNITIN_SQL)
+        self.assertIn("SECURITY INVOKER", TURNITIN_SQL)
+        self.assertNotIn("DROP TABLE", TURNITIN_SQL.upper())
+        self.assertIn('on_delivered=_announce_turnitin_delivered', BOT)
+        self.assertIn('"turnitin", order_id, text', BOT)
+
     def test_video_notification_only_when_delivered(self):
         self.assertIn("if job and job.get('state') == 'delivered' and self.on_delivered:", FLOW)
         self.assertIn("self.on_delivered(ticket_id)", FLOW)
@@ -69,7 +95,7 @@ class ChannelAnnouncementTests(unittest.TestCase):
         fn = next(n for n in ast.parse(ANN).body
                   if isinstance(n, ast.AsyncFunctionDef) and n.name == "announce_async")
         scope = {"asyncio": asyncio, "LOG": logging.getLogger("channel-tests"),
-                 "channel_keyboard": lambda kind: {"kind": kind},
+                 "channel_keyboard": lambda kind, username: {"kind": kind, "username": username},
                  "AnnouncementUnavailable": ValueError}
         exec(compile(ast.Module(body=[fn], type_ignores=[]), "<channel>", "exec"), scope)
 
@@ -90,6 +116,7 @@ class ChannelAnnouncementTests(unittest.TestCase):
         class Bot:
             def __init__(self):
                 self.sent = []
+                self.username = "berrystorrel"
             async def send_message(self, *, chat_id, text, reply_markup):
                 self.sent.append((chat_id, text, reply_markup))
                 return SimpleNamespace(message_id=10 + len(self.sent))
@@ -109,7 +136,7 @@ class ChannelAnnouncementTests(unittest.TestCase):
         fn = next(n for n in ast.parse(ANN).body
                   if isinstance(n, ast.AsyncFunctionDef) and n.name == "announce_async")
         scope = {"asyncio": asyncio, "LOG": logging.getLogger("channel-tests"),
-                 "channel_keyboard": lambda kind: None,
+                 "channel_keyboard": lambda kind, username: None,
                  "AnnouncementUnavailable": ValueError}
         exec(compile(ast.Module(body=[fn], type_ignores=[]), "<channel>", "exec"), scope)
         claimed = set()
@@ -123,6 +150,7 @@ class ChannelAnnouncementTests(unittest.TestCase):
             def mark_sent(self, *args):
                 self.fail("not reached")
         class Bot:
+            username = "berrystorrel"
             async def send_message(self, **kwargs):
                 attempts.append(kwargs)
                 raise RuntimeError("timeout")
