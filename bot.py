@@ -1602,7 +1602,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log.error(f"[SHOP] cache fallback age_s={age}: {_safe_error(exc)}", exc_info=True)
         else:
             log.error(f"[SHOP] no cache: {_safe_error(exc)}", exc_info=True)
-            msg = "⚠️ Gagal muatkan produk. Sila cuba lagi atau hubungi 💬 Support dalam bot"
+            msg = "⚠️ Gagal muatkan produk. Sila cuba lagi atau tekan 💬 Support dalam bot"
             if update.callback_query:
                 await update.callback_query.edit_message_text(msg, reply_markup=back_home())
             else:
@@ -1970,14 +1970,14 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             context.user_data.pop(lock_user, None)
             log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
             await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-            err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi 💬 Support dalam bot", reply_markup=back_shop())
+            err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
             track_flow_message(context, err_msg, "error_message")
             return
 
     if not p:
         context.user_data.pop(lock_user, None)
         await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi 💬 Support dalam bot", reply_markup=back_shop())
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
         track_flow_message(context, err_msg, "error_message")
         return
 
@@ -2093,7 +2093,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         context.user_data.pop(lock_user, None)
         log.warning(f"Supabase create_order insert: {_safe_error(exc)}")
         await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi 💬 Support dalam bot", reply_markup=back_shop())
+        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
         track_flow_message(context, err_msg, "error_message")
         return
 
@@ -2791,7 +2791,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                         "✅ Pembayaran anda telah disahkan!\n\n"
                         "Akaun akan dihantar secepat mungkin 🚀\n"
                         "(biasanya dalam masa 1 jam)\n\n"
-                        "Ada masalah? DM admin: 💬 Support dalam bot 🙌"
+                        "Ada masalah? Tekan 💬 Support dalam bot 🙌"
                     ),
                 )
             except Exception as exc:
@@ -2803,7 +2803,7 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
                 await context.bot.send_message(
                     chat_id=order["user_id"],
                     text=(
-                        "📋 Untuk slot ini, sila PM admin 💬 Support dalam bot dengan maklumat berikut:\n\n"
+                        "📋 Untuk slot ini, sila hantar maklumat berikut melalui 💬 Support dalam bot:\n\n"
                         "✦ 𝗣𝗥𝗜𝗩𝗔𝗧𝗘 𝗦𝗟𝗢𝗧 𝗣𝗥𝗢𝗙𝗜𝗟𝗘 𝗢𝗡𝗟𝗬 ✦\n"
                         "┆𑣲 name : \n"
                         "┆𑣲 pin 4 digit : \n"
@@ -3123,7 +3123,7 @@ async def show_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.warning(f"show_referral error: {_safe_error(exc)}")
         try:
             await update.callback_query.edit_message_text(
-                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi 💬 Support dalam bot",
+                "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot",
                 reply_markup=back_home())
         except Exception:
             pass
@@ -4537,7 +4537,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await delete_flow_messages(context, context.bot, update.effective_chat.id, update.effective_user.id, ["error_message"])
             err_msg = await q.message.reply_text(
-                "⚠️ Ralat berlaku. Sila cuba lagi atau hubungi 💬 Support dalam bot"
+                "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot"
             )
             track_flow_message(context, err_msg, "error_message")
         except Exception:
@@ -4756,7 +4756,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{details}\n\n"
                 f"⚠️ Simpan maklumat ini. Jangan kongsi dengan sesiapa.\n"
                 f"📌 Tempoh: {duration}\n"
-                f"💬 Ada masalah? Hubungi: 💬 Support dalam bot"
+                f"💬 Ada masalah? Tekan 💬 Support dalam bot"
             ),
         )
         await update.message.reply_text(f"✅ Maklumat akaun berjaya dihantar kepada pembeli (Order: {order_id})")
