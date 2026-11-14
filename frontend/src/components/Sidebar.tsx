@@ -10,7 +10,7 @@ import {
   Wallet,
   Bot,
   Send,
-  Gift,
+  FileText,
   Activity,
   LogOut,
   ChevronLeft,
@@ -30,6 +30,7 @@ export type PageId =
   | 'bot-settings'
   | 'broadcast'
   | 'referrals'
+  | 'turnitin'
   | 'monitoring';
 
 interface SidebarProps {
@@ -62,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'wallets' as PageId, label: 'AI Wallets & Ledger', icon: Wallet },
     { id: 'bot-settings' as PageId, label: 'Bot Control Center', icon: Bot, section: 'TELEGRAM' },
     { id: 'broadcast' as PageId, label: 'Broadcast Campaign', icon: Send },
-    { id: 'referrals' as PageId, label: 'Referrals & Vouchers', icon: Gift },
+    { id: 'turnitin' as PageId, label: 'Turnitin Services', icon: FileText },
     { id: 'monitoring' as PageId, label: 'System Monitoring', icon: Activity, section: 'SYSTEM' },
   ];
 

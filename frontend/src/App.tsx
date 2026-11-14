@@ -13,7 +13,7 @@ import { AIStudioManagement } from './components/AIStudioManagement';
 import { WalletManagement } from './components/WalletManagement';
 import { TelegramBotControl } from './components/TelegramBotControl';
 import { BroadcastMarketing } from './components/BroadcastMarketing';
-import { ReferralSystem } from './components/ReferralSystem';
+import { TurnitinManagement } from './components/TurnitinManagement';
 import { SystemMonitoring } from './components/SystemMonitoring';
 import { RenderIntegrationModal } from './components/RenderIntegrationModal';
 import {
@@ -581,12 +581,8 @@ export default function App() {
             />
           )}
 
-          {currentPage === 'referrals' && pageReady && (
-            <ReferralSystem
-              customers={customers}
-              referralRewardRM={botSettings.referral_reward_rm || ''}
-              onUpdateReward={handleUpdateReward}
-            />
+          {(currentPage === 'turnitin' || currentPage === 'referrals') && pageReady && (
+            <TurnitinManagement canEdit={Boolean(systemHealth?.writesEnabled)} />
           )}
 
           {currentPage === 'monitoring' && pageReady && (
