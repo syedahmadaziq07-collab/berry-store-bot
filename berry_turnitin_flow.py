@@ -198,6 +198,16 @@ class TurnitinFlow:
         await self.payment_page(context, update.effective_chat.id, user.id,
             {"id":oid,"status":"pending","amount":out["amount"]},oid)
 
+    async def cancel(self, update, context, oid: str):
+        if not self.private(update): return
+        try:
+            out=await self.call("cancel",p_user=update.effective_user.id,p_order_id=oid)
+        except TurnitinError:
+            await self.respond(update,
+                "⚠️ Order tidak boleh dibatalkan setelah resit dihantar atau pembayaran disahkan.")
+            return
+        await self.respond(update,f"✅ Turnitin order {oid} dibatalkan. Tiada stock ditolak.")
+
     async def receipt(self, update, context, oid: str, file_id: str, *, as_document=False):
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         if not self.private(update) or not ORDER_RE.fullmatch(str(oid)):
