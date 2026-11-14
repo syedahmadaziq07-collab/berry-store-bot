@@ -5901,8 +5901,25 @@ def _install_video_flow(app):
             tenant_id=TENANT_ID or ""), allow_external=False, budget_id=None,
             verified_costs={}, verified_until=None, submit=None, poll=None,
             deliver=None)
+        on_delivered = None
+        if _channel_announcements_enabled():
+            def on_delivered(job_id):
+                # Inert until the production video worker is genuinely enabled
+                # and a durable 'delivered' job exists. Never announce previews.
+                from berry_channel_announcements import (
+                    AnnouncementLedger, announce_video_delivered_sync)
+                ledger = AnnouncementLedger(
+                    SUPABASE_URL, SUPABASE_SERVICE_KEY, TENANT_ID)
+                try:
+                    announce_video_delivered_sync(
+                        ledger, token=BOT_TOKEN, job_id=job_id,
+                        channel_ids=(TESTIMONIALS_CHANNEL_ID,
+                                     TESTIMONIALS_CHANNEL_ID_2))
+                finally:
+                    ledger.close()
         flow = TelegramVideoFlow(worker, offer_builder,
-                                  test_user_id=int(raw), enabled=True)
+                                  test_user_id=int(raw), enabled=True,
+                                  on_delivered=on_delivered)
         app.bot_data["berry_video_flow"] = flow
         log.info("[AI_VIDEO] controlled video flow installed (gated; "
                  "no external actions enabled)")
