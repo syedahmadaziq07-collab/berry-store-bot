@@ -54,11 +54,11 @@ GRANT USAGE ON SCHEMA berry_private TO service_role;
 -- Seed only the named Berry Store tenant, and never assign fictitious price or stock.
 INSERT INTO berry_private.turnitin_plans(tenant_id,code,title,description)
 SELECT t.id,'similarity','Similarity Check','Semakan kesamaan dokumen secara manual oleh admin. Hasil bergantung pada akses perkhidmatan yang sah.'
-FROM public.tenants t WHERE lower(trim(both '@' from t.bot_username))='berryshopps_bot'
+FROM public.tenants t WHERE lower(trim(both '@' from coalesce(to_jsonb(t)->>'bot_username','')))='berryshopps_bot'
 ON CONFLICT DO NOTHING;
 INSERT INTO berry_private.turnitin_plans(tenant_id,code,title,description)
 SELECT t.id,'ai','AI Writing Check','Semakan indikator penulisan AI secara manual oleh admin. Skor pengesan AI bukan bukti muktamad.'
-FROM public.tenants t WHERE lower(trim(both '@' from t.bot_username))='berryshopps_bot'
+FROM public.tenants t WHERE lower(trim(both '@' from coalesce(to_jsonb(t)->>'bot_username','')))='berryshopps_bot'
 ON CONFLICT DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_catalog(p_tenant uuid)
