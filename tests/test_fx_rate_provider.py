@@ -20,7 +20,7 @@ def client(payload=None, status=200, timeout=False):
 
 
 TODAY = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-GOOD = {"amount": 1.0, "base": "USD", "date": TODAY, "rates": {"MYR": 4.42}}
+GOOD = {"date": TODAY, "base": "USD", "quote": "MYR", "rate": 4.42}
 
 
 class FXProviderTests(unittest.TestCase):
@@ -31,19 +31,32 @@ class FXProviderTests(unittest.TestCase):
         self.assertEqual(rate.myr_per_usd, Decimal("4.42"))
         self.assertLessEqual(rate.timestamp, datetime.now(timezone.utc).timestamp())
 
+    def test_real_v2_contract_uses_flat_quote_and_rate(self):
+        rate = FXRateProvider(client=client({
+            "date": TODAY, "base": "USD", "quote": "MYR", "rate": 4.42
+        })).get_rate()
+        self.assertEqual(rate.myr_per_usd, Decimal("4.42"))
+
+    def test_reference_date_is_not_invented_publication_time(self):
+        # API supplies date only: midnight UTC is a conservative age anchor.
+        expected = int(datetime.strptime(TODAY, "%Y-%m-%d").replace(
+            tzinfo=timezone.utc).timestamp())
+        actual = FXRateProvider(client=client(GOOD)).get_rate().timestamp
+        self.assertEqual(actual, expected)
+
     def test_stale_rate_fails_closed(self):
         old = (datetime.now(timezone.utc).replace(day=1)
                - __import__("datetime").timedelta(days=10)).strftime("%Y-%m-%d")
-        p = FXRateProvider(client=client({"base": "USD", "date": old,
-                                          "rates": {"MYR": 4.4}}))
+        p = FXRateProvider(client=client({"base": "USD", "quote": "MYR",
+                                          "date": old, "rate": 4.4}))
         with self.assertRaises(FXRateUnavailable):
             p.get_rate()
 
     def test_future_timestamp_rejected(self):
         future = (datetime.now(timezone.utc)
                   + __import__("datetime").timedelta(days=2)).strftime("%Y-%m-%d")
-        p = FXRateProvider(client=client({"base": "USD", "date": future,
-                                          "rates": {"MYR": 4.4}}))
+        p = FXRateProvider(client=client({"base": "USD", "quote": "MYR",
+                                          "date": future, "rate": 4.4}))
         with self.assertRaises(FXRateUnavailable):
             p.get_rate()
 
@@ -53,11 +66,18 @@ class FXProviderTests(unittest.TestCase):
             p.get_rate()
 
     def test_invalid_schema_rejected(self):
-        for bad in (None, {}, {"base": "EUR", "date": TODAY, "rates": {"MYR": 4}},
-                    {"base": "USD", "date": TODAY, "rates": {"SGD": 1}},
-                    {"base": "USD", "date": "not-a-date", "rates": {"MYR": 4}},
-                    {"base": "USD", "date": TODAY, "rates": {"MYR": "nan"}},
-                    {"base": "USD", "date": TODAY, "rates": {"MYR": 0}}):
+        for bad in (
+                None, {},
+                {"base": "EUR", "quote": "MYR", "date": TODAY, "rate": 4},
+                {"base": "USD", "quote": "SGD", "date": TODAY, "rate": 1},
+                {"base": "USD", "quote": "MYR", "date": "not-a-date", "rate": 4},
+                {"base": "USD", "quote": "MYR", "date": TODAY, "rate": "nan"},
+                {"base": "USD", "quote": "MYR", "date": TODAY, "rate": 0},
+                # The old /v1/latest shape must be rejected, not accepted.
+                {"amount": 1.0, "base": "USD", "date": TODAY,
+                 "rates": {"MYR": 4.42}},
+                {"base": "USD", "date": TODAY, "rate": 4.42},
+                {"base": "USD", "quote": "MYR", "date": TODAY}):
             with self.subTest(bad=bad):
                 p = FXRateProvider(client=client(bad))
                 with self.assertRaises(FXRateUnavailable):
@@ -73,8 +93,8 @@ class FXProviderTests(unittest.TestCase):
         # publication within 4 calendar days is fresh.
         friday = (datetime.now(timezone.utc)
                   - __import__("datetime").timedelta(days=2)).strftime("%Y-%m-%d")
-        p = FXRateProvider(client=client({"base": "USD", "date": friday,
-                                          "rates": {"MYR": 4.4}}))
+        p = FXRateProvider(client=client({"base": "USD", "quote": "MYR",
+                                          "date": friday, "rate": 4.4}))
         rate = p.get_rate()
         self.assertEqual(rate.myr_per_usd, Decimal("4.4"))
 
@@ -82,8 +102,8 @@ class FXProviderTests(unittest.TestCase):
         calls = []
         clock = {"t": datetime.now(timezone.utc).timestamp()}
         today = datetime.fromtimestamp(clock["t"], timezone.utc).strftime("%Y-%m-%d")
-        payload = {"amount": 1.0, "base": "USD", "date": today,
-                   "rates": {"MYR": 4.42}}
+        payload = {"base": "USD", "quote": "MYR", "date": today,
+                   "rate": 4.42}
         def handler(request):
             calls.append(request)
             return httpx.Response(200, json=payload)
