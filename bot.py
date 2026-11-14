@@ -5920,10 +5920,10 @@ async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             product = get_product("minimax_turbo_video")
             await _safe_edit_or_send(
                 update.callback_query,
-                "🎬 MiniMax Turbo Video — ADMIN PREVIEW\\n"
-                "━━━━━━━━━━━━━━━━━━\\n\\n"
-                f"{product.duration_seconds} saat • {product.resolution}\\n"
-                "Pilih nisbah aspek untuk semak langkah prompt.\\n\\n"
+                "🎬 MiniMax Turbo Video — ADMIN PREVIEW\n"
+                "━━━━━━━━━━━━━━━━━━\n\n"
+                f"{product.duration_seconds} saat • {product.resolution}\n"
+                "Pilih nisbah aspek untuk semak langkah prompt.\n\n"
                 "⚠️ Kos belum disahkan: harga, Berry Credits dan Quote ID "
                 "tidak akan dijana. Tiada caj.",
                 reply_markup=InlineKeyboardMarkup([
@@ -5936,8 +5936,8 @@ async def _ai_quote_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await _safe_edit_or_send(
                 update.callback_query,
-                "🎬 AI VIDEO QUOTATION\\n━━━━━━━━━━━━━━━━━━\\n\\n"
-                "🚧 Quotation AI belum tersedia.\\n🔒 Tiada caj dikenakan.")
+                "🎬 AI VIDEO QUOTATION\n━━━━━━━━━━━━━━━━━━\n\n"
+                "🚧 Quotation AI belum tersedia.\n🔒 Tiada caj dikenakan.")
         return
     await _safe_edit_or_send(
         update.callback_query, flow.product_menu_text(),
@@ -5972,9 +5972,9 @@ async def _ai_quote_prompt_text(update: Update, context: ContextTypes.DEFAULT_TY
                 "Sila mulakan preview semula.")
         else:
             await update.message.reply_text(
-                "✅ ADMIN PREVIEW PASS\\n"
-                f"MiniMax Turbo Video • {stage['aspect_ratio']}\\n"
-                f"Prompt diterima: {len(prompt)} aksara.\\n\\n"
+                "✅ ADMIN PREVIEW PASS\n"
+                f"MiniMax Turbo Video • {stage['aspect_ratio']}\n"
+                f"Prompt diterima: {len(prompt)} aksara.\n\n"
                 "Harga/Quote ID belum dijana kerana kos belum disahkan. "
                 "Tiada quotation, debit atau paid generation.")
         return True
@@ -6043,16 +6043,16 @@ def build_app() -> Application:
             ref_date = datetime.fromtimestamp(
                 rate.timestamp, tz=timezone.utc).date().isoformat()
             await update.message.reply_text(
-                "[AI_QUOTE] automatic FX: PASS\\n"
-                f"USD/MYR reference: {rate.myr_per_usd}\\n"
-                f"Source: {rate.source}\\n"
-                f"Reference date: {ref_date}\\n"
-                f"Buffer: {rate.buffer_fraction}\\n\\n"
+                "[AI_QUOTE] automatic FX: PASS\n"
+                f"USD/MYR reference: {rate.myr_per_usd}\n"
+                f"Source: {rate.source}\n"
+                f"Reference date: {ref_date}\n"
+                f"Buffer: {rate.buffer_fraction}\n\n"
                 "Read-only check. Tiada quotation, debit atau paid generation.")
         except Exception as exc:
             log.warning("[AI_QUOTE] FX probe failed (%s)", type(exc).__name__)
             await update.message.reply_text(
-                "[AI_QUOTE] automatic FX: FAIL (unavailable/invalid/stale).\\n"
+                "[AI_QUOTE] automatic FX: FAIL (unavailable/invalid/stale).\n"
                 "Semak sambungan Render dan log. Tiada caj dikenakan.")
 
     app.add_handler(CommandHandler("quotefx", owner_quote_fx))
