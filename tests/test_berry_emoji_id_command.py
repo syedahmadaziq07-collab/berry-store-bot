@@ -31,8 +31,8 @@ class EmojiIdCommandTests(unittest.TestCase):
                     "BERRY_EMOJI_WAVE_ID", "BERRY_ANIMATED_EMOJI_ENABLED"):
             self.assertIn(key, func)
         self.assertIn('("capcut", "✂️", "CAPCUT")', MENU)
-        self.assertIn("icon('FIRE', '🔥')", MENU)
-        self.assertIn("icon('WAVE', '👋')", MENU)
+        self.assertIn("icon('FIRE', '🔥', custom_ids)", MENU)
+        self.assertIn("icon('WAVE', '👋', custom_ids)", MENU)
 
 
 if __name__ == "__main__":
