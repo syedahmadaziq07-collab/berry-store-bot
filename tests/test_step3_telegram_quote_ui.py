@@ -22,7 +22,7 @@ class QuoteMenuUITests(unittest.TestCase):
     def _source():
         return (Path(__file__).resolve().parents[1] / "bot.py").read_text(encoding="utf-8-sig")
 
-    def _invoke(self, flow):
+    def _invoke(self, flow, *, preview=False):
         tree = ast.parse(self._source())
         fn = next(node for node in tree.body
                   if isinstance(node, ast.AsyncFunctionDef)
@@ -38,6 +38,7 @@ class QuoteMenuUITests(unittest.TestCase):
             "InlineKeyboardButton": _Button,
             "InlineKeyboardMarkup": _Markup,
             "_quote_flow": lambda context: flow,
+            "_quote_preview_owner": lambda update: preview,
             "_safe_edit_or_send": send,
         }
         exec(compile(ast.Module(body=[fn], type_ignores=[]), "bot.py", "exec"),
@@ -82,6 +83,57 @@ class QuoteMenuUITests(unittest.TestCase):
         result = self._invoke(None)
         self.assertIn("belum tersedia", result["text"])
         self.assertIsNone(result["markup"])
+
+    def test_owner_preview_reaches_ratio_without_financial_config(self):
+        result = self._invoke(None, preview=True)
+        self.assertIn("ADMIN PREVIEW", result["text"])
+        self.assertIn("belum", result["text"])
+        callbacks = [button.callback_data
+                     for row in result["markup"].inline_keyboard
+                     for button in row]
+        self.assertIn("ai_quote_ratio:16:9", callbacks)
+        self.assertIn("ai_quote_ratio:9:16", callbacks)
+
+    def test_admin_preview_prompt_never_invokes_pricing_or_provider(self):
+        source = self._source()
+        tree = ast.parse(source)
+        fn = next(node for node in tree.body
+                  if isinstance(node, ast.AsyncFunctionDef)
+                  and node.name == "_ai_quote_prompt_text")
+        replies = []
+
+        async def reply(text):
+            replies.append(text)
+
+        ns = {
+            "Update": object,
+            "ContextTypes": SimpleNamespace(DEFAULT_TYPE=object),
+            "_quote_preview_owner": lambda update: True,
+            # Deliberately no _quote_flow, store, pricing or fal imports.
+        }
+        exec(compile(ast.Module(body=[fn], type_ignores=[]), "bot.py", "exec"), ns)
+        context = SimpleNamespace(
+            user_data={"ai_quote_flow": {
+                "stage": "preview_prompt", "aspect_ratio": "9:16"}})
+        update = SimpleNamespace(message=SimpleNamespace(
+            text="A safe prompt", reply_text=reply))
+        consumed = asyncio.run(ns["_ai_quote_prompt_text"](update, context))
+        self.assertTrue(consumed)
+        self.assertNotIn("ai_quote_flow", context.user_data)
+        self.assertIn("ADMIN PREVIEW PASS", replies[0])
+        self.assertIn("9:16", replies[0])
+        self.assertIn("Tiada quotation", replies[0])
+
+    def test_fx_probe_is_owner_only_and_read_only(self):
+        source = self._source()
+        self.assertIn('CommandHandler("quotefx", owner_quote_fx)', source)
+        block = source.split("async def owner_quote_fx(", 1)[1].split(
+            'app.add_handler(CommandHandler("quotefx"', 1)[0]
+        self.assertIn('chat.type != "private"', block)
+        self.assertIn("user.id != admin_id", block)
+        self.assertIn("asyncio.to_thread(provider.get_rate)", block)
+        self.assertNotIn("wallet_debit", block)
+        self.assertNotIn("provider.submit", block)
 
     def test_minimax_is_only_under_text_to_video_not_input_menu(self):
         source = self._source()
