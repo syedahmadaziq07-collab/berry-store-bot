@@ -22,7 +22,7 @@ LOG = logging.getLogger(__name__)
 ORDER_RE = re.compile(r"^TT[0-9A-F]{24}$")
 MAX_RECEIPT = 10 * 1024 * 1024
 MAX_ASSIGNMENT = 20 * 1024 * 1024
-PROGRESS_STEP_SECONDS = 30
+PROGRESS_TARGET_SECONDS = 15 * 60
 PROGRESS_MAX_WAITING = 99
 ASSIGNMENT_MIMES = {
     "application/pdf",
@@ -37,7 +37,7 @@ class TurnitinError(RuntimeError):
 
 
 def elapsed_estimate(submitted_at: str | None, now: datetime | None = None) -> int:
-    """Monotonic-looking wait estimate, never a claim of actual scan progress."""
+    """Waiting-time estimate: reach 99% at 15 minutes, hold until delivery."""
     if not submitted_at:
         return 0
     when = datetime.fromisoformat(submitted_at.replace("Z", "+00:00"))
@@ -45,7 +45,8 @@ def elapsed_estimate(submitted_at: str | None, now: datetime | None = None) -> i
         when = when.replace(tzinfo=timezone.utc)
     now = now or datetime.now(timezone.utc)
     elapsed_seconds = max(0, int((now - when).total_seconds()))
-    return min(PROGRESS_MAX_WAITING, elapsed_seconds // PROGRESS_STEP_SECONDS)
+    return min(PROGRESS_MAX_WAITING,
+               elapsed_seconds * PROGRESS_MAX_WAITING // PROGRESS_TARGET_SECONDS)
 
 
 def progress_message(order_id: str, percent: int) -> str:
@@ -61,9 +62,7 @@ def progress_message(order_id: str, percent: int) -> str:
     return (f"📑 Assignment sedang diproses\n"
             f"Order: {order_id}\n\n"
             f"{bar} {value}%\n"
-            "⏳ Status anggaran: +1% setiap 30 saat\n"
-            "Ini timer menunggu, bukan progress scan Turnitin.\n"
-            "Akan kekal 99% sehingga report berjaya dihantar.")
+            "⏳ Anggaran menunggu — fail awak tengah kami uruskan 😊")
 
 
 class TurnitinBackend:
