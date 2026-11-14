@@ -3245,13 +3245,6 @@ async def show_ai_studio_section(
             [InlineKeyboardButton("📷 Gambar → Video", callback_data="ai_video_models:15")],
             [InlineKeyboardButton("✍️ Teks → Video", callback_data="ai_video_text")],
         ]
-        # Quotation is read-only; only display its entry when the owner
-        # explicitly enables the production quote gate.
-        if _get_env("BERRY_QUOTE_FLOW_ENABLED") == "true":
-            buttons.append([
-                InlineKeyboardButton("🧾 MiniMax 10s Quotation",
-                                     callback_data="ai_quote_menu")
-            ])
     elif section == "topup":
         text = (
             "💳 BERRY CREDITS — TOP UP\n"

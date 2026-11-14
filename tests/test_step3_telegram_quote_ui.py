@@ -62,10 +62,17 @@ class QuoteMenuUITests(unittest.TestCase):
         self.assertIn("belum tersedia", result["text"])
         self.assertIsNone(result["markup"])
 
-    def test_admin_video_menu_exposes_quote_entry_only_behind_gate(self):
+    def test_minimax_is_only_under_text_to_video_not_input_menu(self):
         source = self._source()
-        self.assertIn('if _get_env("BERRY_QUOTE_FLOW_ENABLED") == "true":', source)
-        self.assertIn('callback_data="ai_quote_menu"', source)
+        input_menu = source.split('if section == "video":', 1)[1].split(
+            'elif section == "topup":', 1)[0]
+        text_model_menu = source.split("async def show_ai_video_text(", 1)[1].split(
+            "async def show_ai_video_duration(", 1)[0]
+        self.assertNotIn('callback_data="ai_quote_menu"', input_menu)
+        self.assertNotIn("MiniMax 10s Quotation", input_menu)
+        self.assertIn('callback_data="ai_video_text"', input_menu)
+        self.assertIn('callback_data="ai_quote_menu"', text_model_menu)
+        self.assertIn('BERRY_QUOTE_FLOW_ENABLED', text_model_menu)
         self.assertIn('callback_data="ai_quote_ratio:16:9"', source)
         self.assertIn('callback_data="ai_quote_ratio:9:16"', source)
 
