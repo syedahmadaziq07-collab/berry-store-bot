@@ -56,8 +56,8 @@ class BerryVisualMenuTests(TestCase):
             self.assertIn("Canva &amp; &lt;Fake&gt;", line)
             self.assertTrue(line.startswith("🎨"))
             self.assertIn("qty.", line)
-            studio = menu.ai_studio_message(balance="RM<1&2>", wallet_status="on")
-            self.assertIn("RM&lt;1&amp;2&gt;", studio)
+            studio = menu.ai_studio_message(balance="<6&7> Berry Credits", wallet_status="on")
+            self.assertIn("&lt;6&amp;7&gt; Berry Credits", studio)
 
     def test_menu_integrations_and_button_controls_preserved(self):
         self.assertIn("welcome_message(", BOT)

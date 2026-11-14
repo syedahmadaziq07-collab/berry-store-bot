@@ -3286,8 +3286,19 @@ async def _ai_image_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE, i
     )
 
 
-async def _wallet_balance(user_id: int) -> str | None:
-    """Return verified formatted MYR balance, or None if wallet unavailable."""
+def _berry_credits_label(amount_myr: Decimal, *, signed: bool = False) -> str:
+    """Format an internal MYR amount as Berry Credits without exposing MYR."""
+    amount = Decimal(str(amount_myr))
+    if not amount.is_finite():
+        raise ValueError("Invalid wallet amount")
+    credits = amount * Decimal("1250")
+    label = f"{abs(credits):,.2f}".rstrip("0").rstrip(".")
+    sign = ("+" if credits > 0 else "-" if credits < 0 else "") if signed else ("-" if credits < 0 else "")
+    return f"{sign}{label} Berry Credits"
+
+
+async def _wallet_balance(user_id: int) -> Decimal | None:
+    """Return verified internal MYR balance, or None if wallet unavailable."""
     if not _wallet_enabled():
         return None
     try:
@@ -3304,7 +3315,7 @@ async def _wallet_balance(user_id: int) -> str | None:
         balance = Decimal(str(raw))
         if not balance.is_finite() or balance < 0:
             raise ValueError("Invalid stored wallet amount")
-        return f"RM{balance:,.2f}"
+        return balance
     except (ValueError, InvalidOperation, KeyError, TypeError, Exception) as exc:
         log.warning(f"[AI_WALLET] Cannot read balance: {_safe_error(exc)}")
         return None
@@ -3357,7 +3368,7 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data.pop("ai_video_flow", None)
     balance = await _wallet_balance(update.effective_user.id)
-    balance_label = balance if balance is not None else "Belum tersedia"
+    balance_label = _berry_credits_label(balance) if balance is not None else "Belum tersedia"
     wallet_status = (
         "💳 QR Top Up: Admin Pilot\n\n"
         if balance is not None
@@ -3442,18 +3453,8 @@ async def show_ai_studio_section(
         ]
     elif section == "wallet":
         balance = await _wallet_balance(update.effective_user.id)
-        # The underlying wallet RPC stores MYR, not credits.
-        # Convert only for display; do not change wallet accounting units.
-        # S01 fix: exact Decimal conversion preserves fractional credits
-        # (e.g. RM4.99 -> 6,237.5) instead of int-truncating to 6,237.
-        balance_label = balance if balance is not None else "Belum tersedia"
-        if balance is not None:
-            try:
-                credits = Decimal(balance.replace('RM','').replace(',','')) * 1250
-                credits_label = f"{credits:,.2f}".rstrip("0").rstrip(".")
-                balance_label = f"{credits_label} Berry Credits ({balance})"
-            except (ValueError, InvalidOperation):
-                pass
+        # Keep the Supabase ledger in MYR; show only Berry Credits in Telegram.
+        balance_label = _berry_credits_label(balance) if balance is not None else "Belum tersedia"
         status = (
             "✅ Baki dipaparkan dari Supabase.\n"
             "Top Up dan pembayaran masih belum aktif."
@@ -3483,10 +3484,9 @@ async def show_ai_studio_section(
                     amount = Decimal(str(item.get("amount", "0")))
                     if not amount.is_finite():
                         raise ValueError("Invalid amount")
-                    sign = "+" if amount > 0 else "-"
-                    amount_label = f"{sign}RM{abs(amount):,.2f}"
+                    amount_label = _berry_credits_label(amount, signed=True)
                 except (ValueError, InvalidOperation, TypeError):
-                    amount_label = "RM--"
+                    amount_label = "-- Berry Credits"
                 kind = labels.get(item.get("kind"), "Transaction")
                 timestamp = str(item.get("created_at") or "")[:10]
                 lines.append(f"• {timestamp} | {kind} | {amount_label}")

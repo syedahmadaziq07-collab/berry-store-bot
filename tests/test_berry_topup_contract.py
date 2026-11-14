@@ -37,7 +37,7 @@ class BerryTopupContractTests(unittest.TestCase):
     def test_credit_mapping(self):
         for credits in (6250, 12500, 25000, 62500):
             self.assertIn(str(credits), SQL)
-        self.assertIn('Decimal(balance.replace', CODE)
+        self.assertIn('credits = amount * Decimal("1250")', CODE)
 
 
 if __name__ == "__main__":

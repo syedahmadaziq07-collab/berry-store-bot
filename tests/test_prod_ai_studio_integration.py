@@ -13,10 +13,17 @@ from unittest.mock import Mock, patch
 BOT = Path("bot.py").read_text(encoding="utf-8")
 
 
-def credits_label(balance: str) -> str:
-    credits = Decimal(balance.replace('RM', '').replace(',', '')) * 1250
-    label = f"{credits:,.2f}".rstrip("0").rstrip(".")
-    return f"{label} Berry Credits ({balance})"
+def _load_credits_formatter():
+    """Run the real formatter in isolation; importing bot starts its runtime."""
+    tree = ast.parse(BOT)
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                    and node.name == "_berry_credits_label")
+    namespace = {"Decimal": Decimal}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "bot.py", "exec"), namespace)
+    return namespace["_berry_credits_label"]
+
+
+credits_label = _load_credits_formatter()
 
 
 class FeatureFlagTests(unittest.TestCase):
@@ -88,14 +95,38 @@ class StartupPendingUpdateTests(unittest.TestCase):
 
 class WalletDisplayTests(unittest.TestCase):
     def test_odd_cent_balance_preserves_fractional_credits(self):
-        self.assertEqual(credits_label("RM4.99"), "6,237.5 Berry Credits (RM4.99)")
+        self.assertEqual(credits_label(Decimal("4.99")), "6,237.5 Berry Credits")
 
     def test_whole_balance_clean(self):
-        self.assertEqual(credits_label("RM5.00"), "6,250 Berry Credits (RM5.00)")
+        self.assertEqual(credits_label(Decimal("5.00")), "6,250 Berry Credits")
+
+    def test_zero_and_transaction_signs(self):
+        self.assertEqual(credits_label(Decimal("0")), "0 Berry Credits")
+        self.assertEqual(credits_label(Decimal("5"), signed=True), "+6,250 Berry Credits")
+        self.assertEqual(credits_label(Decimal("-1.25"), signed=True), "-1,562.5 Berry Credits")
+
+    def test_nonfinite_money_rejected(self):
+        for invalid in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                credits_label(Decimal(invalid))
 
     def test_bot_source_uses_exact_decimal_conversion(self):
-        self.assertIn("Decimal(balance.replace('RM','').replace(',','')) * 1250", BOT)
-        self.assertNotIn("int(Decimal(balance.replace('RM','').replace(',',''))*1250)", BOT)
+        self.assertIn('credits = amount * Decimal("1250")', BOT)
+        self.assertIn('balance_label = _berry_credits_label(balance)', BOT)
+        self.assertNotIn('Berry Credits ({balance})', BOT)
+
+    def test_studio_wallet_and_history_balance_labels_never_show_myr(self):
+        studio = BOT.split('async def show_ai_video(', 1)[1].split('async def show_ai_studio_section(', 1)[0]
+        wallet = BOT.split('elif section == "wallet":', 1)[1].split('elif section == "account":', 1)[0]
+        self.assertIn('balance_label = _berry_credits_label(balance)', studio)
+        self.assertIn('balance_label = _berry_credits_label(balance)', wallet)
+        self.assertIn('amount_label = _berry_credits_label(amount, signed=True)', wallet)
+        self.assertNotIn('RM', wallet)
+
+    def test_video_confirm_balance_excludes_myr(self):
+        video_handlers = Path('telegram_video_handlers.py').read_text(encoding='utf-8')
+        self.assertIn("Baki: {ticket['balance_credits']} Berry Credits\\n", video_handlers)
+        self.assertNotIn("ticket['balance_myr']", video_handlers)
 
 
 class IdempotencyContractTests(unittest.TestCase):
