@@ -5810,35 +5810,33 @@ class _SimpleNamespace:
 
 
 def _quote_flow(context) -> object | None:
-    """STEP 3 quotation flow, gated behind BERRY_QUOTE_FLOW_ENABLED=true and
-    required FX/ops config. Returns None when disabled; never constructs a
-    provider or touches any wallet."""
+    """STEP 3 quotation flow, gated behind BERRY_QUOTE_FLOW_ENABLED=true.
+
+    FX is retrieved AUTOMATICALLY per quotation (frankfurter reference rate,
+    cache+TTL+fail-closed). A manual override remains available via env for
+    owner-verified deployments; auto mode is the default. The flow object is
+    cached, but it holds only the PROVIDER — every quotation re-fetches a
+    fresh FX snapshot, and created quotations freeze their own snapshot."""
     if _get_env("BERRY_QUOTE_FLOW_ENABLED") != "true":
         return None
     flow = context.application.bot_data.get("berry_quote_flow")
     if flow is not None:
         return flow
-    # Build lazily on first use: requires verified FX + operational config.
     import time as _time
     from decimal import Decimal as _D
     from ai_pricing_engine import FXRate as _FXRate, OperationalCosts as _OperationalCosts
     from ai_quotation_service import QuotationService
     from telegram_quote_flow import TelegramQuoteFlow
     from fal_pricing import VerifiedFalPricing
-    fx_raw = _get_env("BERRY_AI_FX_MYR_PER_USD")
-    try:
-        fx = _D(fx_raw)
-        if fx <= 0:
-            raise ValueError()
-    except Exception:
-        log.warning("[AI_QUOTE] FX rate missing/invalid; quote flow disabled")
-        return None
+
     ops_fee = _get_env("BERRY_AI_PAYMENT_FEE_FRACTION")
     ops_fixed = _get_env("BERRY_AI_FIXED_COST_MYR")
     try:
         ops_fee_d = _D(ops_fee)
         ops_fixed_d = _D(ops_fixed)
-        if ops_fee_d < 0 or ops_fixed_d < 0:
+        if (not ops_fee_d.is_finite() or not ops_fixed_d.is_finite()
+                or not (_D("0") <= ops_fee_d <= _D("0.9"))
+                or ops_fixed_d < 0):
             raise ValueError()
     except Exception:
         log.warning("[AI_QUOTE] operational costs missing; quote flow disabled")
@@ -5848,18 +5846,36 @@ def _quote_flow(context) -> object | None:
         # NO BOT_TOKEN fallback: the signing key must be a dedicated secret.
         log.warning("[AI_QUOTE] dedicated signing key required; quote flow disabled")
         return None
-    fx_ts_raw = _get_env("BERRY_AI_FX_SOURCE_TIMESTAMP")
-    fx_source = _get_env("BERRY_AI_FX_SOURCE")
+
+    # ── FX strategy ────────────────────────────────────────────────────────
     try:
-        fx_ts = int(fx_ts_raw)
-        if fx_ts <= 0:
-            raise ValueError()
-        if not fx_source:
+        buffer = _D(_get_env("BERRY_AI_FX_BUFFER") or "0.02")
+        if not buffer.is_finite() or not (_D("0") <= buffer < _D("0.5")):
             raise ValueError()
     except Exception:
-        log.warning("[AI_QUOTE] FX source/timestamp required (no app-time "
-                    "fallback); quote flow disabled")
+        log.warning("[AI_QUOTE] invalid FX buffer; quote flow disabled")
         return None
+    manual_rate = _get_env("BERRY_AI_FX_MYR_PER_USD")
+    manual_source = _get_env("BERRY_AI_FX_SOURCE")
+    manual_ts = _get_env("BERRY_AI_FX_SOURCE_TIMESTAMP")
+    if manual_rate and manual_source and manual_ts:
+        try:
+            fx_provider = (lambda: _FXRate(
+                myr_per_usd=_D(manual_rate), source=manual_source,
+                timestamp=int(manual_ts), buffer_fraction=buffer))
+        except Exception:
+            log.warning("[AI_QUOTE] manual FX invalid; using auto provider")
+            fx_provider = None
+    else:
+        fx_provider = None
+    if fx_provider is None:
+        from fx_rate_provider import FXRateProvider, FXRateUnavailable
+        try:
+            provider_obj = FXRateProvider(buffer_fraction=buffer)
+            fx_provider = provider_obj.get_rate
+        except FXRateUnavailable as exc:
+            log.warning("[AI_QUOTE] FX provider init failed: %s", str(exc))
+            return None
     from ai_quote_store import SupabaseQuoteStore as _SupabaseQuoteStore
     try:
         store = _SupabaseQuoteStore(SUPABASE_URL, SUPABASE_SERVICE_KEY, TENANT_ID)
@@ -5868,12 +5884,10 @@ def _quote_flow(context) -> object | None:
         return None
     svc = QuotationService(signing_key, store)
     pricing = VerifiedFalPricing(_get_env("FAL_KEY") or None)
-    fx_rate = _FXRate(myr_per_usd=fx, source=fx_source,
-                      timestamp=fx_ts,
-                      buffer_fraction=_D(_get_env("BERRY_AI_FX_BUFFER") or "0.02"))
     ops = _OperationalCosts(payment_gateway_fee_fraction=ops_fee_d,
                             fixed_operational_myr=ops_fixed_d)
-    flow = TelegramQuoteFlow(svc, pricing, fx_rate=fx_rate, operational=ops)
+    flow = TelegramQuoteFlow(svc, pricing, fx_provider=fx_provider,
+                             operational=ops)
     context.application.bot_data["berry_quote_flow"] = flow
     return flow
 
@@ -5939,6 +5953,20 @@ def build_app() -> Application:
     # Read-only owner auth check: no fal.ai model submission or wallet action.
     from berry_fal_authcheck import owner_fal_auth
     app.add_handler(CommandHandler("falauth", owner_fal_auth))
+    # Owner-only environment readiness report (presence-only, no secrets).
+    from ai_env_audit import audit_environment, format_report
+
+    async def owner_quote_env(update, context):
+        user = getattr(update, "effective_user", None)
+        chat = getattr(update, "effective_chat", None)
+        admin_id = int(_get_env("ADMIN_ID", "0") or "0")
+        if not admin_id or user is None or chat is None:
+            return
+        if user.id != admin_id or chat.id != admin_id or chat.type != "private":
+            return
+        await update.message.reply_text(format_report(audit_environment()))
+
+    app.add_handler(CommandHandler("quoteenv", owner_quote_env))
     app.add_handler(CommandHandler("start",  cmd_start)); log.info("[HANDLERS] start registered")
     # Single paid MiniMax diagnostic for this bot's ADMIN_ID; disabled by default.
     if _get_env("BERRY_MINIMAX_TRIAL_ENABLED").lower() == "true":

@@ -23,7 +23,10 @@ CREDITS_PER_MYR = 1250
 MIN_PROFIT_MYR = Decimal("1.00")
 FEE_FRACTION_MAX = Decimal("0.9")
 DEFAULT_PLANNING_SECONDS = 11  # 10s requested + whole-second allowance
-MAX_FX_AGE_SECONDS = 6 * 3600  # FX older than 6h is rejected as stale
+# FX freshness for a DAILY reference rate (frankfurter/central-bank): a
+# published rate stays usable for up to 4 calendar days (weekends + one
+# market holiday). The 6h intraday TTL was wrong for this rate type.
+MAX_FX_AGE_SECONDS = 4 * 86400
 
 
 @dataclass(frozen=True)

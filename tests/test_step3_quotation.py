@@ -83,8 +83,9 @@ class PricingEngineTests(unittest.TestCase):
                           fx_rate=FX, operational=OPS, now=NOW)
 
     def test_expired_fx_and_missing_source_rejected(self):
+        # Older than the 4-day daily-reference freshness window.
         stale = FXRate(myr_per_usd=Decimal("4.7"), source="x",
-                       timestamp=NOW - 99999, buffer_fraction=Decimal("0"))
+                       timestamp=NOW - 5 * 86400, buffer_fraction=Decimal("0"))
         nosrc = FXRate(myr_per_usd=Decimal("4.7"), source="",
                        timestamp=NOW - 60, buffer_fraction=Decimal("0"))
         for rate in (stale, nosrc):

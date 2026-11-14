@@ -12,13 +12,23 @@ from fal_pricing import PricingUnavailable
 
 
 class TelegramQuoteFlow:
-    """Server-side quotation controller wired into the existing bot."""
+    """Server-side quotation controller wired into the existing bot.
 
-    def __init__(self, quotation_service, pricing, *, fx_rate, operational):
+    fx_provider: a call returning a FRESH FXRate per quotation (auto-retrieval
+    with cache+TTL+fail-closed). Frozen quotations keep their own FX snapshot.
+    """
+
+    def __init__(self, quotation_service, pricing, *, fx_provider, operational):
         self.svc = quotation_service
         self.pricing = pricing
-        self.fx = fx_rate
+        self.fx_provider = fx_provider
         self.ops = operational
+
+    def _fresh_fx(self):
+        rate = self.fx_provider() if callable(self.fx_provider) else None
+        if rate is None:
+            raise QuotationError("Kadar FX belum disahkan; quotation ditahan")
+        return rate
 
     def product_menu_text(self):
         try:
@@ -40,14 +50,20 @@ class TelegramQuoteFlow:
         return {"stage": "prompt", "aspect_ratio": aspect_ratio}
 
     def build_quote(self, *, tenant_id, customer_id, prompt, aspect_ratio,
-                    idempotency_key=None):
-        """Compute the quotation server-side; fail-closed on any bad input."""
+                    idempotency_key=None, now=None):
+        """Compute the quotation server-side; fail-closed on any bad input.
+
+        Every quotation fetches the CURRENT fresh FX snapshot (provider call
+        inside); the created quotation freezes that snapshot permanently."""
+        import time as _time
+        fx_rate = self._fresh_fx()
         return self.svc.create(tenant_id=tenant_id, customer_id=customer_id,
                                product_key="minimax_turbo_video",
                                aspect_ratio=aspect_ratio, prompt=prompt,
-                               pricing=self.pricing, fx_rate=self.fx,
+                               pricing=self.pricing, fx_rate=fx_rate,
                                operational=self.ops,
-                               idempotency_key=idempotency_key)
+                               idempotency_key=idempotency_key,
+                               now=now if now is not None else int(_time.time()))
 
     def quote_reply_text(self, view):
         return ("🧾 QUOTATION AI VIDEO\n━━━━━━━━━━━━━━━━━━\n\n"
@@ -55,7 +71,8 @@ class TelegramQuoteFlow:
                 f"Durasi: {view['duration_seconds']} saat • {view['resolution']}\n"
                 f"Nisbah: {view['aspect_ratio']}\n\n"
                 f"Harga: {view['price_myr']}\n"
-                f"Berry Credits: {view['credits']:,}\n\n"
+                f"Berry Credits: {view['credits']:,}\n"
+                f"Quote ID: {view['quote_id']}\n\n"
                 f"⏳ Quote sah sehingga "
                 f"{view['expires_at']} (10 minit).\n"
                 "🔒 Ini quotation sahaja — tiada debit atau penjanaan dibuat.")
