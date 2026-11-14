@@ -99,6 +99,12 @@ class TurnitinServiceTests(TestCase):
         self.assertIn("await flow.tick(context)", BOT)
         self.assertIn("if str(order_id).startswith(\"TT\"):", BOT)
 
+    def test_no_cross_flow_receipt_interception(self):
+        self.assertIn("if oid and not ORDER_RE.fullmatch(oid):", FLOW)
+        self.assertIn("return False", FLOW)
+        self.assertIn("if self.admin_only and update.effective_user.id != self.admin_id:", FLOW)
+        self.assertIn("Belum menerima tempahan atau bayaran pelanggan.", FLOW)
+
     def test_dashboard_is_protected_against_mutations(self):
         self.assertIn('"/turnitin/plans/<code>"', ADMIN)
         self.assertIn('"admin_edit"', ADMIN)
