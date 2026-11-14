@@ -77,7 +77,7 @@ GRANT EXECUTE ON FUNCTION public.berry_channel_announcement_claim(uuid,text,text
 CREATE OR REPLACE FUNCTION public.berry_channel_announcement_mark_sent(
   p_tenant uuid,p_kind text,p_event_id text,p_channel_id bigint,p_message_id bigint
 ) RETURNS boolean LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
-DECLARE v_updated boolean := false;
+DECLARE v_rows integer := 0;
 BEGIN
   IF current_user NOT IN ('service_role','postgres') THEN
     RAISE EXCEPTION 'service role required' USING ERRCODE='42501';
@@ -89,8 +89,8 @@ BEGIN
      SET state='sent',sent_at=now(),message_id=p_message_id
    WHERE tenant_id=p_tenant AND event_type=p_kind AND event_id=p_event_id
      AND channel_id=p_channel_id AND state='claimed';
-  GET DIAGNOSTICS v_updated = ROW_COUNT;
-  RETURN v_updated;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RETURN v_rows = 1;
 END $$;
 REVOKE ALL ON FUNCTION public.berry_channel_announcement_mark_sent(uuid,text,text,bigint,bigint)
   FROM PUBLIC,anon,authenticated;
