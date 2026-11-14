@@ -5841,7 +5841,9 @@ def _quote_flow(context) -> object | None:
     try:
         ops_fee_d = _D(ops_fee)
         ops_fixed_d = _D(ops_fixed)
-        if ops_fee_d < 0 or ops_fixed_d < 0:
+        if (not ops_fee_d.is_finite() or not ops_fixed_d.is_finite()
+                or not (_D("0") <= ops_fee_d <= _D("0.9"))
+                or ops_fixed_d < 0):
             raise ValueError()
     except Exception:
         log.warning("[AI_QUOTE] operational costs missing; quote flow disabled")
@@ -5853,7 +5855,13 @@ def _quote_flow(context) -> object | None:
         return None
 
     # ── FX strategy ────────────────────────────────────────────────────────
-    buffer = _D(_get_env("BERRY_AI_FX_BUFFER") or "0.02")
+    try:
+        buffer = _D(_get_env("BERRY_AI_FX_BUFFER") or "0.02")
+        if not buffer.is_finite() or not (_D("0") <= buffer < _D("0.5")):
+            raise ValueError()
+    except Exception:
+        log.warning("[AI_QUOTE] invalid FX buffer; quote flow disabled")
+        return None
     manual_rate = _get_env("BERRY_AI_FX_MYR_PER_USD")
     manual_source = _get_env("BERRY_AI_FX_SOURCE")
     manual_ts = _get_env("BERRY_AI_FX_SOURCE_TIMESTAMP")
