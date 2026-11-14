@@ -3012,24 +3012,17 @@ def _support_flow(context):
 
 
 async def _send_post_order_support(context, user_id: int):
-    """Final customer-only CTA after successful purchase/delivery, never channel."""
+    """Final customer-only Support intro after success; never post to channel."""
     try:
         await context.bot.send_message(
             chat_id=int(user_id),
-            text=(
-                "💬 BERRY SUPPORT\n\n"
-                "Terima kasih sebab shopping dengan Berry Store! 🍓\n\n"
-                "Ada masalah dengan order atau nak tanya apa-apa? "
-                "Kami ada untuk bantu.\n\n"
-                "💬 Terus chat dengan team support melalui bot ni je."
-            ),
+            text=AnonymousSupport.MENU,
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💬 Contact Support", callback_data="support")],
+                [InlineKeyboardButton("💬 Start Chat", callback_data="support:start")],
             ]),
         )
     except Exception as exc:
         log.warning("[SUPPORT] post-order CTA failed: %s", type(exc).__name__)
-
 
 async def _support_message_router(update, context):
     flow = _support_flow(context)
