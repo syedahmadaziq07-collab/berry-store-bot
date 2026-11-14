@@ -1481,17 +1481,15 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%A, %d %B %Y %H:%M:%S")
         _welcome = await _setting('welcome_message', 'Welcome to Berry Store.')
+        from berry_menu_visuals import welcome_message
         await update.message.reply_text(
-            f"{_welcome}\n"
-            f"Updated: {now}\n\n"
-            f"👋 Hi {user.first_name}!\n\n"
-            f"👤 Account\n"
-            f"• ID: {user.id}\n"
-            f"• Username: @{user.username or 'tiada'}\n\n"
-            f"📊 Store Stats\n"
-            f"• Total Users: {total_users}\n"
-            f"• Total Sold: {total_sold} pcs\n\n"
-            f"Tekan butang di bawah untuk mula!",
+            welcome_message(
+                welcome=_welcome, updated=now,
+                first_name=user.first_name or "Customer",
+                username=user.username or "tiada", telegram_id=user.id,
+                total_users=total_users, total_sold=total_sold,
+            ),
+            parse_mode="HTML",
             reply_markup=main_kb(update.effective_user.id),
         )
         log.info(f"[START] welcome_sent=true")
@@ -1633,7 +1631,8 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     _shop_title = await _setting('shop_title', 'LIST PRODUCT')
     _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
-    text = f"╭─────────────────────╮\n┊  {_shop_title}\n┊─────────────────────\n"
+    from berry_menu_visuals import shop_header, shop_line, shop_footer
+    text = shop_header(_shop_title)
     for i, p in enumerate(products, 1):
         pid = p.get("id")
         variants = product_variants_map.get(pid, [])
@@ -1665,8 +1664,8 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_src  = "product_stock"
                 p_mode = "manual"
             log.info(f"[SHOP STOCK] product_id={pid} delivery_mode={p_mode} source={p_src} available={stock} displayed_total={stock}")
-        text += f"┊ {i}. {p['name']} ( {stock} )\n"
-    text += f"╰─────────────────────╯\n\n{_shop_footer}"
+        text += shop_line(i, p["name"], stock)
+    text += shop_footer(_shop_footer)
 
     chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
 
@@ -1688,6 +1687,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 photo=_photo,
                 caption=text,
+                parse_mode="HTML",
                 reply_markup=build_product_keyboard(products),
             )
             banner_sent = True
@@ -1704,10 +1704,12 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         shop_msg = await context.bot.send_message(
             chat_id=chat_id,
             text=text,
+            parse_mode="HTML",
             reply_markup=build_product_keyboard(products),
         )
     else:
-        shop_msg = await update.message.reply_text(text, reply_markup=build_product_keyboard(products))
+        shop_msg = await update.message.reply_text(
+            text, parse_mode="HTML", reply_markup=build_product_keyboard(products))
     track_flow_message(context, shop_msg, "shop_list")
 
 # ─── Variant Helpers (product_variants table) ─────────────────────────────────
@@ -3272,18 +3274,14 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = await _wallet_balance(update.effective_user.id)
     balance_label = balance if balance is not None else "Belum tersedia"
     wallet_status = (
-        "Top Up belum diaktifkan.\n\n"
+        "💳 QR Top Up: Admin Pilot\n\n"
         if balance is not None
-        else "Wallet belum disambungkan ke Supabase.\n\n"
+        else "⚠️ Wallet belum tersedia.\n\n"
     )
+    from berry_menu_visuals import ai_studio_message
     await sender(
-        "🍓 BERRY AI STUDIO\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "✨ Welcome to Berry AI Studio!\n\n"
-        f"💰 Your Balance: {balance_label}\n"
-        f"{wallet_status}"
-        "What would you like to create today? 👇\n\n"
-        "🔒 Admin preview — tiada video dijana atau caj.",
+        ai_studio_message(balance=balance_label, wallet_status=wallet_status),
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎬 Video Studio", callback_data="ai_studio:video"),
              InlineKeyboardButton("🖼️ Image Studio", callback_data="ai_studio:image")],
