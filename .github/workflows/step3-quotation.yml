@@ -7,10 +7,15 @@ on:
       - 'ai_pricing_engine.py'
       - 'ai_quotation_service.py'
       - 'telegram_quote_flow.py'
+      - 'fx_rate_provider.py'
+      - 'ai_env_audit.py'
       - 'step3_minimax_offer.py'
       - 'tests/test_step3_quotation.py'
       - 'tests/test_step3_minimax_offer.py'
       - 'tests/test_step3_telegram_quote_ui.py'
+      - 'tests/test_fx_rate_provider.py'
+      - 'tests/test_fresh_fx_per_quote.py'
+      - 'tests/test_ai_env_audit.py'
       - 'bot.py'
       - '.github/workflows/step3-quotation.yml'
   pull_request:
@@ -19,10 +24,15 @@ on:
       - 'ai_pricing_engine.py'
       - 'ai_quotation_service.py'
       - 'telegram_quote_flow.py'
+      - 'fx_rate_provider.py'
+      - 'ai_env_audit.py'
       - 'step3_minimax_offer.py'
       - 'tests/test_step3_quotation.py'
       - 'tests/test_step3_minimax_offer.py'
       - 'tests/test_step3_telegram_quote_ui.py'
+      - 'tests/test_fx_rate_provider.py'
+      - 'tests/test_fresh_fx_per_quote.py'
+      - 'tests/test_ai_env_audit.py'
       - 'bot.py'
       - '.github/workflows/step3-quotation.yml'
   workflow_dispatch:
@@ -35,7 +45,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install 'httpx==0.25.2'
-      - run: python -m py_compile bot.py ai_product_catalog.py ai_pricing_engine.py ai_quotation_service.py telegram_quote_flow.py step3_minimax_offer.py
+      - run: python -m py_compile bot.py ai_product_catalog.py ai_pricing_engine.py ai_quotation_service.py telegram_quote_flow.py fx_rate_provider.py ai_env_audit.py step3_minimax_offer.py
       - name: STEP 3 catalog, pricing engine, quotation and offer builder
         run: |
           python -m unittest discover -s tests -p test_step3_quotation.py -v
