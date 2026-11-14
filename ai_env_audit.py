@@ -38,6 +38,10 @@ def audit_environment(environ=None) -> list:
                  "FAL_KEY", "BERRY_QUOTE_SIGNING_KEY"):
         if not _present_in(env, name):
             add(name, "MISSING", "required for production quotation")
+        elif name == "BERRY_QUOTE_SIGNING_KEY":
+            key_length = len((env.get(name) or "").strip())
+            add(name, "PRESENT" if key_length >= 16 else "INVALID",
+                "min 16 chars, dedicated secret (value never displayed)")
         elif name in SECRET_VARS:
             add(name, "PRESENT", "value never displayed")
         elif name == "SUPABASE_URL":
@@ -52,23 +56,6 @@ def audit_environment(environ=None) -> list:
                 add(name, "PRESENT", "valid UUID")
             except (ValueError, TypeError):
                 add(name, "INVALID", "must be a UUID")
-        else:
-            key = (env.get(name) or "").strip()
-            add("BERRY_QUOTE_SIGNING_KEY",
-                "PRESENT" if len(key) >= 16 else "INVALID",
-                "min 16 chars, dedicated secret (no BOT_TOKEN fallback)")
-            break
-
-    # BERRY_QUOTE_SIGNING_KEY length check (without exposing value)
-    sk = (env.get("BERRY_QUOTE_SIGNING_KEY") or "").strip()
-    if sk:
-        report = [r for r in report if r["variable"] != "BERRY_QUOTE_SIGNING_KEY"
-                  or r["status"] != "PRESENT"] if False else report
-        for r in report:
-            if r["variable"] == "BERRY_QUOTE_SIGNING_KEY" and r["status"] == "PRESENT":
-                r["status"] = "PRESENT" if len(sk) >= 16 else "INVALID"
-                r["note"] = "min 16 chars, dedicated secret"
-
     # Operational costs (non-secret, validated)
     fee = (env.get("BERRY_AI_PAYMENT_FEE_FRACTION") or "").strip()
     if not fee:
@@ -78,8 +65,8 @@ def audit_environment(environ=None) -> list:
         try:
             f = Decimal(fee)
             add("BERRY_AI_PAYMENT_FEE_FRACTION",
-                "PRESENT" if 0 <= f < 1 else "INVALID",
-                "decimal fraction in [0,1)")
+                "PRESENT" if f.is_finite() and 0 <= f <= Decimal("0.9") else "INVALID",
+                "finite decimal fraction in [0,0.9]")
         except InvalidOperation:
             add("BERRY_AI_PAYMENT_FEE_FRACTION", "INVALID", "not a decimal")
 
@@ -91,7 +78,7 @@ def audit_environment(environ=None) -> list:
         try:
             fv = Decimal(fixed)
             add("BERRY_AI_FIXED_COST_MYR",
-                "PRESENT" if fv >= 0 else "INVALID", "nonnegative MYR decimal")
+                "PRESENT" if fv.is_finite() and fv >= 0 else "INVALID", "finite nonnegative MYR decimal")
         except InvalidOperation:
             add("BERRY_AI_FIXED_COST_MYR", "INVALID", "not a decimal")
 
@@ -113,9 +100,17 @@ def audit_environment(environ=None) -> list:
         add("BERRY_AI_FX_SOURCE_TIMESTAMP", "UNVERIFIED",
             "auto: published date from provider response")
     buf = (env.get("BERRY_AI_FX_BUFFER") or "").strip()
-    add("BERRY_AI_FX_BUFFER",
-        "PRESENT" if buf else "UNVERIFIED",
-        "optional; default conservative 0.02")
+    if not buf:
+        add("BERRY_AI_FX_BUFFER", "UNVERIFIED",
+            "optional; default conservative 0.02")
+    else:
+        try:
+            b = Decimal(buf)
+            add("BERRY_AI_FX_BUFFER",
+                "PRESENT" if b.is_finite() and Decimal("0") <= b < Decimal("0.5")
+                else "INVALID", "finite decimal fraction in [0,0.5)")
+        except InvalidOperation:
+            add("BERRY_AI_FX_BUFFER", "INVALID", "not a decimal")
     return report
 
 
