@@ -71,6 +71,12 @@ class BerryVisualMenuTests(TestCase):
         self.assertIn("build_product_keyboard(products)", BOT)
         self.assertIn('if not _ai_video_is_admin(update):', BOT)
 
+    def test_polling_conflict_recovers_without_dropping_updates(self):
+        self.assertIn('context.application.bot_data["_berry_polling_conflict"] = True', BOT)
+        self.assertIn('if app.bot_data.pop("_berry_polling_conflict", False):', BOT)
+        self.assertIn('time.sleep(retry_delay)', BOT)
+        self.assertIn('drop_pending_updates=False', BOT)
+
     def test_shop_caption_under_telegram_limit_with_typical_inventory(self):
         with patch.dict(os.environ, {}, clear=True):
             s = menu.shop_header("LIST PRODUCT")
