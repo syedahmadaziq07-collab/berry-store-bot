@@ -243,8 +243,9 @@ BEGIN
  IF NOT FOUND OR j.state<>'processing' OR j.assignment_file_id IS NULL THEN
    RAISE EXCEPTION 'report delivery not allowed'; END IF;
  UPDATE berry_private.turnitin_jobs SET state='delivering',updated_at=now() WHERE order_id=p_order_id;
- RETURN jsonb_build_object('order_id',p_order_id,'user_id',j.user_id,'plan',j.plan_code);
-END $$;
+ RETURN jsonb_build_object('order_id',p_order_id,'user_id',j.user_id,'plan',j.plan_code,
+   'progress_message_id',j.progress_message_id);
+END $;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_delivery_complete(
  p_tenant uuid,p_order_id text,p_file_id text
@@ -258,6 +259,37 @@ BEGIN
  WHERE tenant_id=p_tenant AND order_id=p_order_id AND state='delivering';
  RETURN FOUND;
 END $$;
+
+CREATE OR REPLACE FUNCTION public.berry_turnitin_cancel(
+ p_tenant uuid,p_user bigint,p_order_id text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $
+DECLARE j berry_private.turnitin_jobs%ROWTYPE;
+BEGIN
+ IF current_user NOT IN ('service_role','postgres') THEN RAISE EXCEPTION 'server only' USING ERRCODE='42501'; END IF;
+ SELECT * INTO j FROM berry_private.turnitin_jobs
+ WHERE tenant_id=p_tenant AND order_id=p_order_id AND user_id=p_user FOR UPDATE;
+ IF NOT FOUND OR j.state<>'pending_payment' THEN RAISE EXCEPTION 'cannot cancel after payment'; END IF;
+ UPDATE public.orders SET status='cancelled',updated_at=now() WHERE id=p_order_id
+   AND tenant_id=p_tenant AND user_id=p_user AND status='pending';
+ IF NOT FOUND THEN RAISE EXCEPTION 'order cannot cancel'; END IF;
+ UPDATE berry_private.turnitin_jobs SET state='cancelled',updated_at=now() WHERE order_id=p_order_id;
+ RETURN jsonb_build_object('order_id',p_order_id,'state','cancelled');
+END $;
+
+CREATE OR REPLACE FUNCTION public.berry_turnitin_customer_orders(
+ p_tenant uuid,p_user bigint
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $
+DECLARE v jsonb;
+BEGIN
+ IF current_user NOT IN ('service_role','postgres') THEN RAISE EXCEPTION 'server only' USING ERRCODE='42501'; END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('order_id',s.order_id,
+  'plan',s.plan_code,'state',s.state,'submitted_at',s.submitted_at)
+  ORDER BY s.updated_at DESC),'[]'::jsonb) INTO v
+ FROM (SELECT order_id,plan_code,state,submitted_at,updated_at
+       FROM berry_private.turnitin_jobs
+       WHERE tenant_id=p_tenant AND user_id=p_user ORDER BY updated_at DESC LIMIT 10) s;
+ RETURN v;
+END $;
 
 CREATE OR REPLACE FUNCTION public.berry_turnitin_customer_status(
  p_tenant uuid,p_order_id text,p_user bigint
