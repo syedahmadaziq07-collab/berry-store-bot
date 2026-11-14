@@ -152,6 +152,19 @@ TESTIMONIALS_CHANNEL_ID_2 = -1003831715755
 _bot_settings:   dict         = {}
 
 
+def _menu_custom_ids() -> dict:
+    """Tenant-scoped nonsecret custom emoji IDs, admin supplied in Telegram.
+
+    Runtime gate defaults OFF so unverified icons cannot break public menus.
+    """
+    if _get_env("BERRY_ANIMATED_EMOJI_ENABLED").lower() != "true":
+        return {}
+    from berry_menu_visuals import AVAILABLE_ICON_KEYS
+    return {name: str(_bot_settings.get("menu_emoji_" + name.lower(), "")).strip()
+            for name in AVAILABLE_ICON_KEYS}
+
+
+
 def _channel_announcements_enabled() -> bool:
     """Fail closed if private ledger or explicit channel release flag is absent."""
     return bool(_get_env("BERRY_CHANNEL_ANNOUNCEMENTS_ENABLED") == "true"
@@ -1488,6 +1501,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 first_name=user.first_name or "Customer",
                 username=user.username or "tiada", telegram_id=user.id,
                 total_users=total_users, total_sold=total_sold,
+                custom_ids=_menu_custom_ids(),
             ),
             parse_mode="HTML",
             reply_markup=main_kb(update.effective_user.id),
@@ -1632,7 +1646,8 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _shop_title = await _setting('shop_title', 'LIST PRODUCT')
     _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
     from berry_menu_visuals import shop_header, shop_line, shop_footer
-    text = shop_header(_shop_title)
+    custom_ids = _menu_custom_ids()
+    text = shop_header(_shop_title, custom_ids)
     for i, p in enumerate(products, 1):
         pid = p.get("id")
         variants = product_variants_map.get(pid, [])
@@ -1664,7 +1679,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_src  = "product_stock"
                 p_mode = "manual"
             log.info(f"[SHOP STOCK] product_id={pid} delivery_mode={p_mode} source={p_src} available={stock} displayed_total={stock}")
-        text += shop_line(i, p["name"], stock)
+        text += shop_line(i, p["name"], stock, custom_ids)
     text += shop_footer(_shop_footer)
 
     chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id
@@ -3280,7 +3295,9 @@ async def show_ai_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     from berry_menu_visuals import ai_studio_message
     await sender(
-        ai_studio_message(balance=balance_label, wallet_status=wallet_status),
+        ai_studio_message(
+            balance=balance_label, wallet_status=wallet_status,
+            custom_ids=_menu_custom_ids()),
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎬 Video Studio", callback_data="ai_studio:video"),
@@ -4885,6 +4902,116 @@ async def cmd_emojiid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ─── Custom app-logo emoji registrar (PRIVATE ADMIN ONLY) ──────────────────
+
+async def cmd_setemoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reply /setemoji CAPCUT to an actual Telegram custom emoji message.
+
+    Stores only the nonsecret numeric custom_emoji_id (never a token or image).
+    The global release gate stays OFF until the owner checks bot eligibility.
+    """
+    user = update.effective_user
+    msg = update.effective_message
+    if (not user or user.id != ADMIN_ID or not update.effective_chat
+            or update.effective_chat.type != "private"):
+        return
+    from berry_menu_visuals import AVAILABLE_ICON_KEYS
+    key = (context.args[0].strip().upper() if context.args else "")
+    if key not in AVAILABLE_ICON_KEYS:
+        await msg.reply_text(
+            "Usage: reply custom emoji, kemudian /setemoji CAPCUT\n"
+            "Contoh key: CAPCUT, CHATGPT, NETFLIX, CANVA, SPOTIFY, "
+            "ADOBE, YOUTUBE, FIRE, WAVE, SPARKLE.\n"
+            "Logo mesti Telegram Custom Emoji — bukan PNG atau sticker besar.")
+        return
+    source = msg.reply_to_message
+    if source is None:
+        await msg.reply_text(
+            "Reply pada mesej yang ada LOGO custom emoji sebenar dengan "
+            f"/setemoji {key}.")
+        return
+    entities = tuple(source.entities or ()) + tuple(source.caption_entities or ())
+    ids = list(dict.fromkeys(str(e.custom_emoji_id)
+             for e in entities if e.type == "custom_emoji" and e.custom_emoji_id))
+    if len(ids) != 1 or not re.fullmatch(r"[0-9]{12,24}", ids[0]):
+        await msg.reply_text(
+            "Perlu tepat SATU Telegram Custom Emoji. "
+            "Hantar logo sebagai emoji kecil, bukan gambar/sticker, "
+            "kemudian reply dengan command itu.")
+        return
+    record = {
+        "key": "menu_emoji_" + key.lower(),
+        "value": ids[0],
+        "description": "Admin-selected Telegram custom emoji ID (public, nonsecret)",
+    }
+    try:
+        rows = await _run_supabase(
+            "menu.emoji.save", lambda: sb_admin_upsert("bot_settings", record),
+            attempts=1, timeout=18)
+        if not rows or rows[0].get("key") != record["key"] or rows[0].get("value") != ids[0]:
+            raise ValueError("Menu emoji persistence not confirmed")
+        _bot_settings[record["key"]] = ids[0]
+    except Exception as exc:
+        log.warning("[EMOJI] admin save failed: %s", type(exc).__name__)
+        await msg.reply_text("⚠️ Gagal simpan ID emoji. Tiada perubahan menu dibuat.")
+        return
+    release = _get_env("BERRY_ANIMATED_EMOJI_ENABLED").lower() == "true"
+    await msg.reply_text(
+        f"✅ Logo {key} disimpan.\n"
+        f"Custom Emoji ID: {ids[0]}\n"
+        + ("Mode logo real ON — semak Browse Shop /start."
+           if release else
+           "Mode logo real masih OFF untuk semua pelanggan. "
+           "Uji dahulu dengan /emojitest " + key + " sebelum launch."))
+
+
+async def cmd_emojitest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Preview actual inline custom emoji in the admin's private chat."""
+    if (not update.effective_user or update.effective_user.id != ADMIN_ID
+            or not update.effective_chat or update.effective_chat.type != "private"):
+        return
+    from berry_menu_visuals import AVAILABLE_ICON_KEYS
+    key = (context.args[0].strip().upper() if context.args else "")
+    if key not in AVAILABLE_ICON_KEYS:
+        await update.effective_message.reply_text("Usage: /emojitest CAPCUT")
+        return
+    import html
+    raw = str(_bot_settings.get("menu_emoji_" + key.lower(), "")).strip()
+    if not re.fullmatch(r"[0-9]{12,24}", raw):
+        await update.effective_message.reply_text(
+            f"Belum ada ID untuk {key}. Reply custom emoji dengan /setemoji {key}.")
+        return
+    try:
+        await update.effective_message.reply_text(
+            f'<tg-emoji emoji-id="{raw}">📦</tg-emoji> '
+            f'<b>{html.escape(key)}</b> — logo preview (admin only)',
+            parse_mode="HTML")
+    except Exception as exc:
+        log.warning("[EMOJI] preview denied by Telegram: %s", type(exc).__name__)
+        await update.effective_message.reply_text(
+            "⚠️ Telegram belum benarkan bot hantar custom emoji ini. "
+            "Semak sama ada akaun pemilik bot ada Telegram Premium. "
+            "Mode real logo akan kekal OFF.")
+
+
+async def cmd_emojistatus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Read-only progress for real app logos, visible only to the owner."""
+    if (not update.effective_user or update.effective_user.id != ADMIN_ID
+            or not update.effective_chat or update.effective_chat.type != "private"):
+        return
+    from berry_menu_visuals import AVAILABLE_ICON_KEYS
+    mapped = sorted(k for k in AVAILABLE_ICON_KEYS
+                    if re.fullmatch(r"[0-9]{12,24}", str(
+                        _bot_settings.get("menu_emoji_" + k.lower(), "")).strip()))
+    gate = _get_env("BERRY_ANIMATED_EMOJI_ENABLED").lower() == "true"
+    await update.effective_message.reply_text(
+        f"🖼️ REAL APP LOGOS: {len(mapped)}/{len(AVAILABLE_ICON_KEYS)} mapped\n"
+        f"Render live gate: {'ON' if gate else 'OFF'}\n"
+        f"Configured: {', '.join(mapped) if mapped else 'None'}\n\n"
+        "Hantar logo Telegram Custom Emoji, reply /setemoji CAPCUT, "
+        "kemudian /emojitest CAPCUT.")
+
+
 # ─── /addcred ─────────────────────────────────────────────────────────────────
 
 async def cmd_addcred(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6243,6 +6370,9 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("setbanner",  cmd_setbanner))
     app.add_handler(CommandHandler("reloadsettings", cmd_reloadsettings))
     app.add_handler(CommandHandler("emojiid", cmd_emojiid))
+    app.add_handler(CommandHandler("setemoji", cmd_setemoji))
+    app.add_handler(CommandHandler("emojitest", cmd_emojitest))
+    app.add_handler(CommandHandler("emojistatus", cmd_emojistatus))
     app.add_handler(CommandHandler("checksetup", cmd_checksetup))
     app.add_handler(CommandHandler("shopdebug",  cmd_shopdebug))
     app.add_handler(CommandHandler("newtenant",  cmd_newtenant))

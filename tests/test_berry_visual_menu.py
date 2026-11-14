@@ -61,9 +61,9 @@ class BerryVisualMenuTests(TestCase):
 
     def test_menu_integrations_and_button_controls_preserved(self):
         self.assertIn("welcome_message(", BOT)
-        self.assertIn("shop_header(_shop_title)", BOT)
-        self.assertIn('shop_line(i, p["name"], stock)', BOT)
-        self.assertIn("ai_studio_message(balance=balance_label", BOT)
+        self.assertIn("shop_header(_shop_title, custom_ids)", BOT)
+        self.assertIn('shop_line(i, p["name"], stock, custom_ids)', BOT)
+        self.assertIn("ai_studio_message(", BOT)
         self.assertIn('parse_mode="HTML"', BOT)
         for action in ("shop", "ai_video", "myorders", "ai_studio:video",
                        "ai_studio:topup", "ai_studio:wallet", "ai_studio:history"):
