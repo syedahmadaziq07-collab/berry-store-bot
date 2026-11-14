@@ -8,6 +8,7 @@ import {
   Wallet,
   ArrowUpRight,
   ShoppingBag,
+  FileText,
   ExternalLink,
   ChevronRight,
 } from 'lucide-react';
@@ -23,6 +24,8 @@ interface DashboardOverviewProps {
   categoryRevenue: Record<string, number>;
   onNavigateToOrders: () => void;
   onNavigateToShop: () => void;
+  onNavigateToAIStudio: () => void;
+  onNavigateToTurnitin: () => void;
   onApproveOrder: (id: string) => void;
 }
 
@@ -35,6 +38,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   categoryRevenue,
   onNavigateToOrders,
   onNavigateToShop,
+  onNavigateToAIStudio,
+  onNavigateToTurnitin,
   onApproveOrder,
 }) => {
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7d' | '30d'>('7d');
@@ -93,6 +98,25 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Match each Telegram home menu with its own admin module. */}
+      <section aria-label="Kawalan kategori Telegram" className="grid gap-3 md:grid-cols-3">
+        {[
+          { label: 'Browse Shop', hint: 'Produk, harga, description & stock', icon: ShoppingBag, open: onNavigateToShop },
+          { label: 'AI Studio', hint: 'AI Video, model, kredit & availability', icon: Sparkles, open: onNavigateToAIStudio },
+          { label: 'Turnitin', hint: 'Similarity, AI Check, stock & report', icon: FileText, open: onNavigateToTurnitin },
+        ].map(item => {
+          const Icon = item.icon;
+          return <div key={item.label} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white"><Icon className="h-4 w-4 text-pink-400" />{item.label}</div>
+            <p className="mt-2 text-xs text-slate-400">{item.hint}</p>
+            <button type="button" onClick={item.open}
+              className="mt-4 w-full rounded-lg bg-pink-600 px-3 py-2 text-xs font-semibold text-white hover:bg-pink-500">
+              Urus {item.label} <ChevronRight className="ml-1 inline h-3 w-3" />
+            </button>
+          </div>;
+        })}
+      </section>
 
       {/* Urgent Action Alert Strip */}
       {(lowStockAlerts.length > 0 || pendingOrders.length > 0) && (

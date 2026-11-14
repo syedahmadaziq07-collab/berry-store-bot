@@ -100,6 +100,57 @@ class TurnitinServiceTests(TestCase):
         self.assertIn("await flow.tick(context)", BOT)
         self.assertIn("if str(order_id).startswith(\"TT\"):", BOT)
 
+    def test_announcement_hook_only_after_report_delivery_is_confirmed(self):
+        oid = "TT" + "A" * 24
+        calls = []
+        class FakeBackend:
+            def __init__(self, complete=True):
+                self.complete = complete
+            def rpc(self, name, **kwargs):
+                calls.append(name)
+                if name == "delivery_claim":
+                    return {"user_id": 101, "plan": "similarity", "progress_message_id": 75}
+                if name == "delivery_complete":
+                    return self.complete
+                raise AssertionError(name)
+
+        notified = AsyncMock()
+        bot = SimpleNamespace(send_document=AsyncMock(), edit_message_text=AsyncMock())
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(effective_message=message)
+        report = SimpleNamespace(mime_type="application/pdf", file_size=150, file_id="report_pdf_id")
+        context = SimpleNamespace(bot=bot, user_data={"turnitin_admin_delivery": oid})
+        flow = TurnitinFlow(FakeBackend(), 1, on_delivered=notified)
+        asyncio.run(flow.report(update, context, report))
+        notified.assert_awaited_once()
+        self.assertEqual(notified.await_args.args[1], oid)
+        self.assertEqual(calls, ["delivery_claim", "delivery_complete"])
+
+        calls.clear()
+        notified.reset_mock()
+        context.user_data["turnitin_admin_delivery"] = oid
+        flow = TurnitinFlow(FakeBackend(complete=False), 1, on_delivered=notified)
+        asyncio.run(flow.report(update, context, report))
+        notified.assert_not_awaited()
+        self.assertEqual(calls, ["delivery_claim", "delivery_complete"])
+
+    def test_no_group_announcement_if_telegram_document_send_failed(self):
+        oid = "TT" + "A" * 24
+        class FakeBackend:
+            def rpc(self, name, **kwargs):
+                if name == "delivery_claim":
+                    return {"user_id": 101, "plan": "similarity"}
+                raise AssertionError("delivery_complete must not be called")
+        notified = AsyncMock()
+        bot = SimpleNamespace(send_document=AsyncMock(side_effect=RuntimeError("timeout")))
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(effective_message=message)
+        context = SimpleNamespace(bot=bot, user_data={"turnitin_admin_delivery": oid})
+        report = SimpleNamespace(mime_type="application/pdf", file_size=100, file_id="report_pdf_id")
+        asyncio.run(TurnitinFlow(FakeBackend(), 1, on_delivered=notified).report(
+            update, context, report))
+        notified.assert_not_awaited()
+
     def test_no_cross_flow_receipt_interception(self):
         self.assertIn("if oid and not ORDER_RE.fullmatch(oid):", FLOW)
         self.assertIn("return False", FLOW)

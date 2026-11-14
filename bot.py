@@ -175,6 +175,18 @@ async def _announce_channel_event(context, kind: str, event_id: str, text: str):
         if ledger is not None:
             ledger.close()
 
+
+async def _announce_turnitin_delivered(context, order_id: str, delivery: dict):
+    """Only called after Telegram delivered the PDF AND the DB confirmed it."""
+    from berry_channel_announcements import delivery_text
+    name = delivery.get("product_name") or (
+        "Turnitin Similarity Check" if delivery.get("plan") == "similarity"
+        else "Turnitin AI Writing Check")
+    text = delivery_text(
+        buyer=delivery.get("username"), product=name,
+        quantity=delivery.get("quantity", 1), total=delivery.get("total_sold"))
+    await _announce_channel_event(context, "turnitin", order_id, text)
+
 # ─── Startup Check ────────────────────────────────────────────────────────────
 
 log.info("=" * 50)
@@ -1538,6 +1550,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_shop(update, context)
         elif start_payload == "ai_studio":
             await show_ai_video(update, context)
+        elif start_payload == "turnitin":
+            await _turnitin_callback(update, context, "turnitin")
     except Exception as exc:
         log.exception(f"[START_ERROR] user_id={user.id} tenant_id={TENANT_ID}: {_safe_error(exc)}")
         try:
@@ -6296,7 +6310,8 @@ def build_app() -> Application:
                 backend, ADMIN_ID,
                 checkout_enabled=_get_env("BERRY_TURNITIN_CHECKOUT_ENABLED") == "true",
                 admin_only=_get_env("BERRY_TURNITIN_ADMIN_ONLY", "true") != "false",
-                payment_page=send_payment_page)
+                payment_page=send_payment_page,
+                on_delivered=_announce_turnitin_delivered)
             log.info("[TURNITIN] menu configured; checkout gate and admin-only restrictions active")
         except Exception as exc:
             log.warning("[TURNITIN] disabled due to missing config: %s", type(exc).__name__)

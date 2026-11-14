@@ -496,6 +496,8 @@ export default function App() {
               categoryRevenue={categoryRevenue}
               onNavigateToOrders={() => navigate('orders')}
               onNavigateToShop={() => navigate('shop')}
+              onNavigateToAIStudio={() => navigate('ai-studio')}
+              onNavigateToTurnitin={() => navigate('turnitin')}
               onApproveOrder={(id) => handleUpdateOrderStatus(id, 'completed')}
             />
           )}
