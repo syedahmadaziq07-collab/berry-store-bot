@@ -23,7 +23,8 @@ class BerryTopupContractTests(unittest.TestCase):
         self.assertIn('application/pdf', CODE)
         self.assertIn('image/png', CODE)
         self.assertIn('image/jpeg', CODE)
-        self.assertIn('filters.Document.ALL, handle_topup_document', CODE)
+        self.assertIn('filters.Document.ALL, _turnitin_document_router', CODE)
+        self.assertIn('await handle_topup_document(update, context)', CODE)
 
     def test_approval_atomic_sql(self):
         self.assertIn('for update', SQL.lower())
