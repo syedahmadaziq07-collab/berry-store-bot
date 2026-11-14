@@ -63,6 +63,27 @@ class EnvAuditTests(unittest.TestCase):
         self.assertEqual(
             self._get(env, "BERRY_AI_PAYMENT_FEE_FRACTION")["status"], "INVALID")
 
+    def test_nonfinite_or_excessive_financial_config_is_invalid(self):
+        for fee in ("NaN", "Infinity", "0.95", "-0.01"):
+            with self.subTest(fee=fee):
+                env = dict(FULLY_CONFIGURED,
+                           BERRY_AI_PAYMENT_FEE_FRACTION=fee)
+                self.assertEqual(
+                    self._get(env, "BERRY_AI_PAYMENT_FEE_FRACTION")["status"],
+                    "INVALID")
+        for fixed in ("NaN", "Infinity", "-1"):
+            with self.subTest(fixed=fixed):
+                env = dict(FULLY_CONFIGURED, BERRY_AI_FIXED_COST_MYR=fixed)
+                self.assertEqual(
+                    self._get(env, "BERRY_AI_FIXED_COST_MYR")["status"],
+                    "INVALID")
+        for buffer in ("NaN", "Infinity", "-0.01", "0.5", "bad"):
+            with self.subTest(buffer=buffer):
+                env = dict(FULLY_CONFIGURED, BERRY_AI_FX_BUFFER=buffer)
+                self.assertEqual(
+                    self._get(env, "BERRY_AI_FX_BUFFER")["status"],
+                    "INVALID")
+
     def test_disabled_flag_missing_or_invalid(self):
         self.assertEqual(self._get({}, "BERRY_QUOTE_FLOW_ENABLED")["status"],
                          "MISSING")
