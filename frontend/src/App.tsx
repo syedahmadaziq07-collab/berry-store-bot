@@ -19,6 +19,7 @@ import { RenderIntegrationModal } from './components/RenderIntegrationModal';
 import {
   Category,
   Product,
+  ProductVariant,
   Order,
   CredentialItem,
   Customer,
@@ -217,10 +218,22 @@ export default function App() {
     const url = isEdit ? `/api/admin/v1/shop/products/${productData.id}` : '/api/admin/v1/shop/products';
     const method = isEdit ? 'PUT' : 'POST';
 
+    // Product variants live in a separate table; never send nested variants,
+    // UI-only categories, or image placeholders as product fields.
+    const payload = {
+      name: productData.name || '', price: productData.price ?? 0,
+      stock: productData.stock ?? 0, duration: productData.duration || '',
+      description: productData.description || '',
+      account_type: productData.account_type || '',
+      delivery_note: productData.delivery_note || '',
+      auto_delivery: productData.auto_delivery ?? false,
+      is_active: productData.is_active ?? true,
+      status: productData.is_active === false ? 'inactive' : 'active',
+    };
     const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productData),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -249,6 +262,27 @@ export default function App() {
       showToast(`Baki stok dikemaskini kepada ${newStock}`);
       fetchAllData();
     }
+  };
+
+  const handleSaveVariant = async (productId: string, variant: Partial<ProductVariant>) => {
+    const isEdit = Boolean(variant.id);
+    const url = `/api/admin/v1/shop/products/${productId}/variants${isEdit ? '/' + variant.id : ''}`;
+    await apiFetch(url, {
+      method: isEdit ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        variant_name: variant.variant_name || '',
+        price: variant.price ?? 0, stock: variant.stock ?? 0,
+        description: variant.description || '', delivery_note: variant.delivery_note || '',
+      }),
+    });
+    showToast(`Variant ${variant.variant_name} berjaya disimpan`);
+    await fetchAllData();
+  };
+
+  const handleDeleteVariant = async (productId: string, variantId: string) => {
+    await apiFetch(`/api/admin/v1/shop/products/${productId}/variants/${variantId}`, {method: 'DELETE'});
+    showToast('Variant dipadam. Order lama tidak disentuh.');
+    await fetchAllData();
   };
 
   // Categories
@@ -507,6 +541,9 @@ export default function App() {
               categories={categories}
               products={products}
               onSaveProduct={handleSaveProduct}
+              onSaveVariant={handleSaveVariant}
+              onDeleteVariant={handleDeleteVariant}
+              canEdit={Boolean(systemHealth?.writesEnabled)}
               onDeleteProduct={handleDeleteProduct}
               onAdjustStock={handleAdjustStock}
               onSaveCategory={handleSaveCategory}
