@@ -42,11 +42,10 @@ class CatalogV2Tests(TestCase):
         self.assertIn("LEAST(p.stock", UPGRADE)
         self.assertIn("staged_report_file_id", UPGRADE)
 
-    def test_catalog_menu_lists_every_service_with_correct_stock(self):
+    def test_three_category_mockup_and_service_drilldown(self):
         class FakeBackend:
             def rpc(self, name, **kwargs):
-                self_rpc = name
-                assert self_rpc == "catalog"
+                assert name == "catalog"
                 return [{"code": code, "title": label, "description": "Test desc for plan",
                          "price_myr": "4", "stock": 40, "available_stock": 38,
                          "enabled": True} for code, label in SERVICE_LABELS.items()]
@@ -71,10 +70,45 @@ class CatalogV2Tests(TestCase):
         flow = TurnitinFlow(FakeBackend(),17,checkout_enabled=True,admin_only=False)
         with patch.dict(sys.modules, {"telegram": telegram_stub}):
             asyncio.run(flow.menu(update,SimpleNamespace()))
-        msg = update.callback_query.edit_message_text.await_args.args[0]
-        self.assertIn("Stock 38",msg)
-        for code in SERVICE_CODES:
-            self.assertIn("turnitin:plan:"+code, [data for _, data in buttons])
+            msg = update.callback_query.edit_message_text.await_args.args[0]
+            self.assertIn("🍓 BERRY STORE",msg)
+            self.assertIn("Pilih kategori",msg)
+            self.assertNotIn("Stock 38",msg)
+            self.assertEqual([c for _,c in buttons], [
+                "turnitin:plan:similarity", "turnitin:category:ai",
+                "turnitin:category:bundle", "turnitin:orders", "home"])
+
+            buttons.clear()
+            update.callback_query.edit_message_text.reset_mock()
+            asyncio.run(flow.category(update,SimpleNamespace(),"ai"))
+            msg = update.callback_query.edit_message_text.await_args.args[0]
+            self.assertIn("🤖 AI DETECTION",msg)
+            self.assertIn("Stock 38",msg)
+            self.assertEqual([c for _,c in buttons], [
+                "turnitin:plan:ai", "turnitin:plan:gptzero_basic",
+                "turnitin:plan:gptzero_standard", "turnitin:plan:gptzero_premium", "turnitin"])
+
+            buttons.clear()
+            asyncio.run(flow.category(update,SimpleNamespace(),"bundle"))
+            self.assertEqual([c for _,c in buttons], [
+                "turnitin:plan:bundle_basic", "turnitin:plan:bundle_standard",
+                "turnitin:plan:bundle_premium", "turnitin:plan:bundle_turnitin_ai", "turnitin"])
+
+            for code, back in [("similarity","turnitin"),
+                               ("gptzero_basic","turnitin:category:ai"),
+                               ("bundle_basic","turnitin:category:bundle")]:
+                buttons.clear()
+                asyncio.run(flow.plan(update,SimpleNamespace(),code))
+                msg = update.callback_query.edit_message_text.await_args.args[0]
+                self.assertIn("Test desc for plan",msg)
+                self.assertIn("Harga: RM4.00",msg)
+                self.assertIn("Stock: 38",msg)
+                self.assertEqual(buttons[-1][1],back)
+
+    def test_bot_routes_category_callbacks(self):
+        bot = (ROOT / "bot.py").read_text(encoding="utf-8")
+        self.assertIn('action.startswith("turnitin:category:")', bot)
+        self.assertIn("flow.category(update, context",bot)
 
     def test_bundle_sends_two_reports_only_after_second_pdf(self):
         oid = "TT" + "B"*24

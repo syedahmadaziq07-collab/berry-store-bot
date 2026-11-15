@@ -3067,6 +3067,8 @@ async def _turnitin_callback(update, context, action: str):
         return
     if action == "turnitin": return await flow.menu(update, context)
     if action == "turnitin:orders": return await flow.orders(update, context)
+    if action.startswith("turnitin:category:"):
+        return await flow.category(update, context, action.rsplit(":", 1)[-1])
     if action == "turnitin:locked":
         return await _safe_edit_or_send(update.callback_query,
             "🔒 Checkout Turnitin belum dibuka. Tiada bayaran dibuat.",
