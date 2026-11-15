@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import httpx
+from turnitin_catalog import SERVICE_CODES, SERVICE_LABELS, available_stock, is_bundle
 
 LOG = logging.getLogger(__name__)
 ORDER_RE = re.compile(r"^TT[0-9A-F]{24}$")
@@ -77,7 +78,7 @@ class TurnitinBackend:
         allowed = {
             "catalog", "checkout", "receipt", "approve", "reject", "submit",
             "cancel", "progress_attach", "processing", "progress_mark",
-            "delivery_claim", "delivery_complete", "customer_status",
+            "delivery_stage", "delivery_claim", "delivery_complete", "customer_status",
             "customer_orders",
         }
         if name not in allowed:
@@ -140,22 +141,21 @@ class TurnitinFlow:
             await self.respond(update, "⚠️ Turnitin Services belum boleh dimuatkan.")
             return
         details = []
-        for code in ("similarity", "ai"):
+        buttons = []
+        for code, label in SERVICE_LABELS.items():
             p = next((x for x in plans if x.get("code") == code), None)
             if p:
-                label = "🔍 Similarity Check" if code == "similarity" else "🤖 AI Writing Check"
                 amount = Decimal(str(p["price_myr"]))
-                stock = int(p["stock"])
+                stock = available_stock(p)
                 availability = "TERSEDIA" if p["enabled"] and stock>0 and amount>0 else "BELUM DIBUKA"
                 details.append(f"{label}\n💰 RM{amount:.2f} · 📦 Stock {stock} · {availability}")
+                buttons.append([InlineKeyboardButton(label, callback_data=f"turnitin:plan:{code}")])
         if not details:
             details.append("Belum ada pelan yang dikonfigurasi.")
         note = ("\n\n🔒 Admin pilot sahaja — pelanggan belum boleh bayar."
                 if self.admin_only or not self.checkout_enabled else
                 "\n\n📎 Fail diterima selepas admin sahkan bayaran QR.")
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔍 Similarity Check",callback_data="turnitin:plan:similarity")],
-            [InlineKeyboardButton("🤖 AI Writing Check",callback_data="turnitin:plan:ai")],
+        kb = InlineKeyboardMarkup(buttons + [
             [InlineKeyboardButton("📂 My Turnitin Orders",callback_data="turnitin:orders")],
             [InlineKeyboardButton("🏠 Back to Home",callback_data="home")],
         ])
@@ -164,7 +164,7 @@ class TurnitinFlow:
 
     async def plan(self, update, context, code: str):
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        if code not in ("similarity", "ai") or not self.private(update):
+        if code not in SERVICE_CODES or not self.private(update):
             return
         try:
             plans = await self.call("catalog")
@@ -176,9 +176,10 @@ class TurnitinFlow:
             await self.respond(update, "⚠️ Pelan belum dikonfigurasi.")
             return
         price = Decimal(str(p["price_myr"]))
-        stock = int(p["stock"])
+        stock = available_stock(p)
         active = bool(p["enabled"] and price>0 and stock>0 and self.allowed(update.effective_user.id))
-        title = "🔍 Similarity Check" if code=="similarity" else "🤖 AI Writing Check"
+        title = SERVICE_LABELS[code]
+        upload_steps = "5. Admin semak & hantar 2 PDF report kepada awak.\n" if is_bundle(code) else "5. Admin semak & hantar PDF report kepada awak.\n"
         text = (
             f"📑 {title}\n━━━━━━━━━━━━━━━━━━\n\n"
             f"{p['description']}\n\n"
@@ -187,9 +188,8 @@ class TurnitinFlow:
             "LANGKAH SETERUSNYA\n"
             "1. Confirm tempahan.\n2. Bayar QR Browse Shop & upload resit.\n"
             "3. Admin sahkan bayaran.\n4. Upload PDF/DOCX.\n"
-            "5. Admin semak & hantar report kepada anda.\n\n"
-            "ℹ️ Penilaian AI tidak membuktikan sama ada sesuatu teks ditulis AI. "
-            "Pastikan anda mempunyai hak untuk mengemukakan dokumen."
+            f"{upload_steps}\n"
+            "📎 Pastikan fail yang dihantar ialah dokumen milik awak atau yang dibenarkan untuk disemak."
         )
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Confirm & Pay" if active else "🔒 Belum boleh checkout",
@@ -199,7 +199,7 @@ class TurnitinFlow:
         await self.respond(update,text,kb)
 
     async def checkout(self, update, context, code: str):
-        if not self.private(update) or code not in ("similarity","ai"):
+        if not self.private(update) or code not in SERVICE_CODES:
             return
         if not self.allowed(update.effective_user.id):
             await self.respond(update, "🔒 Turnitin Checkout belum dibuka kepada pelanggan.")
@@ -423,14 +423,20 @@ class TurnitinFlow:
         except TurnitinError:
             await update.effective_message.reply_text("⚠️ Database tak tersedia.")
             return
-        if not any(j["order_id"]==oid for j in data):
+        job = next((j for j in data if j["order_id"] == oid), None)
+        if job is None:
             await update.effective_message.reply_text(
                 "⛔ Order tidak sedang diproses. Semak Order ID atau status dahulu.")
             return
         context.user_data["turnitin_admin_delivery"]=oid
-        await update.effective_message.reply_text(
-            f"📄 REPORT DELIVERY\nOrder: {oid}\n"
+        context.user_data["turnitin_admin_bundle"] = oid if is_bundle(job.get("plan", "")) else ""
+        instruction = (
+            "Hantar PDF pertama, kemudian PDF kedua. Kedua-duanya akan sampai kepada customer.\n"
+            if is_bundle(job.get("plan", "")) else
             "Hantar satu PDF report. Bot akan deliver kepada pelanggan yang betul.\n"
+        )
+        await update.effective_message.reply_text(
+            f"📄 REPORT DELIVERY\nOrder: {oid}\n" + instruction +
             "⚠️ Hanya hantar apabila report siap dan telah disemak.")
 
     async def report(self,update,context,doc):
@@ -439,6 +445,19 @@ class TurnitinFlow:
         if doc.mime_type not in REPORT_MIMES or (doc.file_size or 0)>MAX_ASSIGNMENT:
             await update.effective_message.reply_text("⚠️ Hantar report PDF maksimum 20MB.")
             return
+        bundle = context.user_data.get("turnitin_admin_bundle") == oid
+        if bundle:
+            try:
+                stage = await self.call("delivery_stage",p_order_id=oid,
+                                        p_admin=self.admin_id,p_file_id=doc.file_id)
+            except TurnitinError:
+                await update.effective_message.reply_text(
+                    "⚠️ PDF bundle tidak dapat disimpan. Semak order sebelum cuba lagi.")
+                return
+            if stage.get("staged"):
+                await update.effective_message.reply_text(
+                    f"✅ PDF pertama untuk {oid} disimpan. Sekarang hantar PDF kedua.")
+                return
         try:
             target=await self.call("delivery_claim",p_order_id=oid,p_admin=self.admin_id)
         except TurnitinError:
@@ -446,11 +465,16 @@ class TurnitinFlow:
                 "⚠️ Order tidak boleh dihantar atau sudah dalam delivery. Jangan send dua kali.")
             return
         context.user_data.pop("turnitin_admin_delivery",None)
+        context.user_data.pop("turnitin_admin_bundle",None)
         try:
+            first_pdf = target.get("staged_report_file_id") if bundle else None
+            if first_pdf:
+                await context.bot.send_document(chat_id=int(target["user_id"]),
+                    document=first_pdf,caption=f"✅ REPORT 1/2 SIAP!\nOrder: {oid}")
             await context.bot.send_document(chat_id=int(target["user_id"]),
-                document=doc.file_id,caption=f"✅ TURNITIN REPORT SIAP!\nOrder: {oid}\n"
-                  "Terima kasih kerana menggunakan Berry Store. "
-                  "Skor similarity/AI perlu ditafsir secara berhati-hati.")
+                document=doc.file_id,caption=(f"✅ REPORT 2/2 SIAP!\nOrder: {oid}"
+                    if bundle else f"✅ REPORT SIAP!\nOrder: {oid}") +
+                    "\nTerima kasih kerana menggunakan Berry Store.")
         except Exception as exc:
             LOG.warning("[TURNITIN] report send uncertain: %s; no retry",
                         type(exc).__name__)

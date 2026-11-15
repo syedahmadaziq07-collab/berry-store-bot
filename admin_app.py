@@ -426,7 +426,8 @@ def create_app(config=None, store=None, mapping_store=None):
     @app.patch(PREFIX + "/turnitin/plans/<code>")
     def update_turnitin_plan(code):
         """Global CSRF, authenticated session and isolated DB gate apply."""
-        if code not in ("similarity", "ai"):
+        from turnitin_catalog import SERVICE_CODES
+        if code not in SERVICE_CODES:
             return jsonify(error="Pelan Turnitin tidak sah"), 404
         payload = request.get_json(silent=True)
         required = {"title","description","price_myr","stock","enabled","turnaround_minutes"}

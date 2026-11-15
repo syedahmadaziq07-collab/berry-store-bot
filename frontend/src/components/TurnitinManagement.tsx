@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { FileText, RefreshCw, Save, ShieldCheck, Clock3, Package } from 'lucide-react';
 
-type Code = 'similarity' | 'ai';
+type Code = string;
 type Plan = {
   code: Code;
   title: string;
   description: string;
   price_myr: string | number;
   stock: number;
+  available_stock?: number;
   enabled: boolean;
   turnaround_minutes: number;
 };
@@ -90,10 +91,14 @@ export const TurnitinManagement: React.FC<{ canEdit: boolean }> = ({ canEdit }) 
     }
   };
 
-  const names: { code: Code; label: string; description: string }[] = [
-    {code: 'similarity', label: 'Similarity Check', description: 'Manual similarity report fulfilment'},
-    {code: 'ai', label: 'AI Writing Check', description: 'Manual AI writing indicator report'},
+  const order: Code[] = [
+    'similarity', 'ai', 'gptzero_basic', 'gptzero_standard', 'gptzero_premium',
+    'bundle_basic', 'bundle_standard', 'bundle_premium', 'bundle_turnitin_ai',
   ];
+  const names = order.filter(code => plans[code]).map(code => ({
+    code, label: plans[code].title,
+    description: code.startsWith('bundle_') ? 'Dua laporan PDF berasingan' : 'Satu laporan PDF',
+  }));
 
   return (
     <div className="space-y-5">
@@ -114,7 +119,8 @@ export const TurnitinManagement: React.FC<{ canEdit: boolean }> = ({ canEdit }) 
 
       <div className="rounded-xl border border-amber-800/60 bg-amber-950/20 px-4 py-3 text-xs text-amber-200 space-y-1">
         <p><strong>Manual fulfilment:</strong> Tiada API Turnitin rasmi atau automatic scan yang disambungkan.</p>
-        <p>Loading di Telegram ialah timer anggaran (+1% setiap 30 saat; maksimum 99% sehingga PDF dihantar).</p>
+        <p>Loading di Telegram ialah timer anggaran (99% sekitar 15 minit; kekal sehingga PDF dihantar).</p>
+        <p>Stock bundle yang boleh dibeli juga bergantung pada baki stock setiap servis dalam bundle.</p>
         {!canEdit && <p><strong>Read-only:</strong> Editing dikunci sehingga backend isolated/write gate diaudit dan diaktifkan.</p>}
       </div>
 
@@ -156,6 +162,11 @@ export const TurnitinManagement: React.FC<{ canEdit: boolean }> = ({ canEdit }) 
                         className="mt-1 w-full py-2 pl-8 pr-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white disabled:opacity-60" />
                     </span>
                   </label>
+                  {item.code.startsWith('bundle_') && (
+                    <p className="col-span-2 text-xs text-slate-400">
+                      Available untuk checkout: {plan.available_stock ?? plan.stock} (ikut komponen terhad).
+                    </p>
+                  )}
                   <label className="text-xs text-slate-300 col-span-2 flex items-center gap-2">
                     <Clock3 className="w-4 h-4" /> Anggaran turnaround (minit)
                     <input type="number" min="1" max="1440" step="1" value={plan.turnaround_minutes}
