@@ -86,8 +86,7 @@ def welcome_message(*, welcome: str, first_name: str, username: str,
 
 def shop_header(title: str) -> str:
     return (
-        f"{icon('FIRE', '🔥')} <b>{escape(str(title))}</b> "
-        f"{icon('FIRE', '🔥')}\n"
+        f"<b>{escape(str(title))}</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
     )
 
@@ -96,7 +95,7 @@ def shop_line(index: int, name: str, stock: int) -> str:
     available = max(0, int(stock))
     stock_icon = "✅" if available > 0 else "❌"
     return (
-        f"{stock_icon} {product_icon(name)} <b>{int(index)}.</b> "
+        f"{stock_icon} <b>{int(index)}.</b> "
         f"{escape(str(name))} "
         f"(<code>{available}</code> qty.)\n"
     )
