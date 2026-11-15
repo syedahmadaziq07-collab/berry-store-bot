@@ -15,6 +15,7 @@ export interface ProductVariant {
   price: number;
   duration?: string;
   description?: string;
+  delivery_note?: string;
 }
 
 export interface Product {
@@ -25,6 +26,9 @@ export interface Product {
   stock: number;
   duration?: string;
   description: string;
+  delivery_note?: string;
+  account_type?: string;
+  available_stock?: number;
   auto_delivery: boolean;
   is_active: boolean;
   status: 'active' | 'inactive' | 'archived';
