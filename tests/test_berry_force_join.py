@@ -36,6 +36,7 @@ class ForceJoinTests(unittest.IsolatedAsyncioTestCase):
             "InlineKeyboardMarkup": lambda rows: rows,
         }
         self.check = isolated("_check_membership", self.ns)
+        self.member_once = isolated("_check_membership_for_update", self.ns)
         self.send = isolated("_send_join_message", self.ns)
         self.guard = isolated("_force_join_message_guard", self.ns)
 
@@ -70,35 +71,50 @@ class ForceJoinTests(unittest.IsolatedAsyncioTestCase):
         self.ns["_check_membership"] = AsyncMock(return_value=False)
         self.ns["_send_join_message"] = AsyncMock()
         update = SimpleNamespace(
+            update_id=1000,
             effective_user=SimpleNamespace(id=100),
             effective_message=SimpleNamespace(text=None),
         )
         with self.assertRaises(StopProcessing):
-            await self.guard(update, SimpleNamespace(bot=object()))
+            await self.guard(update, SimpleNamespace(bot=object(), user_data={}))
         self.ns["_send_join_message"].assert_awaited_once_with(update)
 
     async def test_joined_user_and_owner_allowed(self):
-        self.ns["_check_membership"] = AsyncMock(return_value=True)
+        self.ns["_check_membership"] = self.check
         self.ns["_send_join_message"] = AsyncMock()
+        bot = SimpleNamespace(get_chat_member=AsyncMock(return_value=SimpleNamespace(status="member")))
         for user_id in (100, 42):
             update = SimpleNamespace(
+                update_id=user_id,
                 effective_user=SimpleNamespace(id=user_id),
                 effective_message=SimpleNamespace(text="1"),
             )
-            await self.guard(update, SimpleNamespace(bot=object()))
+            await self.guard(update, SimpleNamespace(bot=bot, user_data={}))
         self.ns["_send_join_message"].assert_not_awaited()
-        self.assertEqual(self.ns["_check_membership"].await_count, 1)
+        self.assertEqual(bot.get_chat_member.await_count, 1)
+
+    async def test_membership_reused_only_within_same_update(self):
+        checker = AsyncMock(return_value=True)
+        self.ns["_check_membership"] = checker
+        context = SimpleNamespace(bot=object(), user_data={})
+        update = SimpleNamespace(update_id=123, effective_user=SimpleNamespace(id=100))
+        self.assertTrue(await self.member_once(update, context))
+        self.assertTrue(await self.member_once(update, context))
+        self.assertEqual(checker.await_count, 1)
+        update.update_id = 124
+        self.assertTrue(await self.member_once(update, context))
+        self.assertEqual(checker.await_count, 2)
 
     def test_start_gates_before_welcome_and_all_buttons_gated(self):
         start = BOT[BOT.index("async def cmd_start("):BOT.index("# ─── Shop ─", BOT.index("async def cmd_start("))]
         self.assertLess(
-            start.index("if not await _check_membership(context.bot, user.id):"),
+            start.index("if not await _check_membership_for_update(update, context):"),
             start.index('reply_text("Bot hidup ✅")'),
         )
         self.assertNotIn('enable_force_join', start)
         buttons = BOT[BOT.index("async def on_button("):BOT.index("    # ── Rate limit check", BOT.index("async def on_button("))]
         self.assertIn('if data == "verify_join":', buttons)
-        self.assertIn("if not await _check_membership(context.bot, update.effective_user.id):", buttons)
+        self.assertIn("if not await _check_membership_for_update(update, context):", buttons)
         self.assertIn('context.user_data.pop("force_join_pending_start", "")', buttons)
 
     def test_private_message_guard_is_registered_early(self):
