@@ -117,7 +117,13 @@ def is_tenant_active() -> bool:
 
 async def _block_if_expired(update, context) -> bool:
     user = update.effective_user
-    if not is_tenant_active():
+    update_id = getattr(update, "update_id", None)
+    # Several menu handlers guard the same update. Reuse its successful check,
+    # but always revalidate on the next update (including paid actions).
+    already_checked = (update_id is not None and
+                       context.user_data.get("_tenant_ok_update_id") == update_id)
+    tenant_active = already_checked or await asyncio.to_thread(is_tenant_active)
+    if not tenant_active:
         if user.id == ADMIN_ID:
             msg = "⚠️ Your bot rental has expired. Please renew to continue using the bot."
         else:
@@ -130,6 +136,8 @@ async def _block_if_expired(update, context) -> bool:
         except Exception:
             pass
         return True
+    if update_id is not None:
+        context.user_data["_tenant_ok_update_id"] = update_id
     return False
 
 def _redact(text: object) -> str:
@@ -464,11 +472,19 @@ async def _get_cached_products_and_variants(force: bool = False):
     if not force and _products_cache_data["products"] and (now - _products_cache_data["timestamp"]) < CACHE_TTL:
         return _products_cache_data["products"], _products_cache_data["variants"]
 
-    # Fetch ALL products (including inactive/deleted) for counting
-    all_products = await _run_supabase(
-        "products.list",
-        lambda: sb_get("products", "select=id,name,stock,price,duration,description,auto_delivery,is_active,status&order=id"),
-    ) or []
+    # Independent reads run together; no change to stock freshness or filters.
+    all_products, all_variants = await asyncio.gather(
+        _run_supabase(
+            "products.list",
+            lambda: sb_get("products", "select=id,name,stock,price,duration,description,auto_delivery,is_active,status&order=id"),
+        ),
+        _run_supabase(
+            "product_variants.all",
+            lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description"),
+        ),
+    )
+    all_products = all_products or []
+    all_variants = all_variants or []
 
     # Count products by status
     inactive_count = sum(1 for p in all_products if p.get("is_active") is False)
@@ -481,13 +497,6 @@ async def _get_cached_products_and_variants(force: bool = False):
 
     # Sort products alphabetically A-Z by name
     active_products.sort(key=lambda p: p.get('name', '').lower())
-
-    # Include sold-out variants so products with all variants at zero stock
-    # correctly show ❌ instead of falling back to products.stock.
-    all_variants = await _run_supabase(
-        "product_variants.all",
-        lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description"),
-    ) or []
 
     log.info(f"[SHOP] tenant_id={TENANT_ID} "
              f"active_products_count={len(active_products)} "
@@ -1412,6 +1421,18 @@ async def _check_membership(bot, user_id: int) -> bool:
         return False
 
 
+async def _check_membership_for_update(update, context) -> bool:
+    """Avoid repeat get_chat_member calls within one update; never cache across updates."""
+    update_id = getattr(update, "update_id", None)
+    if (update_id is not None and
+            context.user_data.get("_member_ok_update_id") == update_id):
+        return True
+    allowed = await _check_membership(context.bot, update.effective_user.id)
+    if allowed and update_id is not None:
+        context.user_data["_member_ok_update_id"] = update_id
+    return allowed
+
+
 async def _send_join_message(update: Update):
     text = (
         "🍓 Nak masuk Berry Store? Join channel kami dulu ya!\n\n"
@@ -1441,7 +1462,7 @@ async def _force_join_message_guard(update: Update, context: ContextTypes.DEFAUL
     if re.match(r"^/start(?:@\w+)?(?:\s|$)",
                 update.effective_message.text or "", re.IGNORECASE):
         return
-    if not await _check_membership(context.bot, update.effective_user.id):
+    if not await _check_membership_for_update(update, context):
         await _send_join_message(update)
         raise ApplicationHandlerStop
 
@@ -1459,7 +1480,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"[START] required_channel={REQUIRED_CHANNEL}")
 
     # Mandatory at /start, before any welcome, menu or deep-link action.
-    if not await _check_membership(context.bot, user.id):
+    if not await _check_membership_for_update(update, context):
         payload = context.args[0] if getattr(context, "args", None) else ""
         if payload in ("browse_shop", "ai_studio", "turnitin", "support"):
             context.user_data["force_join_pending_start"] = payload
@@ -1577,22 +1598,35 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("ai_video_flow", None)
-    if not await _check_membership(context.bot, update.effective_user.id):
+    if not await _check_membership_for_update(update, context):
         await _send_join_message(update)
         return
     if await _block_if_expired(update, context):
         return
 
+    # Start fresh product/stock reads while Telegram clears the previous view.
+    # Both reads are independent; neither caches checkout prices or quantities.
+    _t_shop = time.monotonic()
+    catalog_task = asyncio.create_task(_get_cached_products_and_variants(force=True))
+    credentials_task = asyncio.create_task(_run_supabase(
+        "credentials.stock_check",
+        lambda: sb_get("credentials", "select=product_id,variant_id,is_used"),
+    ))
+
     # Clean up old flow messages before showing shop
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-    await delete_flow_messages(context, context.bot, chat_id, user_id)
-    if update.callback_query:
+    removed_ids = await delete_flow_messages(context, context.bot, chat_id, user_id)
+    if (update.callback_query and
+            update.callback_query.message.message_id not in removed_ids):
         await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
 
-    _t_shop = time.monotonic()
+    catalog_result, credentials_result = await asyncio.gather(
+        catalog_task, credentials_task, return_exceptions=True)
     try:
-        products, all_variants = await _get_cached_products_and_variants(force=True)
+        if isinstance(catalog_result, BaseException):
+            raise catalog_result
+        products, all_variants = catalog_result
         _cache_products(products)
         log.info(f"[SHOP] tenant={TENANT_ID} user={user_id} products={len(products)} variants={len(all_variants)} "
                  f"load_ms={int((time.monotonic()-_t_shop)*1000)} source=cache_or_supabase")
@@ -1625,13 +1659,11 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save product list so handle_message can resolve number → product
     context.user_data["shop_products"] = products
 
-    try:
-        all_creds = await _run_supabase(
-            "credentials.stock_check",
-            lambda: sb_get("credentials", "select=product_id,variant_id,is_used"),
-        ) or []
-    except Exception:
+    if isinstance(credentials_result, BaseException):
+        log.warning("[SHOP] credential stock fallback: %s", _safe_error(credentials_result))
         all_creds = []
+    else:
+        all_creds = credentials_result or []
 
     # Build variant map: product_id -> list of {id, stock}
     product_variants_map: dict = {}
@@ -1789,9 +1821,10 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]
             ])
-            await delete_flow_messages(context, context.bot, chat_id, user_id,
-                                       ["shop_list", "product_detail", "variant_select", "error_message"])
-            if update.callback_query:
+            removed_ids = await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                                     ["shop_list", "product_detail", "variant_select", "error_message"])
+            if (update.callback_query and
+                    update.callback_query.message.message_id not in removed_ids):
                 await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
             oos_msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
             track_flow_message(context, oos_msg, "variant_select")
@@ -1818,9 +1851,10 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
 
         kb = InlineKeyboardMarkup(rows)
-        await delete_flow_messages(context, context.bot, chat_id, user_id,
-                                   ["shop_list", "product_detail", "variant_select", "error_message"])
-        if update.callback_query:
+        removed_ids = await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                                 ["shop_list", "product_detail", "variant_select", "error_message"])
+        if (update.callback_query and
+                update.callback_query.message.message_id not in removed_ids):
             await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
         var_msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
         track_flow_message(context, var_msg, "variant_select")
@@ -1919,9 +1953,10 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     ])
 
     # Clean up old messages before showing product detail
-    await delete_flow_messages(context, context.bot, chat_id, user_id,
-                               ["shop_list", "product_detail", "variant_select", "error_message"])
-    if update.callback_query:
+    removed_ids = await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                             ["shop_list", "product_detail", "variant_select", "error_message"])
+    if (update.callback_query and
+            update.callback_query.message.message_id not in removed_ids):
         await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
     prod_msg = await context.bot.send_message(chat_id, product_text, reply_markup=product_kb)
     track_flow_message(context, prod_msg, "product_detail")
@@ -2048,9 +2083,10 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             context.user_data.pop(lock_user, None)
             o = existing[0]
             oid = o.get("id", "")
-            await delete_flow_messages(context, context.bot, chat_id, user.id,
-                                       ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
-            if update.callback_query:
+            removed_ids = await delete_flow_messages(context, context.bot, chat_id, user.id,
+                                                     ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
+            if (update.callback_query and
+                    update.callback_query.message.message_id not in removed_ids):
                 await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
             active_msg = await context.bot.send_message(
                 chat_id,
@@ -2114,9 +2150,10 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     if _variant_desc:
         summary_text += f"\n{_variant_desc}\n"
     summary_text += f"\n{_order_proceed}"
-    await delete_flow_messages(context, context.bot, chat_id, user.id,
-                               ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
-    if update.callback_query:
+    removed_ids = await delete_flow_messages(context, context.bot, chat_id, user.id,
+                                             ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
+    if (update.callback_query and
+            update.callback_query.message.message_id not in removed_ids):
         await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
     summary_msg = await context.bot.send_message(
         chat_id,
@@ -4018,11 +4055,11 @@ async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_users = total_sold = 0
 
     try:
-        def home_stats():
-            users = sb_get("users", "select=id")
-            sold  = sb_get("orders", "select=id&status=eq.completed")
-            return len(users), len(sold)
-        total_users, total_sold = await _run_supabase("home.stats", home_stats)
+        users, sold = await asyncio.gather(
+            _run_supabase("home.users", lambda: sb_get("users", "select=id")),
+            _run_supabase("home.sales", lambda: sb_get("orders", "select=id&status=eq.completed")),
+        )
+        total_users, total_sold = len(users or []), len(sold or [])
     except Exception as exc:
         log.warning(f"Supabase home: {_safe_error(exc)}")
     await update.callback_query.edit_message_text(
@@ -4152,15 +4189,22 @@ def track_flow_message(context, message, tag: str):
     context.user_data.setdefault(_flow_key(), {})[tag] = message.message_id
 
 async def delete_flow_messages(context, bot, chat_id: int, user_id: int = None, tags: list = None):
-    """Delete tracked flow messages. If tags is None, delete all tracked."""
+    """Delete tracked flow messages concurrently and return their message IDs."""
     flow = context.user_data.get(_flow_key(), {})
     if tags is None:
         tags = list(flow.keys())
+    targets = []
     for tag in tags:
         msg_id = flow.pop(tag, None)
         if msg_id:
-            ok = await safe_delete_message(bot, chat_id, msg_id)
+            targets.append((tag, msg_id))
+    if targets:
+        results = await asyncio.gather(*(
+            safe_delete_message(bot, chat_id, msg_id) for _, msg_id in targets
+        ))
+        for (tag, msg_id), ok in zip(targets, results):
             log.info(f"[CLEANUP] tag={tag} msg_id={msg_id} user_id={user_id or '?'} deleted={'yes' if ok else 'no'}")
+    return {msg_id for _, msg_id in targets}
 
 def _lock_key(user_id, order_id, action):
     return f"lock:{user_id}:{order_id}:{action}"
@@ -4194,7 +4238,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Guard every button, including stale shop/order buttons from old messages.
     if data == "verify_join":
-        if not await _check_membership(context.bot, update.effective_user.id):
+        if not await _check_membership_for_update(update, context):
             await _send_join_message(update)
             return
         pending = context.user_data.pop("force_join_pending_start", "")
@@ -4209,7 +4253,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await show_home(update, context)
         return
-    if not await _check_membership(context.bot, update.effective_user.id):
+    if not await _check_membership_for_update(update, context):
         await _send_join_message(update)
         return
     # Leaving support for another menu closes the chat to protect order uploads.
@@ -4669,7 +4713,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 0 <= idx < len(products):
                 product_id = products[idx]["id"]
                 log.info(f"Keyboard product select: user={user_id} number={text} product_id={product_id}")
-                if not await _check_membership(context.bot, user_id):
+                if not await _check_membership_for_update(update, context):
                     await update.message.reply_text(
                         "🔒 To continue, please join our channel first:\n"
                         f"• {REQUIRED_CHANNEL}\n\n"
