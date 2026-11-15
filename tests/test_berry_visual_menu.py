@@ -54,8 +54,10 @@ class BerryVisualMenuTests(TestCase):
             self.assertIn("🔥", welcome)
             line = menu.shop_line(1, "Canva & <Fake>", 7)
             self.assertIn("Canva &amp; &lt;Fake&gt;", line)
-            self.assertTrue(line.startswith("🎨"))
+            self.assertTrue(line.startswith("✅ 🎨"))
             self.assertIn("qty.", line)
+            self.assertTrue(menu.shop_line(2, "ChatGPT", 0).startswith("❌ "))
+            self.assertTrue(menu.shop_line(3, "Netflix", -5).startswith("❌ "))
             studio = menu.ai_studio_message(balance="<6&7> Berry Credits", wallet_status="on")
             self.assertIn("&lt;6&amp;7&gt; Berry Credits", studio)
 
@@ -69,6 +71,9 @@ class BerryVisualMenuTests(TestCase):
                        "ai_studio:topup", "ai_studio:wallet", "ai_studio:history"):
             self.assertIn(f'callback_data="{action}"', BOT)
         self.assertIn("build_product_keyboard(products)", BOT)
+        self.assertIn("✅ Available  •  ❌ Out of stock", BOT)
+        self.assertIn('select=id,product_id,variant_name,stock,price,description"', BOT)
+        self.assertNotIn('select=id,product_id,variant_name,stock,price,description&stock=gt.0', BOT)
         self.assertIn('if not _ai_video_is_admin(update):', BOT)
 
     def test_polling_conflict_recovers_without_dropping_updates(self):
