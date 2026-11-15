@@ -23,6 +23,9 @@ interface ShopManagementProps {
   categories: Category[];
   products: Product[];
   onSaveProduct: (prod: Partial<Product>) => Promise<void>;
+  onSaveVariant: (productId: string, variant: Partial<ProductVariant>) => Promise<void>;
+  onDeleteVariant: (productId: string, variantId: string) => Promise<void>;
+  canEdit: boolean;
   onDeleteProduct: (id: string) => Promise<void>;
   onAdjustStock: (id: string, newStock: number) => Promise<void>;
   onSaveCategory: (cat: Partial<Category>) => Promise<void>;
@@ -33,6 +36,9 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
   categories,
   products,
   onSaveProduct,
+  onSaveVariant,
+  onDeleteVariant,
+  canEdit,
   onDeleteProduct,
   onAdjustStock,
   onSaveCategory,
@@ -44,6 +50,11 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [variantProductId, setVariantProductId] = useState<string | null>(null);
+  const [editingVariant, setEditingVariant] = useState<Partial<ProductVariant> | null>(null);
+  const [savingVariant, setSavingVariant] = useState(false);
+  const [variantError, setVariantError] = useState('');
+  const variantProduct = products.find(p => p.id === variantProductId);
 
   // Stock edit popover state
   const [stockEditId, setStockEditId] = useState<string | null>(null);
@@ -61,6 +72,7 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
   });
 
   const handleOpenAddProduct = () => {
+    if (!canEdit) return;
     setEditingProduct({
       name: '',
       category: categories[0]?.name || 'ENTERTAINMENT',
@@ -68,6 +80,8 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
       stock: 10,
       duration: '1 Month',
       description: '',
+      account_type: '',
+      delivery_note: '',
       auto_delivery: true,
       is_active: true,
       delivery_type: 'automated',
@@ -77,6 +91,7 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
   };
 
   const handleOpenEditProduct = (p: Product) => {
+    if (!canEdit) return;
     setEditingProduct({ ...p });
     setIsProductModalOpen(true);
   };
@@ -87,6 +102,27 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
     await onSaveProduct(editingProduct);
     setIsProductModalOpen(false);
     setEditingProduct(null);
+  };
+
+  const openVariantManager = (p: Product) => {
+    setVariantProductId(p.id);
+    setEditingVariant(null);
+    setVariantError('');
+  };
+
+  const saveVariant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEdit || !variantProductId || !editingVariant) return;
+    setSavingVariant(true);
+    setVariantError('');
+    try {
+      await onSaveVariant(variantProductId, editingVariant);
+      setEditingVariant(null);
+    } catch (error) {
+      setVariantError(error instanceof Error ? error.message : 'Gagal simpan variant');
+    } finally {
+      setSavingVariant(false);
+    }
   };
 
   const handleOpenAddCategory = () => {
@@ -115,7 +151,7 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
         <div>
           <h1 className="text-xl font-bold text-white font-display">Pengurusan Browse Shop Telegram</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Urus katalog produk, kategori, harga RM & pratonton bot Telegram secara langsung
+            Urus semua produk, variant, harga, stok, description dan delivery note Telegram
           </p>
         </div>
 
@@ -158,7 +194,8 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
             <button
               type="button"
               onClick={handleOpenAddProduct}
-              className="px-3 py-2 bg-pink-600 hover:bg-pink-500 text-white text-xs font-medium rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              disabled={!canEdit}
+              className="px-3 py-2 bg-pink-600 hover:bg-pink-500 text-white text-xs font-medium rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-40"
             >
               <Plus className="w-4 h-4" />
               <span>Tambah Produk</span>
@@ -181,6 +218,9 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
       {/* PRODUCTS TAB */}
       {activeTab === 'products' && (
         <div className="space-y-4">
+          {!canEdit && <div className="p-3 border border-amber-700/60 bg-amber-950/20 rounded-xl text-amber-200 text-xs">
+            Katalog dipaparkan daripada Supabase sebenar. Dashboard staging ini read-only sehingga isolated write gate &amp; audit RPC diaktifkan. Untuk edit yang terus live, gunakan dashboard production Berry Store.
+          </div>}
           {/* Category Filter Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
             <span className="text-slate-400 shrink-0 font-medium">Tapis Kategori:</span>
@@ -229,7 +269,9 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-200">
                   {filteredProducts.map(p => {
-                    const health = evaluateInventoryHealth(p.stock);
+                    const availableStock = p.available_stock ?? (p.variants?.length
+                      ? p.variants.reduce((sum, v) => sum + Math.max(0, v.stock), 0) : p.stock);
+                    const health = evaluateInventoryHealth(availableStock);
                     return (
                       <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="px-4 py-3">
@@ -266,7 +308,7 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {stockEditId === p.id ? (
+                          {stockEditId === p.id && !p.variants?.length ? (
                             <div className="inline-flex items-center gap-1">
                               <input
                                 type="number"
@@ -297,12 +339,14 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                           ) : (
                             <button
                               type="button"
+                              disabled={!canEdit}
                               onClick={() => {
+                                if (p.variants?.length) { openVariantManager(p); return; }
                                 setStockEditId(p.id);
                                 setTempStockValue(p.stock);
                               }}
-                              title="Klik untuk laras stok"
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-semibold cursor-pointer border ${
+                              title={p.variants?.length ? 'Klik untuk urus stok variant' : 'Klik untuk laras stok'}
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-semibold cursor-pointer border disabled:opacity-40 ${
                                 health.status === 'out_of_stock'
                                   ? 'bg-red-500/15 text-red-300 border-red-500/30'
                                   : health.status === 'low_stock'
@@ -310,7 +354,7 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                                   : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                               }`}
                             >
-                              <span>{p.stock}</span>
+                              <span>{availableStock}</span>
                               <Edit2 className="w-2.5 h-2.5 opacity-60" />
                             </button>
                           )}
@@ -330,8 +374,9 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                         <td className="px-4 py-3 text-center">
                           <button
                             type="button"
-                            onClick={() => onSaveProduct({ id: p.id, is_active: !p.is_active })}
-                            className="inline-flex items-center cursor-pointer"
+                            onClick={() => onSaveProduct({ ...p, is_active: !p.is_active })}
+                            disabled={!canEdit}
+                            className="inline-flex items-center cursor-pointer disabled:opacity-40"
                             title={p.is_active ? 'Klik untuk nyahaktif' : 'Klik untuk aktif'}
                           >
                             {p.is_active ? (
@@ -352,15 +397,22 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenEditProduct(p)}
-                              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              disabled={!canEdit}
+                              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
                               title="Edit Produk"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
+                            <button type="button" onClick={() => openVariantManager(p)}
+                              className="p-1.5 text-pink-300 hover:text-white hover:bg-pink-900/30 rounded-lg"
+                              title="Urus Variant, description dan delivery note">
+                              <Layers className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => onDeleteProduct(p.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                              disabled={!canEdit}
+                              className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
                               title="Padam Produk"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -589,6 +641,97 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
         </div>
       )}
 
+      {/* FULL VARIANT MANAGEMENT — details live in product_variants table */}
+      {variantProduct && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-white font-semibold">Urus Variant — {variantProduct.name}</h3>
+                <p className="text-slate-400 text-xs">Harga, stok, description sebelum checkout &amp; delivery note selepas beli.</p>
+              </div>
+              <button type="button" aria-label="Tutup variants" onClick={() => {setVariantProductId(null); setEditingVariant(null);}}
+                className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            {!canEdit && <p className="text-xs text-amber-300 bg-amber-950/25 border border-amber-800 rounded-lg p-3">
+              Mode read-only. Backend staging belum mengizinkan sebarang edit production.
+            </p>}
+            {variantError && <p role="alert" className="text-red-300 text-xs">{variantError}</p>}
+            <div className="space-y-2">
+              {(variantProduct.variants || []).map(variant => (
+                <div key={variant.id} className="border border-slate-800 bg-slate-950/70 rounded-xl p-3 flex flex-col sm:flex-row gap-3 justify-between">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-white text-sm font-semibold">{variant.variant_name}</span>
+                      <span className="text-pink-300 text-xs">{formatMYR(variant.price)}</span>
+                      <span className={'text-xs px-2 py-0.5 rounded ' + (variant.stock > 0 ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300')}>
+                        {variant.stock > 0 ? `✅ Stok ${variant.stock}` : '❌ Habis stok'}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-slate-300 text-xs">{variant.description || 'Description belum diisi'}</p>
+                    {variant.delivery_note && <p className="text-slate-400 text-xs whitespace-pre-wrap">Delivery note: {variant.delivery_note}</p>}
+                  </div>
+                  <div className="flex gap-2 shrink-0 self-start">
+                    <button type="button" disabled={!canEdit} onClick={() => setEditingVariant({...variant})}
+                      className="px-3 py-1.5 bg-slate-800 rounded-lg text-xs text-white disabled:opacity-40">Edit</button>
+                    <button type="button" disabled={!canEdit} onClick={async () => {
+                      if (!window.confirm(`Padam variant "${variant.variant_name}"? Variant dengan order lama mungkin tidak boleh dipadam. Untuk tutup jualan, set stok 0.`)) return;
+                      setVariantError('');
+                      try { await onDeleteVariant(variantProduct.id, variant.id); }
+                      catch (error) { setVariantError(error instanceof Error ? error.message : 'Tak boleh padam variant yang ada order'); }
+                    }} className="px-3 py-1.5 bg-red-950 text-red-300 rounded-lg text-xs disabled:opacity-40">Padam</button>
+                  </div>
+                </div>
+              ))}
+              {!variantProduct.variants?.length && <p className="text-slate-400 text-xs">Produk belum ada variant. Stok diambil daripada produk utama.</p>}
+            </div>
+            {!editingVariant && <button type="button" disabled={!canEdit} onClick={() => setEditingVariant({
+              product_id: variantProduct.id, variant_name: '', price: 0, stock: 0,
+              description: '', delivery_note: '',
+            })} className="flex items-center gap-2 text-pink-300 text-sm disabled:opacity-40">
+              <Plus className="w-4 h-4" /> Tambah Variant Baharu
+            </button>}
+            {editingVariant && <form onSubmit={saveVariant} className="p-4 rounded-xl border border-pink-800/50 bg-slate-950/60 space-y-3">
+              <h4 className="text-white text-sm font-semibold">{editingVariant.id ? 'Edit Variant' : 'Tambah Variant'}</h4>
+              <label className="block text-slate-300 text-xs">Nama Variant
+                <input required maxLength={200} value={editingVariant.variant_name || ''}
+                  onChange={e => setEditingVariant({...editingVariant, variant_name: e.target.value})}
+                  className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-slate-300 text-xs">Harga (RM)
+                  <input required type="number" step="0.01" min="0" value={editingVariant.price ?? 0}
+                    onChange={e => setEditingVariant({...editingVariant, price: Number(e.target.value)})}
+                    className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" />
+                </label>
+                <label className="block text-slate-300 text-xs">Stok
+                  <input required type="number" step="1" min="0" value={editingVariant.stock ?? 0}
+                    onChange={e => setEditingVariant({...editingVariant, stock: Number(e.target.value)})}
+                    className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" />
+                </label>
+              </div>
+              <label className="block text-slate-300 text-xs">Description untuk pelanggan sebelum checkout
+                <textarea rows={4} maxLength={10000} value={editingVariant.description || ''}
+                  onChange={e => setEditingVariant({...editingVariant, description: e.target.value})}
+                  className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" />
+              </label>
+              <label className="block text-slate-300 text-xs">Delivery Note (selepas beli)
+                <textarea rows={3} maxLength={10000} value={editingVariant.delivery_note || ''}
+                  onChange={e => setEditingVariant({...editingVariant, delivery_note: e.target.value})}
+                  className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingVariant(null)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-xs">Batal</button>
+                <button type="submit" disabled={savingVariant || !canEdit}
+                  className="bg-pink-600 text-white px-4 py-2 rounded-lg text-xs disabled:opacity-40">
+                  {savingVariant ? 'Menyimpan...' : 'Simpan Variant'}
+                </button>
+              </div>
+            </form>}
+          </div>
+        </div>
+      )}
+
       {/* ADD / EDIT PRODUCT MODAL */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -621,23 +764,19 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-medium mb-1">Kategori</label>
-                  <select
-                    value={editingProduct.category || ''}
-                    onChange={e => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-pink-500"
-                  >
-                    {categories.map(c => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                  <label className="block text-slate-300 font-medium mb-1">Account / Package Type</label>
+                  <input type="text" maxLength={100} value={editingProduct.account_type || ''}
+                    onChange={e => setEditingProduct({...editingProduct, account_type: e.target.value})}
+                    placeholder="Private / Sharing"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-pink-500" />
                 </div>
 
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">Harga Standard (RM)</label>
                   <input
                     type="number"
-                    step="0.50"
+                    step="0.01"
+                    min="0"
                     required
                     value={editingProduct.price ?? ''}
                     onChange={e => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })}
@@ -648,7 +787,7 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-medium mb-1">Baki Stok</label>
+                  <label className="block text-slate-300 font-medium mb-1">Stok Produk Asas</label>
                   <input
                     type="number"
                     min="0"
@@ -670,6 +809,10 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                 </div>
               </div>
 
+              {!!editingProduct.variants?.length && <p className="text-amber-300 text-[11px]">
+                Produk ini ada variant. Stok yang customer nampak ikut stok variant masing-masing. Edit melalui butang Urus Variant.
+              </p>}
+
               <div>
                 <label className="block text-slate-300 font-medium mb-1">Deskripsi & Terma Jaminan</label>
                 <textarea
@@ -679,6 +822,14 @@ export const ShopManagement: React.FC<ShopManagementProps> = ({
                   placeholder="Butiran produk dan arahan pengaktifan..."
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-pink-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Delivery Note Selepas Pembelian</label>
+                <textarea rows={3} maxLength={10000} value={editingProduct.delivery_note || ''}
+                  onChange={e => setEditingProduct({...editingProduct, delivery_note: e.target.value})}
+                  placeholder="Arahan penggunaan atau pengaktifan selepas checkout..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-pink-500" />
               </div>
 
               <div className="flex items-center gap-6 py-2">
