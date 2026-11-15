@@ -682,20 +682,60 @@ _DASHBOARD_TABLE_FIELDS = {
     "push_subscriptions": {"endpoint","is_active","user_agent","subscription"},
 }
 _DASHBOARD_WRITABLE_FIELDS = {
-    "products": {"name","description","price","stock","duration","is_active","account_type","auto_delivery","variants","status","delivery_note"},
+    "products": {"name","description","price","stock","duration","is_active","account_type","auto_delivery","status","delivery_note"},
     "product_variants": {"product_id","variant_name","stock","price","description","delivery_note"},
     "credentials": {"product_id","variant_id","email","password","is_used"},
     "bot_settings": {"key","value","description"},
     "push_subscriptions": {"endpoint","is_active","user_agent","subscription"},
 }
 _DASHBOARD_ACTIONS = {
-    "products": {"select","update"},
+    "products": {"select","insert","update"},
     "product_variants": {"select","insert","update","delete"},
     "credentials": {"select","insert"},
     "users": {"select"},
     "bot_settings": {"select","upsert"},
     "push_subscriptions": {"insert","update","upsert"},
 }
+
+def _dashboard_valid_catalog_record(table, action, row):
+    """Allow only real product / variant columns with safe sale values."""
+    if table not in ("products", "product_variants"):
+        return True
+    if action == "insert" and (not row.get("name" if table == "products" else "variant_name")
+                               or "price" not in row or "stock" not in row):
+        return False
+    for field, value in row.items():
+        if field in {"name", "variant_name"}:
+            if not isinstance(value, str) or not 1 <= len(value.strip()) <= 200:
+                return False
+        elif field in {"description", "delivery_note"}:
+            if not isinstance(value, str) or len(value) > 10000:
+                return False
+        elif field in {"duration", "account_type"}:
+            if not isinstance(value, str) or len(value) > (255 if field == "duration" else 100):
+                return False
+        elif field == "price":
+            if isinstance(value, bool):
+                return False
+            try:
+                amount = Decimal(str(value))
+                if not amount.is_finite() or amount < 0 or amount > 1000000 or amount != amount.quantize(Decimal("0.01")):
+                    return False
+            except (InvalidOperation, ValueError):
+                return False
+        elif field == "stock":
+            if type(value) is not int or not 0 <= value <= 1000000:
+                return False
+        elif field in {"is_active", "auto_delivery"}:
+            if type(value) is not bool:
+                return False
+        elif field == "status":
+            if not isinstance(value, str) or value not in {"active", "inactive", "archived"}:
+                return False
+        elif field == "product_id":
+            if action != "insert" or type(value) is not int or value < 1:
+                return False
+    return True
 
 @_app.route("/api/dashboard/table", methods=["POST"])
 def dashboard_table_gateway():
@@ -765,8 +805,21 @@ def dashboard_table_gateway():
             writable = _DASHBOARD_WRITABLE_FIELDS[table]
             if any(not isinstance(row,dict) or not row or set(row)-writable for row in records):
                 return jsonify(error="Write fields not permitted"), 403
+            if any(not _dashboard_valid_catalog_record(table, action, row) for row in records):
+                return jsonify(error="Butiran katalog tidak sah. Semak nama, harga dan stok."), 400
             if action == "update" and not filters:
                 return jsonify(error="Write requires row filter"), 403
+            if table == "product_variants" and action == "insert":
+                # Service role bypasses RLS. Prevent cross-tenant variant inserts.
+                for row in records:
+                    owner_check = _httpx.request(
+                        "GET", f"{SUPABASE_URL}/rest/v1/products",
+                        params={"select": "id", "tenant_id": f"eq.{TENANT_ID}",
+                                "id": f"eq.{row['product_id']}", "limit": 1},
+                        headers=headers, timeout=20,
+                    )
+                    if owner_check.status_code != 200 or not owner_check.json():
+                        return jsonify(error="Product untuk variant ini tidak wujud dalam kedai"), 403
             for row in records:
                 if "tenant_id" in row:
                     return jsonify(error="Tenant override not permitted"), 403
