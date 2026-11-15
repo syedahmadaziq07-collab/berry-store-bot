@@ -38,7 +38,7 @@ class DashboardMigrationTests(unittest.TestCase):
     def test_write_table_permissions(self):
         self.assertIn('"users": {"select"}', BOT)
         self.assertIn('"credentials": {"select","insert"}', BOT)
-        self.assertIn('"products": {"select","update"}', BOT)
+        self.assertIn('"products": {"select","insert","update"}', BOT)
         self.assertIn('"product_variants": {"select","insert","update","delete"}', BOT)
         self.assertIn('table != "product_variants" or not filters', BOT)
 
