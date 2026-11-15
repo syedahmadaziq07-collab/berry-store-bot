@@ -263,6 +263,17 @@ log.info(f"[SUPABASE] _supabase_ready={_supabase_ready}")
 # ─── Supabase REST Helpers (direct httpx, no library) ────────────────────────
 
 import httpx as _httpx
+import atexit as _atexit
+
+# HTTPX's top-level get() opens a new TCP/TLS connection for every request.
+# One thread-safe, bounded read pool keeps connections warm across menu steps.
+# Request-specific auth headers are still passed explicitly (never stored here).
+_sb_read_client = _httpx.Client(
+    timeout=15,
+    limits=_httpx.Limits(max_connections=20, max_keepalive_connections=10,
+                         keepalive_expiry=30.0),
+)
+_atexit.register(_sb_read_client.close)
 
 _products_cache      = {"data": [], "updated_at": 0.0}
 _products_cache_data = {"products": [], "variants": [], "timestamp": 0}
@@ -303,7 +314,7 @@ def sb_get(table: str, params: str = "") -> list:
     effective_params = _ensure_tenant_filter(table, params)
     if effective_params:
         url += "?" + effective_params
-    r = _httpx.get(url, headers=_orders_api_headers(table, _sb_headers()), timeout=15)
+    r = _sb_read_client.get(url, headers=_orders_api_headers(table, _sb_headers()), timeout=15)
     r.raise_for_status()
     data = r.json()
     log.debug(f"[SB GET] {table}?{effective_params} → {len(data) if isinstance(data, list) else data}")
@@ -350,7 +361,7 @@ def sb_admin_get(table: str, params: str = "") -> list:
     effective_params = _ensure_tenant_filter(table, params)
     if effective_params:
         url += "?" + effective_params
-    r = _httpx.get(url, headers=_sb_admin_headers(), timeout=15)
+    r = _sb_read_client.get(url, headers=_sb_admin_headers(), timeout=15)
     r.raise_for_status()
     return r.json()
 
@@ -4189,7 +4200,7 @@ def track_flow_message(context, message, tag: str):
     context.user_data.setdefault(_flow_key(), {})[tag] = message.message_id
 
 async def delete_flow_messages(context, bot, chat_id: int, user_id: int = None, tags: list = None):
-    """Delete tracked flow messages concurrently and return their message IDs."""
+    """Delete tracked flow messages concurrently; return only successful IDs."""
     flow = context.user_data.get(_flow_key(), {})
     if tags is None:
         tags = list(flow.keys())
@@ -4198,13 +4209,16 @@ async def delete_flow_messages(context, bot, chat_id: int, user_id: int = None, 
         msg_id = flow.pop(tag, None)
         if msg_id:
             targets.append((tag, msg_id))
+    deleted_ids = set()
     if targets:
         results = await asyncio.gather(*(
             safe_delete_message(bot, chat_id, msg_id) for _, msg_id in targets
         ))
         for (tag, msg_id), ok in zip(targets, results):
             log.info(f"[CLEANUP] tag={tag} msg_id={msg_id} user_id={user_id or '?'} deleted={'yes' if ok else 'no'}")
-    return {msg_id for _, msg_id in targets}
+            if ok:
+                deleted_ids.add(msg_id)
+    return deleted_ids
 
 def _lock_key(user_id, order_id, action):
     return f"lock:{user_id}:{order_id}:{action}"
