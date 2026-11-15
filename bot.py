@@ -459,7 +459,7 @@ async def _run_supabase(label: str, operation, attempts: int = 3, timeout: int =
     raise last_exc
 
 async def _get_cached_products_and_variants(force: bool = False):
-    """Return (active_products, variants_with_stock) from cache, refreshing if stale."""
+    """Return (active_products, all_variants) from cache, including sold-out variants."""
     now = time.time()
     if not force and _products_cache_data["products"] and (now - _products_cache_data["timestamp"]) < CACHE_TTL:
         return _products_cache_data["products"], _products_cache_data["variants"]
@@ -482,10 +482,11 @@ async def _get_cached_products_and_variants(force: bool = False):
     # Sort products alphabetically A-Z by name
     active_products.sort(key=lambda p: p.get('name', '').lower())
 
-    # Fetch variants with stock > 0
+    # Include sold-out variants so products with all variants at zero stock
+    # correctly show ❌ instead of falling back to products.stock.
     all_variants = await _run_supabase(
         "product_variants.all",
-        lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description&stock=gt.0"),
+        lambda: sb_get("product_variants", "select=id,product_id,variant_name,stock,price,description"),
     ) or []
 
     log.info(f"[SHOP] tenant_id={TENANT_ID} "
@@ -1692,6 +1693,7 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_mode = "manual"
             log.info(f"[SHOP STOCK] product_id={pid} delivery_mode={p_mode} source={p_src} available={stock} displayed_total={stock}")
         text += shop_line(i, p["name"], stock)
+    text += "\n✅ Available  •  ❌ Out of stock\n"
     text += shop_footer(_shop_footer)
 
     chat_id = update.callback_query.message.chat_id if update.callback_query else update.message.chat_id

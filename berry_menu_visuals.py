@@ -93,10 +93,12 @@ def shop_header(title: str) -> str:
 
 
 def shop_line(index: int, name: str, stock: int) -> str:
+    available = max(0, int(stock))
+    stock_icon = "✅" if available > 0 else "❌"
     return (
-        f"{product_icon(name)} <b>{int(index)}.</b> "
+        f"{stock_icon} {product_icon(name)} <b>{int(index)}.</b> "
         f"{escape(str(name))} "
-        f"(<code>{int(stock)}</code> qty.)\n"
+        f"(<code>{available}</code> qty.)\n"
     )
 
 
