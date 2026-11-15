@@ -102,7 +102,9 @@ class DataStore:
         if not self.configured():
             raise BackendUnavailable("Sambungan Supabase server belum dikonfigurasi")
         try:
-            response = self.client.post(f"{self.url}/rest/v1/rpc/berry_admin_catalog_mutation", headers=self.headers(), json={
+            rpc_name = ("berry_admin_variant_mutation" if operation.startswith("variant_")
+                        else "berry_admin_catalog_mutation")
+            response = self.client.post(f"{self.url}/rest/v1/rpc/{rpc_name}", headers=self.headers(), json={
                 "p_tenant": self.tenant, "p_operation": operation, "p_id": resource_id,
                 "p_payload": payload, "p_actor": actor, "p_key": key,
             })
@@ -357,6 +359,7 @@ def create_app(config=None, store=None, mapping_store=None):
             row["description"] = row.get("description") or ""
             row["category"] = ""  # No category column in the current schema.
             row["variants"] = [dict(v, id=str(v["id"]), product_id=str(v["product_id"]), price=float(money(v.get("price"))), stock=int(v.get("stock") or 0)) for v in variants if str(v["product_id"]) == row["id"]]
+            row["available_stock"] = sum(max(0, v["stock"]) for v in row["variants"]) if row["variants"] else row["stock"]
         return rows
 
     @app.get(PREFIX + "/shop/products")
@@ -588,19 +591,57 @@ def create_app(config=None, store=None, mapping_store=None):
                     raise ValueError
                 if any(not isinstance(payload.get(k, False), bool) for k in ("is_active", "auto_delivery")):
                     raise ValueError
-                for key in ("description", "duration"):
+                for key in ("description", "duration", "account_type", "delivery_note"):
                     if not isinstance(payload.get(key, ""), str) or len(payload.get(key, "")) > 10000:
                         raise ValueError
+                if not isinstance(payload.get("status", "active"), str) or payload.get("status", "active") not in {"active", "inactive", "archived"}:
+                    raise ValueError
             except (ValueError, InvalidOperation):
                 return jsonify(error="Harga, stok atau field produk tidak sah"), 400
             # New UI fields have no durable counterpart: reject instead of silently discarding.
             if payload.get("category") or payload.get("variants") or payload.get("image_url"):
                 return jsonify(error="Kategori, gambar dan variant nested memerlukan migration sebelum disimpan"), 409
             operation = "product_update" if resource_id else "product_create"
-            validated = {k: payload[k] for k in ("description", "duration", "is_active", "auto_delivery") if k in payload}
+            validated = {k: payload[k] for k in ("description", "duration", "account_type", "delivery_note", "status", "is_active", "auto_delivery") if k in payload}
             validated.update(name=name.strip(), price=str(price), stock=stock)
         result = database.mutate(operation, resource_id, validated, "admin", g.idempotency_key)
         audit(operation, f"resource={resource_id or 'new'}; transaction audited in database")
+        return jsonify(result)
+
+    @app.post(PREFIX + "/shop/products/<product_id>/variants")
+    @app.put(PREFIX + "/shop/products/<product_id>/variants/<variant_id>")
+    @app.delete(PREFIX + "/shop/products/<product_id>/variants/<variant_id>")
+    def variant_write(product_id, variant_id=None):
+        if not product_id.isdigit() or int(product_id) < 1 or (
+            variant_id is not None and (not variant_id.isdigit() or int(variant_id) < 1)
+        ):
+            return jsonify(error="ID produk atau variant tidak sah"), 400
+        if request.method == "DELETE":
+            operation, validated = "variant_delete", {"product_id": int(product_id)}
+        else:
+            payload = request.get_json(silent=True)
+            required = {"variant_name", "price", "stock", "description", "delivery_note"}
+            if not isinstance(payload, dict) or set(payload) != required:
+                return jsonify(error="Lengkapkan nama, harga, stok dan dua bahagian description"), 400
+            try:
+                name = payload["variant_name"]
+                price = Decimal(str(payload["price"]))
+                stock = payload["stock"]
+                if (not isinstance(name, str) or not 1 <= len(name.strip()) <= 200
+                    or type(stock) is not int or not 0 <= stock <= 1000000
+                    or not price.is_finite() or not 0 <= price <= 1000000
+                    or price != price.quantize(Decimal("0.01"))
+                    or any(not isinstance(payload[k], str) or len(payload[k]) > 10000
+                           for k in ("description", "delivery_note"))):
+                    raise ValueError
+            except (InvalidOperation, ValueError, TypeError):
+                return jsonify(error="Butiran variant tidak sah"), 400
+            validated = {"product_id": int(product_id), "variant_name": name.strip(),
+                         "price": str(price), "stock": stock,
+                         "description": payload["description"], "delivery_note": payload["delivery_note"]}
+            operation = "variant_update" if variant_id else "variant_create"
+        result = database.mutate(operation, variant_id or product_id, validated, "admin", g.idempotency_key)
+        audit(operation, f"product={product_id} variant={variant_id or 'new'}; transaction audited in database")
         return jsonify(result)
 
     @app.route(PREFIX + "/<path:unimplemented>", methods=["POST", "PUT", "PATCH", "DELETE"])
