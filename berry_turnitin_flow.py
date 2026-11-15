@@ -135,32 +135,59 @@ class TurnitinFlow:
                 "Belum menerima tempahan atau bayaran pelanggan.")
             return
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔍 Turnitin Similarity",callback_data="turnitin:plan:similarity")],
+            [InlineKeyboardButton("🤖 AI Detection",callback_data="turnitin:category:ai")],
+            [InlineKeyboardButton("🎁 Bundle Packages",callback_data="turnitin:category:bundle")],
+            [InlineKeyboardButton("📂 My Orders",callback_data="turnitin:orders")],
+            [InlineKeyboardButton("🏠 Back to Home",callback_data="home")],
+        ])
+        await self.respond(update,
+            "🍓 BERRY STORE\n━━━━━━━━━━━━━━━━━━\n\n"
+            "Selamat datang ke perkhidmatan semakan dokumen Berry Store!\n\n"
+            "Pilih kategori servis yang awak perlukan 👇",
+            kb)
+
+    async def category(self, update, context, category: str):
+        """Second level: show only the approved services in one category."""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        if not self.private(update) or category not in ("ai", "bundle"):
+            return
+        if self.admin_only and update.effective_user.id != self.admin_id:
+            return await self.menu(update, context)
         try:
             plans = await self.call("catalog")
         except TurnitinError:
-            await self.respond(update, "⚠️ Turnitin Services belum boleh dimuatkan.")
+            await self.respond(update, "⚠️ Senarai servis belum boleh dimuatkan. Cuba lagi sekejap.",
+                InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back",callback_data="turnitin")]]))
             return
-        details = []
-        buttons = []
-        for code, label in SERVICE_LABELS.items():
-            p = next((x for x in plans if x.get("code") == code), None)
-            if p:
-                amount = Decimal(str(p["price_myr"]))
-                stock = available_stock(p)
-                availability = "TERSEDIA" if p["enabled"] and stock>0 and amount>0 else "BELUM DIBUKA"
-                details.append(f"{label}\n💰 RM{amount:.2f} · 📦 Stock {stock} · {availability}")
-                buttons.append([InlineKeyboardButton(label, callback_data=f"turnitin:plan:{code}")])
-        if not details:
-            details.append("Belum ada pelan yang dikonfigurasi.")
-        note = ("\n\n🔒 Admin pilot sahaja — pelanggan belum boleh bayar."
-                if self.admin_only or not self.checkout_enabled else
-                "\n\n📎 Fail diterima selepas admin sahkan bayaran QR.")
-        kb = InlineKeyboardMarkup(buttons + [
-            [InlineKeyboardButton("📂 My Turnitin Orders",callback_data="turnitin:orders")],
-            [InlineKeyboardButton("🏠 Back to Home",callback_data="home")],
-        ])
-        await self.respond(update, "📑 TURNITIN SERVICES\n━━━━━━━━━━━━━━━━━━\n\n"
-                           + "\n\n".join(details) + note, kb)
+        codes = (("ai", "gptzero_basic", "gptzero_standard", "gptzero_premium")
+                 if category == "ai" else
+                 ("bundle_basic", "bundle_standard", "bundle_premium", "bundle_turnitin_ai"))
+        title = "🤖 AI DETECTION" if category == "ai" else "🎁 BUNDLE PACKAGES"
+        intro = ("Pilih jenis AI checker yang sesuai dengan assignment awak."
+                 if category == "ai" else
+                 "Nak semak similarity dan AI sekali jalan? Pilih pakej yang sesuai.")
+        entries, buttons = [], []
+        for code in codes:
+            plan = next((p for p in plans if p.get("code") == code), None)
+            if not plan:
+                continue
+            price = Decimal(str(plan["price_myr"]))
+            stock = available_stock(plan)
+            active = bool(plan["enabled"] and price > 0 and stock > 0)
+            label = SERVICE_LABELS[code]
+            entries.append(f"{label}\n💰 RM{price:.2f} · 📦 Stock {stock}"
+                           + ("" if active else " · 🔒 Belum tersedia"))
+            buttons.append([InlineKeyboardButton(label, callback_data=f"turnitin:plan:{code}")])
+        if not entries:
+            entries.append("Belum ada servis dalam kategori ini.")
+        buttons.append([InlineKeyboardButton("⬅️ Back to Categories",callback_data="turnitin")])
+        await self.respond(update,
+            f"{title}\n━━━━━━━━━━━━━━━━━━\n\n{intro}\n\n"
+            + "\n\n".join(entries)
+            + "\n\n📑 Tekan pilihan di bawah untuk baca description sebelum checkout.",
+            InlineKeyboardMarkup(buttons))
 
     async def plan(self, update, context, code: str):
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -191,10 +218,12 @@ class TurnitinFlow:
             f"{upload_steps}\n"
             "📎 Pastikan fail yang dihantar ialah dokumen milik awak atau yang dibenarkan untuk disemak."
         )
+        back_action = ("turnitin:category:bundle" if is_bundle(code) else
+                       "turnitin:category:ai" if code != "similarity" else "turnitin")
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Confirm & Pay" if active else "🔒 Belum boleh checkout",
               callback_data=f"turnitin:buy:{code}" if active else "turnitin:locked")],
-            [InlineKeyboardButton("⬅️ Back",callback_data="turnitin")],
+            [InlineKeyboardButton("⬅️ Back",callback_data=back_action)],
         ])
         await self.respond(update,text,kb)
 
