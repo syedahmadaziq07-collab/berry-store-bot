@@ -4945,6 +4945,13 @@ async def cmd_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── /broadcast ───────────────────────────────────────────────────────────────
 
+def broadcast_start_keyboard() -> InlineKeyboardMarkup:
+    """Show the main menu from an announcement without jumping to a shop section."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 START", callback_data="home")],
+    ])
+
+
 async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bukan admin.")
@@ -4952,10 +4959,19 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _block_if_expired(update, context):
         return
 
-    message = " ".join(context.args).strip() if context.args else ""
+    # Read the original command text so announcement paragraphs stay intact.
+    # context.args joins words and silently collapses newlines.
+    raw_message = update.effective_message.text or ""
+    message = re.sub(
+        r"^/broadcast(?:@\w+)?(?=\s|$)", "", raw_message,
+        count=1, flags=re.IGNORECASE,
+    ).strip()
     if not message:
         await update.message.reply_text(
-            "⚠️ Sila masukkan mesej.\n\nContoh:\n/broadcast Produk baru dah ada! Check /start sekarang 🔥"
+            "⚠️ Sila masukkan mesej.\n\n"
+            "Contoh:\n/broadcast Stok baru dah masuk!\n\n"
+            "Tengok pilihan terkini dalam bot.\n\n"
+            "Setiap announcement akan ada button 🚀 START untuk buka menu utama."
         )
         return
 
@@ -4974,9 +4990,12 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     sent = failed = 0
+    start_button = broadcast_start_keyboard()
     for u in users:
         try:
-            await context.bot.send_message(chat_id=u["id"], text=message)
+            await context.bot.send_message(
+                chat_id=u["id"], text=message, reply_markup=start_button,
+            )
             sent += 1
         except Exception as exc:
             log.warning(f"broadcast failed for user {u['id']}: {_safe_error(exc)}")
