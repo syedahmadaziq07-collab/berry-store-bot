@@ -1779,10 +1779,11 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
         # Check if every variant is out of stock
         all_out_of_stock = all(int(v.get("stock", 0)) == 0 for v in variants)
         if all_out_of_stock:
-            text = (
-                f"📦 {product_name}\n"
-                f"⚠️ Stok habis. Semua varian tidak tersedia pada masa ini."
-            )
+            unavailable_desc = (product.get("description") or "").strip()
+            text = f"📦 {product_name}\n"
+            if unavailable_desc:
+                text += f"{unavailable_desc}\n"
+            text += "⚠️ Stok habis. Semua varian tidak tersedia pada masa ini."
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]
             ])
@@ -1794,7 +1795,7 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             track_flow_message(context, oos_msg, "variant_select")
             return
 
-        prod_desc = product.get("description") or ""
+        prod_desc = (product.get("description") or "").strip()
         text = (
             f"📦 {product_name}\n"
             f"─────────────────────\n"
@@ -1810,7 +1811,6 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
             name      = v.get("variant_name", "Variant")
             price     = v.get("price", 0)
             vid       = v.get("id")
-            v_desc    = v.get("description") or ""
             btn_label = f"{name}  ( {stock} )  — RM {price}"
             rows.append([InlineKeyboardButton(btn_label, callback_data=f"variant_{vid}")])
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
@@ -1904,8 +1904,8 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         f"└─ Total   : RM {total}\n\n"
         f"{_delivery_setting}"
     )
-    if p.get("description"):
-        product_text += f"\n\n{p['description']}"
+    if (p.get("description") or "").strip():
+        product_text += f"\n\n{p['description'].strip()}"
     product_kb = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("➖", callback_data=f"qty_minus_{product_id}_{qty}"),
@@ -4354,15 +4354,18 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("product_"):
             await show_product(update, context, int(data.split("_")[1]))
 
-        elif data.startswith("variant_"):
+        elif data.startswith("variant_confirm_") or data.startswith("variant_"):
             _t_variant = time.monotonic()
             try:
-                # callback_data format: "variant_{variant_db_id}"
-                vid = int(data.split("_", 1)[1])
+                # First tap previews the terms. Only an explicit confirmation creates an order.
+                is_confirm = data.startswith("variant_confirm_")
+                vid = int(data.removeprefix("variant_confirm_") if is_confirm else data.removeprefix("variant_"))
 
-                # Cache-first read for responsiveness; create_order will live-revalidate before insert.
-                _, cached_variants = await _get_cached_products_and_variants()
-                v = next((item for item in (cached_variants or []) if str(item.get("id")) == str(vid)), None)
+                # Always read the latest terms at confirmation; create_order revalidates stock/price.
+                v = None
+                if not is_confirm:
+                    _, cached_variants = await _get_cached_products_and_variants()
+                    v = next((item for item in (cached_variants or []) if str(item.get("id")) == str(vid)), None)
                 if not v:
                     _vid = vid
                     v_rows = await _run_supabase(
@@ -4386,9 +4389,41 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await q.edit_message_text("⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
                     return
 
+                if int(v.get("stock") or 0) < 1:
+                    await q.edit_message_text(
+                        "⚠️ Stok pakej ini dah habis. Pilih pakej lain ya.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("⬅️ Back to Variants", callback_data=f"product_{pid}")],
+                        ]),
+                    )
+                    return
+
+                if not is_confirm:
+                    cached_products, _ = await _get_cached_products_and_variants()
+                    product = next((item for item in cached_products if str(item.get("id")) == str(pid)), {})
+                    variant_desc = (v.get("description") or "").strip()
+                    preview = (
+                        f"📦 {product.get('name', 'Browse Shop')}\n"
+                        f"─────────────────────\n"
+                        f"✨ Pakej: {v_label.strip()}\n"
+                        f"💳 Harga: RM {float(v_price):.2f}\n"
+                        f"📊 Stok tersedia: {int(v['stock'])}\n\n"
+                        f"{variant_desc or '🛡️ Warranty 7 hari.'}\n\n"
+                        "Dah sesuai? Tekan confirm untuk teruskan checkout 👇"
+                    )
+                    preview_msg = await q.edit_message_text(
+                        preview,
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ Confirm & Checkout", callback_data=f"variant_confirm_{vid}")],
+                            [InlineKeyboardButton("⬅️ Back to Variants", callback_data=f"product_{pid}")],
+                        ]),
+                    )
+                    track_flow_message(context, preview_msg, "variant_select")
+                    return
+
                 # Store selected variant_id in user_data for any downstream use
                 context.user_data["selected_variant_id"] = vid
-                context.user_data["selected_variant_desc"] = v.get("description") or ""
+                context.user_data["selected_variant_desc"] = (v.get("description") or "").strip()
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
