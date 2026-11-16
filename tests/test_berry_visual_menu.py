@@ -80,6 +80,21 @@ class BerryVisualMenuTests(TestCase):
         self.assertNotIn('select=id,product_id,variant_name,stock,price,description&stock=gt.0', BOT)
         self.assertIn('if not _ai_video_is_admin(update):', BOT)
 
+    def test_variant_buttons_show_live_stock_badges_like_shop(self):
+        self.assertEqual(
+            menu.variant_button_label("Sharing Business 1 Month", 15.0, 15),
+            "✅ Sharing Business 1 Month  ( 15 )  — RM 15.0",
+        )
+        self.assertEqual(
+            menu.variant_button_label("Private Plus 1 Month", 15.0, 0),
+            "❌ Private Plus 1 Month  ( 0 )  — RM 15.0",
+        )
+        self.assertTrue(menu.variant_button_label("No Stock", 25.0, -1).startswith("❌ "))
+        self.assertTrue(menu.shop_line(1, "All variants sold out", 0).startswith("❌ "))
+        self.assertIn("variant_button_label(name, price, stock)", BOT)
+        self.assertIn("❌ Semua varian sedang habis stok.", BOT)
+        self.assertIn('displayed_variant_stock[str(vid)] = avail', BOT)
+
     def test_polling_conflict_recovers_without_dropping_updates(self):
         self.assertIn('context.application.bot_data["_berry_polling_conflict"] = True', BOT)
         self.assertIn('if app.bot_data.pop("_berry_polling_conflict", False):', BOT)

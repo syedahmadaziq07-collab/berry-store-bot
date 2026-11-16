@@ -101,6 +101,13 @@ def shop_line(index: int, name: str, stock: int) -> str:
     )
 
 
+def variant_button_label(name: str, price: float, stock: int) -> str:
+    """Display the same in-stock / sold-out badge as the main shop list."""
+    available = max(0, int(stock))
+    badge = "✅" if available > 0 else "❌"
+    return f"{badge} {name}  ( {available} )  — RM {price}"
+
+
 def shop_footer(text: str) -> str:
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"

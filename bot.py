@@ -1757,6 +1757,9 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _shop_footer = await _setting('shop_footer', 'Taip nombor atau tekan butang di bawah 👇')
     from berry_menu_visuals import shop_header, shop_line, shop_footer
     text = shop_header(_shop_title)
+    # Reuse this exact inventory in the next variant picker so its badges match
+    # the product-level status, including products delivered via credentials.
+    displayed_variant_stock = {}
     for i, p in enumerate(products, 1):
         pid = p.get("id")
         variants = product_variants_map.get(pid, [])
@@ -1766,13 +1769,16 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for v in variants:
                 vid = v.get("id")
                 if vid in has_creds_for_variant:
-                    avail   = unused_for_variant.get(vid, 0)
+                    # Checkout also requires variant.stock > 0, so both limits
+                    # must be positive before we can advertise availability.
+                    avail   = min(max(0, int(v.get("stock") or 0)), unused_for_variant.get(vid, 0))
                     v_src   = "credentials"
                     v_mode  = "auto"
                 else:
-                    avail   = int(v.get("stock") or 0)
+                    avail   = max(0, int(v.get("stock") or 0))
                     v_src   = "variant_stock"
                     v_mode  = "manual"
+                displayed_variant_stock[str(vid)] = avail
                 log.info(f"[SHOP STOCK] product_id={pid} variant_id={vid} delivery_mode={v_mode} source={v_src} available={avail}")
                 total += avail
             log.info(f"[SHOP STOCK] product_id={pid} displayed_total={total}")
@@ -1789,6 +1795,8 @@ async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_mode = "manual"
             log.info(f"[SHOP STOCK] product_id={pid} delivery_mode={p_mode} source={p_src} available={stock} displayed_total={stock}")
         text += shop_line(i, p["name"], stock)
+    context.user_data["shop_variant_stock"] = displayed_variant_stock
+    context.user_data["shop_variant_stock_at"] = time.time()
     text += "\n✅ Available  •  ❌ Out of stock\n"
     text += shop_footer(_shop_footer)
 
@@ -1874,25 +1882,18 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
         # Store selected product so we have context if needed
         context.user_data["variant_product_id"] = product_id
 
-        # Check if every variant is out of stock
-        all_out_of_stock = all(int(v.get("stock", 0)) == 0 for v in variants)
-        if all_out_of_stock:
-            unavailable_desc = (product.get("description") or "").strip()
-            text = f"📦 {product_name}\n"
-            if unavailable_desc:
-                text += f"{unavailable_desc}\n"
-            text += "⚠️ Stok habis. Semua varian tidak tersedia pada masa ini."
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")]
-            ])
-            removed_ids = await delete_flow_messages(context, context.bot, chat_id, user_id,
-                                                     ["shop_list", "product_detail", "variant_select", "error_message"])
-            if (update.callback_query and
-                    update.callback_query.message.message_id not in removed_ids):
-                await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
-            oos_msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
-            track_flow_message(context, oos_msg, "variant_select")
-            return
+        # Keep badges consistent with the shop's recent credentials-aware
+        # stock read, while never displaying more than the latest variant stock.
+        shop_stock = context.user_data.get("shop_variant_stock") or {}
+        if time.time() - context.user_data.get("shop_variant_stock_at", 0) > CACHE_TTL:
+            shop_stock = {}
+
+        def available_stock(v):
+            db_stock = max(0, int(v.get("stock") or 0))
+            displayed = shop_stock.get(str(v.get("id")), db_stock)
+            return min(db_stock, max(0, int(displayed)))
+
+        all_out_of_stock = all(available_stock(v) == 0 for v in variants)
 
         prod_desc = (product.get("description") or "").strip()
         text = (
@@ -1902,15 +1903,18 @@ async def show_variants(update: Update, context: ContextTypes.DEFAULT_TYPE, prod
         if prod_desc:
             text += f"{prod_desc}\n─────────────────────\n"
         text += "Pilih varian di bawah 👇"
+        if all_out_of_stock:
+            text += "\n\n❌ Semua varian sedang habis stok."
 
         # Build inline buttons — 1 per row, callback_data: "variant_{variant_db_id}"
+        from berry_menu_visuals import variant_button_label
         rows = []
         for v in variants:
-            stock     = int(v.get("stock", 0))
+            stock     = available_stock(v)
             name      = v.get("variant_name", "Variant")
             price     = v.get("price", 0)
             vid       = v.get("id")
-            btn_label = f"{name}  ( {stock} )  — RM {price}"
+            btn_label = variant_button_label(name, price, stock)
             rows.append([InlineKeyboardButton(btn_label, callback_data=f"variant_{vid}")])
         rows.append([InlineKeyboardButton("⬅️ Back to Shop", callback_data="shop")])
 
