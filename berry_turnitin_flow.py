@@ -120,7 +120,14 @@ class TurnitinFlow:
     @staticmethod
     async def respond(update, text, reply_markup=None):
         if update.callback_query:
-            return await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
+            try:
+                return await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
+            except Exception as exc:
+                # Telegram rejects edits that exactly repeat the current card.
+                # Double-tapping a plan must not trigger the generic error DM.
+                if "message is not modified" in str(exc).casefold():
+                    return None
+                raise
         return await update.effective_message.reply_text(text, reply_markup=reply_markup)
 
     async def menu(self, update, context):
@@ -245,7 +252,9 @@ class TurnitinFlow:
                         p_key=str(key), p_order_id=oid, p_username=user.username or "")
         except TurnitinError:
             await self.respond(update,
-                "⚠️ Checkout gagal. Pastikan tiada order lama yang masih pending atau stock habis.")
+                "⚠️ Checkout belum berjaya. Jika ada tempahan yang belum dibayar, "
+                "selesaikan atau batalkan dulu melalui My Orders. "
+                "Kalau masih gagal, cuba sebentar lagi atau hubungi Support.")
             return
         oid = out["order_id"]
         if out.get("state") != "pending_payment":
