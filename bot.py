@@ -5541,30 +5541,36 @@ def _to_float_amount(value: object) -> float:
 
 
 async def _fetch_completed_orders_for_period(start_utc: datetime, end_utc: datetime) -> list:
-    select_cols = "id,product_name,amount,completed_at,created_at,order_date"
+    """Fetch paid orders by their real created_at column, with complete pagination.
+
+    The production orders table has no completed_at or order_date columns.
+    Both timestamps are UTC boundaries; end_utc is exclusive.
+    """
     start_iso = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     end_iso = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    candidates = ("completed_at", "created_at", "order_date")
-
-    for date_col in candidates:
-        try:
-            return await _run_supabase(
-                f"orders.daily_report.{date_col}",
-                lambda _col=date_col: sb_get(
-                    "orders",
-                    (
-                        f"select={select_cols}"
-                        f"&status=eq.completed"
-                        f"&{_col}=gte.{start_iso}"
-                        f"&{_col}=lte.{end_iso}"
-                        "&limit=10000"
-                    ),
+    page_size = 1000
+    orders = []
+    while True:
+        offset = len(orders)
+        page = await _run_supabase(
+            f"orders.daily_report.offset_{offset}",
+            lambda _offset=offset: sb_get(
+                "orders",
+                (
+                    "select=id,product_name,amount,created_at"
+                    "&status=in.(completed,approved)"
+                    f"&created_at=gte.{start_iso}"
+                    f"&created_at=lt.{end_iso}"
+                    "&order=created_at.asc,id.asc"
+                    f"&limit={page_size}&offset={_offset}"
                 ),
-            ) or []
-        except Exception as exc:
-            # Some tables may not have completed_at/order_date, so fallback safely.
-            log.warning(f"[SALES REPORT] Query fallback for {date_col}: {_safe_error(exc)}")
-    return []
+            ),
+        )
+        if not isinstance(page, list):
+            raise ValueError("Unexpected sales report response")
+        orders.extend(page)
+        if len(page) < page_size:
+            return orders
 
 
 def _build_sales_report_text(report_date: datetime, orders: list) -> str:
@@ -5622,11 +5628,22 @@ async def _send_daily_sales_report(context: ContextTypes.DEFAULT_TYPE, *, use_to
     now_local = datetime.now(tz)
     target_day = now_local.date() if use_today else (now_local - timedelta(days=1)).date()
     start_local = datetime.combine(target_day, dt_time(0, 0, 0), tzinfo=tz)
-    end_local = datetime.combine(target_day, dt_time(23, 59, 59), tzinfo=tz)
+    end_local = start_local + timedelta(days=1)
     start_utc = start_local.astimezone(timezone.utc)
     end_utc = end_local.astimezone(timezone.utc)
 
-    orders = await _fetch_completed_orders_for_period(start_utc, end_utc)
+    try:
+        orders = await _fetch_completed_orders_for_period(start_utc, end_utc)
+    except Exception as exc:
+        log.error("[SALES REPORT] Could not read completed orders: %s", _safe_error(exc))
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"⚠️ Daily Sales Report ({target_day.strftime('%d/%m/%Y')}) tak dapat dijana kerana sambungan data bermasalah. Cuba /salesreport semula nanti.",
+            )
+        except Exception as notify_exc:
+            log.warning("[SALES REPORT] Could not notify admin: %s", _safe_error(notify_exc))
+        return
     text = _build_sales_report_text(start_local, orders)
 
     try:
@@ -5643,7 +5660,11 @@ async def cmd_salesreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _block_if_expired(update, context):
         return
 
-    await _send_daily_sales_report(context)
+    args = getattr(context, "args", None) or []
+    if args and args[0].lower() not in ("today", "yesterday"):
+        await update.message.reply_text("Guna /salesreport untuk semalam atau /salesreport today untuk hari ini.")
+        return
+    await _send_daily_sales_report(context, use_today=bool(args and args[0].lower() == "today"))
 
 
 async def cmd_clearpending(update: Update, context: ContextTypes.DEFAULT_TYPE):
