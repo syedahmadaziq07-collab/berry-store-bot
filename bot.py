@@ -1425,14 +1425,14 @@ def main_kb(user_id: int | None = None):
     if ADMIN_ID and user_id == ADMIN_ID:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
-             InlineKeyboardButton("📑 Turnitin", callback_data="turnitin")],
+             InlineKeyboardButton("‼️ Turnitin", callback_data="turnitin")],
             [InlineKeyboardButton("🎬 AI Video", callback_data="ai_video"),
              InlineKeyboardButton("📦 My Orders", callback_data="myorders")],
             [InlineKeyboardButton("💬 Support", callback_data="support")],
         ])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🛍 Browse Shop", callback_data="shop"),
-         InlineKeyboardButton("📑 Turnitin", callback_data="turnitin")],
+         InlineKeyboardButton("‼️ Turnitin", callback_data="turnitin")],
         [InlineKeyboardButton("📦 My Orders", callback_data="myorders"),
          InlineKeyboardButton("💬 Support", callback_data="support")],
     ])
