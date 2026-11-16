@@ -98,13 +98,15 @@ class TurnitinBackend:
 
 class TurnitinFlow:
     def __init__(self, backend, admin_id: int, *, checkout_enabled=False,
-                 admin_only=True, payment_page=None, on_delivered=None):
+                 admin_only=True, payment_page=None, on_delivered=None,
+                 pending_order_guard=None):
         self.backend = backend
         self.admin_id = int(admin_id)
         self.checkout_enabled = checkout_enabled is True
         self.admin_only = admin_only is True
         self.payment_page = payment_page
         self.on_delivered = on_delivered
+        self.pending_order_guard = pending_order_guard
 
     def allowed(self, user_id: int):
         return bool(self.checkout_enabled and self.admin_id > 0
@@ -243,6 +245,8 @@ class TurnitinFlow:
         if self.payment_page is None:
             await self.respond(update,"⚠️ Payment belum tersedia.")
             return
+        if self.pending_order_guard and await self.pending_order_guard(update, context):
+            return
         user = update.effective_user
         key = uuid.uuid5(uuid.NAMESPACE_URL,
             f"turnitin:{self.backend.tenant_id}:{user.id}:{update.update_id}")
@@ -251,6 +255,10 @@ class TurnitinFlow:
             out = await self.call("checkout", p_user=user.id, p_plan=code,
                         p_key=str(key), p_order_id=oid, p_username=user.username or "")
         except TurnitinError:
+            # Another checkout may have reserved the only unpaid order after
+            # the precheck. Prefer its real Cancel / Continue Pay actions.
+            if self.pending_order_guard and await self.pending_order_guard(update, context):
+                return
             await self.respond(update,
                 "⚠️ Checkout belum berjaya. Jika ada tempahan yang belum dibayar, "
                 "selesaikan atau batalkan dulu melalui My Orders. "
@@ -264,14 +272,17 @@ class TurnitinFlow:
             {"id":oid,"status":"pending","amount":out["amount"]},oid)
 
     async def cancel(self, update, context, oid: str):
-        if not self.private(update): return
+        if not self.private(update): return False
         try:
             out=await self.call("cancel",p_user=update.effective_user.id,p_order_id=oid)
         except TurnitinError:
             await self.respond(update,
                 "⚠️ Order tidak boleh dibatalkan setelah resit dihantar atau pembayaran disahkan.")
-            return
+            return False
+        if context.user_data.get("pending_receipt") == oid:
+            context.user_data.pop("pending_receipt", None)
         await self.respond(update,f"✅ Turnitin order {oid} dibatalkan. Tiada stock ditolak.")
+        return True
 
     async def receipt(self, update, context, oid: str, file_id: str, *, as_document=False):
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup

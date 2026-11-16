@@ -2035,6 +2035,67 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 
 # ─── Create Order ─────────────────────────────────────────────────────────────
 
+async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
+    """Shared checkout guard for shop, Turnitin and Berry Credits QR orders.
+
+    Only unpaid orders can be cancelled or resumed. Once a receipt is submitted,
+    its approval is an admin decision and the customer must not pay again.
+    """
+    uid = update.effective_user.id
+    if order is None:
+        try:
+            rows = await _run_supabase(
+                f"orders.unpaid_guard user={uid}",
+                lambda: sb_get(
+                    "orders",
+                    f"select=id,product_name,amount,status&user_id=eq.{uid}"
+                    "&status=in.(pending,waiting,waiting_approval)"
+                    "&order=created_at.asc,id.asc&limit=1",
+                ),
+            )
+            order = rows[0] if rows else None
+        except Exception as exc:
+            log.warning("[PAYMENT] existing order lookup unavailable: %s", _safe_error(exc))
+            await context.bot.send_message(
+                update.effective_chat.id,
+                "⚠️ Tak dapat semak order lama sekarang. Cuba lagi sebentar ya.",
+            )
+            return True  # Fail closed: do not risk creating a duplicate charge.
+    if not order:
+        return False
+
+    oid = str(order.get("id") or "")
+    status = str(order.get("status") or "")
+    if not oid or status not in ("pending", "waiting", "waiting_approval"):
+        return False
+    if status == "pending":
+        message = (
+            "🧾 Awak masih ada order yang belum dibayar.\n\n"
+            f"📦 {order.get('product_name') or 'Tempahan Berry Store'}\n"
+            f"Order: {oid}\n"
+            f"Jumlah: RM {order.get('amount') or '0.00'}\n\n"
+            "Nak teruskan bayaran yang tadi atau batalkan dulu? 👇"
+        )
+        buttons = [
+            [InlineKeyboardButton("💳 Continue Pay", callback_data=f"pay:{oid}")],
+            [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_order:{oid}")],
+        ]
+    else:
+        message = (
+            "⏳ Order lama awak masih dalam semakan bayaran.\n\n"
+            f"Order: {oid}\n"
+            "Resit dah dihantar. Tunggu admin sahkan dulu, tak perlu bayar lagi ya."
+        )
+        buttons = [[InlineKeyboardButton("📦 My Orders", callback_data="myorders")]]
+
+    active_msg = await context.bot.send_message(
+        update.effective_chat.id, message,
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+    track_flow_message(context, active_msg, "active_order")
+    return True
+
+
 async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None):
     _t_create = time.monotonic()
     user = update.effective_user
@@ -2133,43 +2194,15 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 track_flow_message(context, err_msg, "error_message")
                 return
 
-    # ── Duplicate order protection ─────────────────────────────────────────────
+    # ── Shared unpaid-order prompt, including a pending Turnitin / AI Top Up. ──
     try:
-        existing = await _run_supabase(
-            f"orders.dup_check user={user.id}",
-            lambda: sb_get("orders",
-                f"select=id,product_name,amount,status"
-                f"&user_id=eq.{user.id}"
-                f"&status=in.(pending,waiting)"
-                f"&limit=1"),
-        )
-        if existing:
-            context.user_data.pop(lock_user, None)
-            o = existing[0]
-            oid = o.get("id", "")
-            removed_ids = await delete_flow_messages(context, context.bot, chat_id, user.id,
-                                                     ["order_summary", "active_order", "product_detail", "variant_select", "error_message"])
-            if (update.callback_query and
-                    update.callback_query.message.message_id not in removed_ids):
-                await safe_delete_message(context.bot, chat_id, update.callback_query.message.message_id)
-            active_msg = await context.bot.send_message(
-                chat_id,
-                f"⚠️ Anda sudah mempunyai order aktif:\n"
-                f"• Order  : {oid}\n"
-                f"• Produk : {o.get('product_name','')}\n"
-                f"• Jumlah : RM {o.get('amount','')}\n"
-                f"• Status : {o.get('status','')}\n\n"
-                f"Sila teruskan pembayaran atau batalkan order semasa.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💳 Continue Payment", callback_data=f"pay:{oid}")],
-                    [InlineKeyboardButton("❌ Cancel Order",      callback_data=f"cancel_order:{oid}")],
-                ]),
-            )
-            track_flow_message(context, active_msg, "active_order")
-            return
-    except Exception as exc:
-        log.warning(f"Duplicate order check failed, proceeding: {_safe_error(exc)}")
-        # Non-blocking — if check fails, allow order creation to continue
+        existing_unpaid = await _offer_existing_unpaid_order(update, context)
+    except Exception:
+        context.user_data.pop(lock_user, None)
+        raise
+    if existing_unpaid:
+        context.user_data.pop(lock_user, None)
+        return
 
     order_id      = f"ORD{random.randint(10000, 99999)}{user.id}"
     price_to_use  = variant_price if variant_price is not None else p["price"]
@@ -2232,6 +2265,16 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     log.info(f"[TIMING] create_order total_ms={int((time.monotonic()-_t_create)*1000)} product_id={product_id} order_id={order_id}")
 
 # ─── Payment ──────────────────────────────────────────────────────────────────
+
+def _payment_reopen_allowed(user_data, order_id: str, *, now=None) -> bool:
+    """Debounce quick taps without permanently hiding an unpaid order's QR."""
+    current = time.monotonic() if now is None else now
+    previous = user_data.setdefault("payment_last_opened", {}).get(order_id)
+    if previous is not None and current - float(previous) < 2:
+        return False
+    user_data["payment_last_opened"][order_id] = current
+    return True
+
 
 async def _refresh_payment_settings():
     """Force-refresh payment/banner settings from Supabase, bypassing cache."""
@@ -2389,6 +2432,16 @@ async def show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, order
             await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
             err_msg = await context.bot.send_message(chat_id, "⛔ Order ini bukan milik anda.", reply_markup=back_shop())
             track_flow_message(context, err_msg, "error_message")
+            return
+        if order.get("status") != "pending":
+            await context.bot.send_message(
+                chat_id,
+                f"ℹ️ Order {order_id} bukan lagi pending. "
+                "Semak My Orders; jangan buat pembayaran kedua.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📦 My Orders", callback_data="myorders")],
+                ]),
+            )
             return
         log.info(f"[PAYMENT] order validated order_id={order_id} user_id={user_id} status={order.get('status')} amount={order.get('amount')}")
     except Exception as exc:
@@ -2601,6 +2654,8 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
         track_flow_message(context, err_msg, "error_message")
         return
 
+    if context.user_data.get("pending_receipt") == order_id:
+        context.user_data.pop("pending_receipt", None)
     await delete_flow_messages(context, context.bot, chat_id, user_id, ["error_message"])
     cancel_msg = await context.bot.send_message(
         chat_id,
@@ -3818,6 +3873,8 @@ async def checkout_ai_topup(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     plan = BERRY_TOPUP_PLANS.get(key)
     if not plan:
         return
+    if await _offer_existing_unpaid_order(update, context):
+        return
     user = update.effective_user
     # One active order per user, matching existing Browse Shop policy.
     try:
@@ -3839,9 +3896,7 @@ async def checkout_ai_topup(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             "ℹ️ Resit order ini sudah diterima dan sedang menunggu semakan admin. Tak perlu bayar sekali lagi.")
         return
     if not created and not _topup_plan_for_order(order):
-        await update.callback_query.message.reply_text(
-            "⚠️ Anda ada order Browse Shop yang belum selesai. "
-            "Selesaikan atau batalkan dahulu.")
+        await _offer_existing_unpaid_order(update, context, order)
         return
     await send_payment_page(context, update.effective_chat.id, user.id, order, order["id"])
 
@@ -4591,16 +4646,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     err_msg = await context.bot.send_message(chat_id, "⚠️ Gagal cari order aktif.", reply_markup=back_shop())
                     track_flow_message(context, err_msg, "error_message")
                     return
-            # Duplicate click protection
-            opened = context.user_data.setdefault('payment_opened', set())
-            if order_id in opened:
-                log.info(f"[PAYMENT] duplicate click blocked order_id={order_id} user_id={user_id}")
-                try:
-                    await context.bot.send_message(chat_id, "💳 Payment page already opened. Please check the messages above.")
-                except Exception:
-                    pass
+            # Throttle rapid double taps, but allow reopening the QR later.
+            if not _payment_reopen_allowed(context.user_data, order_id):
+                log.info("[PAYMENT] rapid duplicate tap ignored order_id=%s", order_id)
                 return
-            opened.add(order_id)
             # Show payment page FIRST, then clean up old messages (so failure doesn't lose old content)
             log.info(f"[PAYMENT] calling show_payment order_id={order_id} user_id={user_id}")
             await show_payment(update, context, order_id)
@@ -4650,14 +4699,17 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Turnitin uses its private atomic state transition so a cancelled
             # QR checkout never strands an unfinished Turnitin job.
             if str(order_id).startswith("TT"):
-                await _turnitin_callback(update, context, "turnitin:cancel:" + order_id)
+                cancelled = await _turnitin_callback(update, context, "turnitin:cancel:" + order_id)
+                if cancelled:
+                    await delete_flow_messages(context, context.bot, chat_id, user_id,
+                                               ["payment_qr", "receipt_instruction"])
                 return
             # Cancel Browse Shop order FIRST, then clean up old messages.
             await cancel_order(update, context, order_id)
             try:
                 await delete_flow_messages(context, context.bot, chat_id, user_id,
                                            ["order_summary", "active_order", "payment_qr",
-                                            "receipt_instruction", "error_message"])
+                                            "receipt_instruction"])
                 await safe_delete_message(context.bot, chat_id, q.message.message_id)
             except Exception as exc:
                 log.warning(f"[CANCEL] cleanup after cancel_order: {_safe_error(exc)}")
@@ -6627,7 +6679,8 @@ def build_app() -> Application:
                 checkout_enabled=_get_env("BERRY_TURNITIN_CHECKOUT_ENABLED") == "true",
                 admin_only=_get_env("BERRY_TURNITIN_ADMIN_ONLY", "true") != "false",
                 payment_page=send_payment_page,
-                on_delivered=_announce_turnitin_delivered)
+                on_delivered=_announce_turnitin_delivered,
+                pending_order_guard=_offer_existing_unpaid_order)
             log.info("[TURNITIN] menu configured; checkout gate and admin-only restrictions active")
         except Exception as exc:
             log.warning("[TURNITIN] disabled due to missing config: %s", type(exc).__name__)
