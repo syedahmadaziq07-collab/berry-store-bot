@@ -1,8 +1,9 @@
 """Berry Store Promotion Center: tenant-bound campaigns, permissioned delivery.
 
 Only the server can access these PostgREST tables and Threads OAuth tokens.
-Google Forms belonging to third parties are presented as *prefilled manual*
-submissions: the official Google Forms API cannot submit a respondent answer.
+Google Forms default to prefilled manual submissions. A bounded opt-in HTML
+form submitter is available only for forms explicitly approved for automation;
+it never signs in, bypasses CAPTCHA or treats uncertain results as success.
 """
 from __future__ import annotations
 
@@ -104,6 +105,15 @@ def validate_destination(data):
         ):
             raise PromotionError("Mapping Google Form tidak sah")
         out["form_fixed_fields"] = fixed
+        mode = str(data.get("submission_mode") or "manual").strip()
+        authorized = data.get("auto_submit_authorized") is True
+        if mode not in {"manual", "auto"}:
+            raise PromotionError("Submission mode tidak sah")
+        if mode == "auto" and (not authorized or not out["posting_permitted"]):
+            raise PromotionError("Auto-submit hanya untuk form yang pemiliknya membenarkan penghantaran automatik")
+        if mode == "auto" and (not out["form_message_entry"] or out["target_url"].startswith("https://forms.gle/")):
+            raise PromotionError("Auto-submit memerlukan link Google Forms penuh dan Message field ID")
+        out.update(submission_mode=mode, auto_submit_authorized=authorized)
     else:
         p = urlparse(url)
         if p.scheme != "https" or p.hostname not in {"t.me", "telegram.me"} or not p.path.strip("/"):
@@ -114,7 +124,7 @@ def validate_destination(data):
             raise PromotionError("Masukkan chat ID numerik atau @username yang sah. Link sahaja tak cukup.")
         out["telegram_chat_id"] = chat_id
         out.update(form_email=None, form_message_entry=None, form_email_entry=None,
-                   form_fixed_fields={})
+                   form_fixed_fields={}, submission_mode="manual", auto_submit_authorized=False)
     return out
 
 
@@ -186,7 +196,7 @@ class PromotionCenter:
             "deliveries": self.rows("promotion_deliveries", limit=500,
                                     filters={"order": "updated_at.desc"}),
             "threads_configured": bool(self.app_id and self.app_secret and self.token_key and self.origin),
-            "auto_form_submission": False,
+            "auto_form_submission": os.getenv("PROMOTION_GOOGLE_FORM_AUTO_ENABLED", "false").lower() == "true",
         }
 
     def save_destination(self, body):
@@ -231,6 +241,70 @@ class PromotionCenter:
         # by Telegram when Send Campaign runs, not assumed here.
         return {"accessible": True, "title": chat.get("title", ""),
                 "message": "Bot boleh akses destinasi. Posting masih tertakluk pada permission admin."}
+
+    def _submit_google_form(self, destination, message):
+        """Only permissioned, public single-page forms: no sign-in, CAPTCHA or bypass.
+
+        Google has no official respondent-write API. This best-effort adapter
+        requires a real confirmation signal; uncertain responses stay unknown
+        and are NEVER retried automatically. The owner opts in per form.
+        """
+        if os.getenv("PROMOTION_GOOGLE_FORM_AUTO_ENABLED", "false").lower() != "true":
+            raise PromotionError("Auto-submit form belum diaktifkan; semak prefilled link", 422)
+        if (destination.get("submission_mode") != "auto"
+                or destination.get("auto_submit_authorized") is not True
+                or destination.get("posting_permitted") is not True):
+            raise PromotionError("Form ini tidak dibenarkan auto-submit", 422)
+        url = safe_form_url(destination.get("target_url") or "")
+        if not re.fullmatch(r"https://docs[.]google[.]com/forms/d/e/[A-Za-z0-9_-]+/viewform", url):
+            raise PromotionError("Auto-submit hanya untuk link Google Form penuh, bukan URL pendek", 422)
+        field = destination.get("form_message_entry") or ""
+        if not ENTRY_ID.fullmatch(field):
+            raise PromotionError("Message field ID diperlukan untuk auto-submit", 422)
+
+        # One successful automated answer per destination per 24 hours; avoids
+        # repeated promotional submissions even across different campaigns.
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        successful = self.rows("promotion_deliveries", limit=1, columns="id",
+                              filters={"destination_id": "eq." + destination["id"],
+                                       "state": "eq.sent", "sent_at": "gte." + since})
+        if successful:
+            raise PromotionError("Auto-submit form dihadkan sekali setiap 24 jam", 422)
+
+        try:
+            page = self.client.get(url, timeout=12, follow_redirects=False)
+            if page.status_code != 200:
+                raise PromotionError("Form tidak dapat dibuka tanpa login atau redirect", 422)
+            page_html = page.text[:200000]
+            # No headless browser, no login, no anti-bot avoidance, no forced
+            # submission of forms that are closed or require a Google session.
+            if ("formResponse" not in page_html or field not in page_html
+                    or "g-recaptcha" in page_html.lower()):
+                raise PromotionError("Form ditutup, ada CAPTCHA, atau perlu login; submit manual diperlukan", 422)
+            payload = {field: message}
+            email_key = destination.get("form_email_entry")
+            email_value = destination.get("form_email")
+            if email_key and ENTRY_ID.fullmatch(email_key) and email_value:
+                payload[email_key] = email_value
+            for key, value in (destination.get("form_fixed_fields") or {}).items():
+                if ENTRY_ID.fullmatch(str(key)) and isinstance(value, str):
+                    payload[key] = value
+            submit_url = url.rsplit("/viewform", 1)[0] + "/formResponse"
+            result = self.client.post(submit_url, data=payload, timeout=20, follow_redirects=False)
+            body = result.text[:150000].lower()
+            confirmed = (result.status_code == 200 and any(
+                marker in body for marker in (
+                    "your response has been recorded",
+                    "your response has been submitted",
+                    "freebirdformviewerviewresponseconfirmationmessage",
+                )))
+            if confirmed and "no longer accepting responses" not in body:
+                return "Google Forms confirmation page"
+            if result.status_code in (401, 403, 404, 429) or "no longer accepting responses" in body:
+                raise PromotionError("Google Form menolak submission atau tidak lagi menerima respons", 422)
+            raise PromotionError("Google Forms tidak mengesahkan penerimaan; semak secara manual sebelum cuba lagi", 502)
+        except httpx.HTTPError as exc:
+            raise PromotionError("Status penghantaran Google Form tidak pasti; semak sebelum retry", 502) from exc
 
     def create_campaign(self, body):
         if not isinstance(body, dict):
@@ -350,9 +424,19 @@ class PromotionCenter:
                         if not dest["active"] or not dest["posting_permitted"]:
                             state, error = "skipped", "Destinasi dinyahaktifkan / tiada kebenaran"
                         elif dest["kind"] == "google_form":
-                            # No misleading claim of automatic third-party form submission.
-                            state = "manual"
                             external_id = prefilled_form_url(dest, campaign["message"])
+                            if dest.get("submission_mode") == "auto" and dest.get("auto_submit_authorized") is True:
+                                try:
+                                    self._submit_google_form(dest, campaign["message"])
+                                    state = "sent"
+                                except PromotionError as form_error:
+                                    # Preserve the reviewable link and distinguish
+                                    # "not supported" from an ambiguous POST.
+                                    state = "unknown" if form_error.status == 502 else "manual"
+                                    error = str(form_error)
+                            else:
+                                state = "manual"
+                                error = "Manual Required: form belum memberi kebenaran auto-submit"
                         else:
                             sent = self._telegram("sendMessage", {"chat_id": dest["telegram_chat_id"],
                                                                   "text": campaign["message"],
