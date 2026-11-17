@@ -279,7 +279,7 @@ class PromotionCenter:
             page_html = page.text[:200000]
             # No headless browser, no login, no anti-bot avoidance, no forced
             # submission of forms that are closed or require a Google session.
-            if (not re.search(r'<form\\b[^>]*action=["\\'][^"\\']*/formResponse', page_html, re.I)
+            if (not re.search(r'<form[^>]+action=[^>]*formResponse', page_html, re.I)
                     or field.split(".", 1)[-1] not in page_html
                     or "g-recaptcha" in page_html.lower()):
                 raise PromotionError("Form ditutup, ada CAPTCHA, atau perlu login; submit manual diperlukan", 422)
