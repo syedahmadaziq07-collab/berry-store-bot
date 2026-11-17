@@ -81,6 +81,93 @@ class PromotionCenterTests(TestCase):
             validate_destination({"kind": "telegram_group", "name": "Student Group",
                                   "target_url": "https://t.me/groupname"})
 
+    def test_auto_submit_requires_explicit_permission_and_full_url(self):
+        payload = {"kind":"google_form", "name":"Owner-approved event",
+                   "target_url":"https://docs.google.com/forms/d/e/abc123/viewform",
+                   "form_message_entry":"entry.123", "posting_permitted":True,
+                   "submission_mode":"auto"}
+        with self.assertRaisesRegex(PromotionError, "pemiliknya"):
+            validate_destination(payload)
+        approved = validate_destination({**payload, "auto_submit_authorized":True})
+        self.assertEqual(approved["submission_mode"],"auto")
+        self.assertTrue(approved["auto_submit_authorized"])
+        with self.assertRaises(PromotionError):
+            validate_destination({**payload, "auto_submit_authorized":True,
+                                  "target_url":"https://forms.gle/abc123456"})
+
+    def test_auto_submit_stays_disabled_without_feature_flag(self):
+        promo=MemoryPromotion()
+        dest=promo.save_destination({"kind":"google_form","name":"Approved",
+            "target_url":"https://docs.google.com/forms/d/e/abc123/viewform",
+            "form_message_entry":"entry.123", "posting_permitted":True,
+            "submission_mode":"auto","auto_submit_authorized":True})
+        with patch.dict("os.environ", {"PROMOTION_GOOGLE_FORM_AUTO_ENABLED":"false"}):
+            with self.assertRaisesRegex(PromotionError, "belum diaktifkan"):
+                promo._submit_google_form(dest, "Hello")
+
+    def test_approved_public_google_form_submission_only_marks_confirmed_as_sent(self):
+        from unittest.mock import Mock
+        promo=MemoryPromotion()
+        dest=promo.save_destination({"kind":"google_form","name":"Approved Form",
+            "target_url":"https://docs.google.com/forms/d/e/abc123/viewform",
+            "form_message_entry":"entry.123","form_email_entry":"entry.456",
+            "form_email":"hello@example.com", "posting_permitted":True,
+            "submission_mode":"auto","auto_submit_authorized":True})
+        preview=Mock(status_code=200,text='<form action="formResponse"><input name="entry.123"></form>')
+        confirmation=Mock(status_code=200,text="<div>Your response has been recorded</div>")
+        promo.client=Mock()
+        promo.client.get.return_value=preview
+        promo.client.post.return_value=confirmation
+        with patch.dict("os.environ", {"PROMOTION_GOOGLE_FORM_AUTO_ENABLED":"true"}):
+            outcome=promo._submit_google_form(dest,"Promosi izin")
+        self.assertEqual(outcome,"Google Forms confirmation page")
+        url=promo.client.post.call_args.args[0]
+        self.assertEqual(url,"https://docs.google.com/forms/d/e/abc123/formResponse")
+        self.assertEqual(promo.client.post.call_args.kwargs["data"]["entry.123"],"Promosi izin")
+        self.assertEqual(promo.client.post.call_args.kwargs["data"]["entry.456"],"hello@example.com")
+
+    def test_closed_or_authenticated_form_never_submitted(self):
+        from unittest.mock import Mock
+        promo=MemoryPromotion()
+        dest=promo.save_destination({"kind":"google_form","name":"Closed",
+            "target_url":"https://docs.google.com/forms/d/e/abc123/viewform",
+            "form_message_entry":"entry.123","posting_permitted":True,
+            "submission_mode":"auto","auto_submit_authorized":True})
+        promo.client=Mock()
+        promo.client.get.return_value=Mock(status_code=200,text="<h1>Form closed</h1>")
+        with patch.dict("os.environ", {"PROMOTION_GOOGLE_FORM_AUTO_ENABLED":"true"}):
+            with self.assertRaises(PromotionError):
+                promo._submit_google_form(dest,"Promo")
+        promo.client.post.assert_not_called()
+
+    def test_ambiguous_google_response_is_not_counted_as_sent(self):
+        from unittest.mock import Mock
+        promo=MemoryPromotion()
+        dest=promo.save_destination({"kind":"google_form","name":"Ambiguous",
+            "target_url":"https://docs.google.com/forms/d/e/abc123/viewform",
+            "form_message_entry":"entry.123","posting_permitted":True,
+            "submission_mode":"auto","auto_submit_authorized":True})
+        promo.client=Mock()
+        promo.client.get.return_value=Mock(status_code=200,text='<form action="formResponse"><input name="entry.123"></form>')
+        promo.client.post.return_value=Mock(status_code=200,text='<form action="formResponse">Required fields missing</form>')
+        with patch.dict("os.environ", {"PROMOTION_GOOGLE_FORM_AUTO_ENABLED":"true"}):
+            with self.assertRaises(PromotionError) as exc:
+                promo._submit_google_form(dest,"Promo")
+        self.assertEqual(exc.exception.status,502)
+
+    def test_auto_google_form_delivery_reports_sent_only_after_confirmation(self):
+        promo=MemoryPromotion()
+        dest=promo.save_destination({"kind":"google_form","name":"Approved",
+            "target_url":"https://docs.google.com/forms/d/e/abc123/viewform",
+            "form_message_entry":"entry.123","posting_permitted":True,
+            "submission_mode":"auto","auto_submit_authorized":True})
+        campaign=promo.create_campaign({"title":"Permitted","message":"Owner-approved",
+                                         "destination_ids":[dest["id"]]})
+        promo._submit_google_form=lambda _,__: "Google Forms confirmation page"
+        with patch("promotion_center.time.sleep"):
+            self.assertEqual(promo.run_due(campaign_id=campaign["id"]),1)
+        self.assertEqual(promo.data["promotion_deliveries"][0]["state"],"sent")
+
     def test_campaign_does_not_submit_google_forms_and_reports_each_destination(self):
         promo = MemoryPromotion()
         telegram = promo.save_destination({"kind": "telegram_group", "name": "Student Group",
