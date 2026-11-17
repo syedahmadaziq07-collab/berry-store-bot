@@ -3,7 +3,7 @@ export const MODULE_ENDPOINTS = {
   overview: '/dashboard/overview', products: '/shop/products', categories: '/shop/categories',
   orders: '/orders', credentials: '/credentials', customers: '/customers',
   tools: '/ai/tools', models: '/ai/models', wallet: '/wallet', settings: '/bot-settings',
-  broadcasts: '/broadcast', audit: '/system/audit-logs', health: '/system/health',
+  audit: '/system/audit-logs', health: '/system/health',
 } as const;
 export type ModuleId = keyof typeof MODULE_ENDPOINTS;
 export type ModuleResult = { status: 'ready'; data: unknown; checkedAt: string } |
@@ -13,12 +13,12 @@ export const MENU_REQUIREMENTS = {
   dashboard: ['overview', 'orders', 'products'], shop: ['products'], orders: ['orders'],
   credentials: ['credentials', 'products'], customers: ['customers'],
   'ai-studio': [], 'ai-models': [], wallets: ['wallet'],
-  'bot-settings': ['settings'], broadcast: ['broadcasts', 'customers'], 'promotion-center': [],
+  'bot-settings': ['settings'], broadcast: [], 'promotion-center': [],
   referrals: ['customers', 'settings'], monitoring: ['health'],
 } as const;
 export const MENU_OPTIONAL = {shop: ['categories'], 'ai-studio': ['models', 'tools'], 'ai-models': ['tools', 'models'], monitoring: ['audit']} as const;
 export type MenuId = keyof typeof MENU_REQUIREMENTS;
-const arrays = new Set<ModuleId>(['products', 'categories', 'orders', 'credentials', 'customers', 'tools', 'models', 'broadcasts', 'audit']);
+const arrays = new Set<ModuleId>(['products', 'categories', 'orders', 'credentials', 'customers', 'tools', 'models', 'audit']);
 
 export async function loadAdminModules(fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<ModuleResults> {
   const entries = await Promise.all(Object.entries(MODULE_ENDPOINTS).map(async ([name, path]) => {
