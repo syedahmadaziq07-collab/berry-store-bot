@@ -13,7 +13,7 @@ export const MENU_REQUIREMENTS = {
   dashboard: ['overview', 'orders', 'products'], shop: ['products'], orders: ['orders'],
   credentials: ['credentials', 'products'], customers: ['customers'],
   'ai-studio': [], 'ai-models': [], wallets: ['wallet'],
-  'bot-settings': ['settings'], broadcast: ['broadcasts', 'customers'],
+  'bot-settings': ['settings'], broadcast: ['broadcasts', 'customers'], 'promotion-center': [],
   referrals: ['customers', 'settings'], monitoring: ['health'],
 } as const;
 export const MENU_OPTIONAL = {shop: ['categories'], 'ai-studio': ['models', 'tools'], 'ai-models': ['tools', 'models'], monitoring: ['audit']} as const;
