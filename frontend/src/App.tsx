@@ -478,7 +478,7 @@ export default function App() {
         />
 
         <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          <div role="status" className="mb-4 p-3 rounded-xl border border-amber-800 bg-amber-950/30 text-xs text-amber-200">{systemHealth?.mode || 'staging'} · {systemHealth?.writesEnabled ? 'Perubahan dibenarkan' : 'Data kedai dilindungi: perubahan, pembayaran dan broadcast dikunci.'}</div>
+          <div role="status" className="mb-4 p-3 rounded-xl border border-amber-800 bg-amber-950/30 text-xs text-amber-200">{currentPage === 'promotion-center' ? 'Promotion Center: penghantaran melalui secure bridge berasingan; transaksi kedai dan wallet kekal dilindungi.' : (systemHealth?.mode || 'staging') + ' · ' + (systemHealth?.writesEnabled ? 'Perubahan dibenarkan' : 'Data kedai dilindungi: perubahan, pembayaran dan broadcast dikunci.')}</div>
           {errors.map(id => <div key={id} role="alert" data-module={id} className="mb-3 p-3 rounded-xl border border-red-800 bg-red-950/40 text-xs text-red-200 break-words">
             {id}: {moduleResults[id]?.status === 'error' ? (moduleResults[id] as any).error : ''}
           </div>)}
