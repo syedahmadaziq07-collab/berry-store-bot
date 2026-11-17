@@ -73,11 +73,12 @@ export const ReferralSystem: React.FC<ReferralSystemProps> = ({
 
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('api-error', {detail: 'Modul baucar memerlukan schema dan API sebenar.'}))}
-          className="px-3.5 py-2 bg-pink-600 hover:bg-pink-500 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto shadow-md shadow-pink-600/20"
+          disabled
+          title="Belum tersedia: voucher database dan API belum diwujudkan"
+          className="px-3.5 py-2 bg-slate-800 text-slate-400 text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-not-allowed self-start sm:self-auto"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Cipta Kod Baucar</span>
+          <span>Cipta Kod Baucar (Belum tersedia)</span>
         </button>
       </div>
 
