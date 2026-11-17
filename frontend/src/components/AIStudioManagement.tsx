@@ -246,12 +246,15 @@ export const AIStudioManagement: React.FC<AIStudioManagementProps> = ({
                         )}
                         <button
                           type="button"
-                          disabled={testingModelId === m.id}
+                          disabled
+
+                          title="Ping Test belum tersedia: backend model health belum aktif"
+
                           onClick={() => handleTestConnection(m)}
                           className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
                         >
                           <Zap className={`w-3 h-3 ${testingModelId === m.id ? 'animate-bounce text-pink-400' : ''}`} />
-                          <span>{testingModelId === m.id ? 'Menguji...' : 'Ping Test'}</span>
+                          <span>Ping Test (Belum aktif)</span>
                         </button>
                       </div>
                     </td>
