@@ -512,13 +512,29 @@ def create_app(config=None, store=None, mapping_store=None):
         Never expose a bot token, bridge credential, database key or production
         dashboard credential in the frontend. Do not allow arbitrary URL proxying.
         """
+        configured = (app.config["PROMOTION_BRIDGE_ENABLED"]
+                      and len(app.config["PROMOTION_BRIDGE_TOKEN"]) >= 48)
         if route == "connection" and request.method == "GET":
-            ready = (app.config["PROMOTION_BRIDGE_ENABLED"]
-                     and len(app.config["PROMOTION_BRIDGE_TOKEN"]) >= 48)
-            return jsonify(connected=ready, backend="Berry Store production bot",
+            # Config presence is not proof the production bridge is reachable.
+            # Return a safe disconnected state instead of a false green status.
+            connected = False
+            if configured:
+                try:
+                    probe = httpx.get(
+                        "https://berry-store-bot-1.onrender.com/api/dashboard/promotion/state",
+                        headers={"X-Promotion-Bridge-Token": app.config["PROMOTION_BRIDGE_TOKEN"]},
+                        timeout=12, follow_redirects=False)
+                    if probe.status_code == 200:
+                        body = probe.json()
+                        connected = isinstance(body, dict) and all(
+                            isinstance(body.get(key), list)
+                            for key in ("destinations", "campaigns", "deliveries", "threads_accounts"))
+                except (httpx.HTTPError, ValueError, TypeError):
+                    log.warning("promotion connection probe unavailable")
+            return jsonify(connected=connected, configured=configured,
+                           backend="Berry Store production bot",
                            googleFormsAutoSubmit=False, maxThreadsAccounts=3)
-        if not (app.config["PROMOTION_BRIDGE_ENABLED"]
-                and len(app.config["PROMOTION_BRIDGE_TOKEN"]) >= 48):
+        if not configured:
             return jsonify(error="Promotion bridge belum diaktifkan oleh admin Render"), 503
 
         method = request.method
@@ -545,6 +561,11 @@ def create_app(config=None, store=None, mapping_store=None):
                  headers={"X-Promotion-Bridge-Token": app.config["PROMOTION_BRIDGE_TOKEN"]},
                  json=request.get_json(silent=True) if method == "POST" else None,
                  timeout=20, follow_redirects=False)
+            if response.status_code in (401, 403):
+                # The owner session at Gemini is still valid. An upstream bridge
+                # denial must NOT reach apiFetch as a session-expired 401.
+                log.warning("promotion bridge upstream authentication rejected")
+                return jsonify(error="Sambungan backend Promotion Center ditolak; semak konfigurasi Render"), 503
             if response.status_code >= 500:
                 log.warning("promotion bridge upstream error status=%s", response.status_code)
                 return jsonify(error="Backend Promotion Center belum tersedia"), 503
