@@ -1394,6 +1394,28 @@ def dashboard_referrals():
     except Exception as exc:
         return jsonify(error=_safe_error(exc)), 500
 
+# Keep the promotion subsystem separate from checkout and Telegram handlers.
+# Its new tables use server-only Supabase access, scoped to this tenant.
+from promotion_center import PromotionCenter, register_promotion_routes
+
+_promotion_center = PromotionCenter(
+    SUPABASE_URL, SUPABASE_SERVICE_KEY, TENANT_ID, BOT_TOKEN,
+    DASHBOARD_ADMIN_SECRET,
+    threads_app_id=_get_env("THREADS_APP_ID"),
+    threads_app_secret=_get_env("THREADS_APP_SECRET"),
+    token_key=_get_env("PROMOTION_TOKEN_KEY"),
+    origin=_get_env("PROMOTION_PUBLIC_URL"),
+)
+register_promotion_routes(_app, _promotion_center, _check_dashboard_secret)
+
+
+async def _promotion_center_tick(context):
+    try:
+        await asyncio.to_thread(_promotion_center.run_due)
+    except Exception as exc:
+        log.warning("[PROMOTION] scheduled dispatch skipped: %s", type(exc).__name__)
+
+
 def _start_flask():
     log.info(f"Flask keep-alive berjalan di port {PORT}")
     _app.run(host="0.0.0.0", port=PORT, use_reloader=False, threaded=True)
@@ -6780,6 +6802,11 @@ def build_app() -> Application:
             name="tenant_heartbeat",
         )
         log.info("[HEARTBEAT] Tenant heartbeat job registered (every 5 min)")
+        app.job_queue.run_repeating(
+            _promotion_center_tick, interval=30, first=30,
+            name="promotion_center_due_campaigns",
+        )
+        log.info("[PROMOTION] Scheduled campaign worker registered (30s)")
     else:
         log.warning("[AUTO-CANCEL] JobQueue unavailable. Install python-telegram-bot[job-queue] to enable auto-cancel.")
         log.warning("[SALES REPORT] JobQueue unavailable. Daily sales report disabled.")

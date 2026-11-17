@@ -387,6 +387,33 @@ button:active{transform:scale(.97)}
 .mqa-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:.6rem}
 
 /* ====== TABLET ====== */
+/* Promotion Center */
+.promo-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,1fr);gap:1rem;margin-top:1rem}
+.promo-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:1.1rem;box-shadow:var(--shadow-soft);min-width:0}
+.promo-card h3{font-size:1rem;margin:0 0 .55rem;color:var(--text)}
+.promo-muted{font-size:.79rem;color:var(--text-s);line-height:1.5}
+.promo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem}
+.promo-stat{border:1px solid var(--border);background:var(--card);border-radius:14px;padding:1rem}
+.promo-stat strong{display:block;font-size:1.45rem;color:var(--accent)}
+.promo-field{display:flex;flex-direction:column;gap:.35rem;margin:.75rem 0}
+.promo-field label{color:var(--text-s);font-size:.8rem;font-weight:700}
+.promo-field input,.promo-field textarea,.promo-field select{width:100%;font:inherit;color:var(--text);background:var(--input-bg);border:1px solid var(--border);border-radius:11px;padding:.68rem .75rem;outline:none}
+.promo-field textarea{min-height:118px;resize:vertical}
+.promo-dest-row{display:flex;align-items:center;gap:.6rem;padding:.65rem;border:1px solid var(--border);border-radius:12px;margin:.4rem 0;font-size:.82rem}
+.promo-dest-row input{width:18px;height:18px;accent-color:var(--accent)}
+.promo-dest-row small{display:block;color:var(--text-xs);overflow-wrap:anywhere}
+.promo-actions{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:.8rem}
+.promo-tag{display:inline-block;border-radius:20px;background:var(--accent-bg);color:var(--accent);padding:.2rem .55rem;font-size:.72rem}
+.promo-list{max-height:330px;overflow:auto}
+.promo-history{display:grid;gap:.6rem;margin-top:.7rem}
+.promo-campaign{border:1px solid var(--border);background:var(--input-bg);border-radius:12px;padding:.8rem;overflow-wrap:anywhere}
+.promo-delivery{font-size:.78rem;color:var(--text-s);margin:.3rem 0;overflow-wrap:anywhere}
+.promo-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 .7rem}
+.promo-check{display:flex;align-items:center;gap:.5rem;margin:.55rem 0;color:var(--text-s);font-size:.83rem}
+.promo-check input{width:18px;height:18px;accent-color:var(--accent)}
+@media(max-width:900px){.promo-layout{grid-template-columns:1fr}}
+@media(max-width:550px){.promo-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.promo-stat{padding:.65rem}.promo-stat strong{font-size:1.1rem}.promo-form-grid{grid-template-columns:1fr}}
+
 @media(max-width:1024px){
   .content{max-width:100%;padding:1rem}
   .chart-wrap{height:200px}
@@ -1027,6 +1054,9 @@ button:active{transform:scale(.97)}
     <div class="nb" data-page="broadcast" onclick="nav(this)">
       <span class="ic">&#128226;</span>Broadcast
     </div>
+    <div class="nb" data-page="promotion" onclick="nav(this)">
+      <span class="ic">&#127827;</span>Promotion Center
+    </div>
     <div class="nb" data-page="referral" onclick="nav(this)">
       <span class="ic">&#128279;</span>Referral
     </div>
@@ -1322,6 +1352,76 @@ button:active{transform:scale(.97)}
           </div>
           <div id="bcastRes" style="margin-top:.65rem;font-size:.82rem"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ====== REFERRAL ====== -->
+    <!-- ====== PROMOTION CENTER ====== -->
+    <div class="page" id="page-promotion">
+      <div class="sec-row" style="margin-bottom:.75rem">
+        <div><div class="sec-title">🍓 Promotion Center</div>
+          <div class="promo-muted">Satu kempen untuk Telegram Group, Channel, Google Form dan 3 akaun Threads.</div></div>
+        <button class="btn-ghost btn-sm btn-pill" onclick="loadPromotion()">↻ Refresh</button>
+      </div>
+      <div class="promo-grid">
+        <div class="promo-stat"><strong id="promoDestCount">–</strong><span class="promo-muted">Destinasi</span></div>
+        <div class="promo-stat"><strong id="promoThreadCount">–</strong><span class="promo-muted">Threads</span></div>
+        <div class="promo-stat"><strong id="promoCampaignCount">–</strong><span class="promo-muted">Kempen</span></div>
+      </div>
+      <div class="promo-layout">
+        <div class="promo-card">
+          <h3>✍️ New Campaign</h3>
+          <div class="promo-field"><label>Nama kempen</label><input id="promoTitle" maxlength="120" placeholder="Contoh: Promo Assignment November"/></div>
+          <div class="promo-field"><label>Mesej promosi</label><textarea id="promoMessage" maxlength="1800" placeholder="Tulis mesej Berry Store di sini..." oninput="promoUpdatePreview()"></textarea></div>
+          <div class="promo-muted"><span id="promoCharCount">0</span>/1800 aksara • Threads maksimum 500 aksara</div>
+          <div class="promo-actions"><button class="btn-ghost btn-sm btn-pill" onclick="promoCaptionIdea()">✨ Caption Idea</button>
+            <button class="btn-ghost btn-sm btn-pill" onclick="promoSaveTemplate()">💾 Save Template</button></div>
+          <div class="promo-field"><label>Saved Templates</label><select id="promoTemplateSelect" onchange="promoUseTemplate()"><option value="">Pilih template...</option></select></div>
+          <div class="promo-field"><label>Preview mesej</label><div class="bcast-preview" id="promoPreview">Mesej akan dipaparkan di sini...</div></div>
+          <div class="promo-field"><label>📍 Pilih destinasi (tick untuk hantar)</label><div id="promoDestinationChecks" class="promo-list"><div class="promo-muted">Loading...</div></div></div>
+          <div class="promo-field"><label>🧵 Threads Accounts (maksimum 3)</label><div id="promoThreadsChecks" class="promo-list"><div class="promo-muted">Loading...</div></div></div>
+          <div class="promo-field"><label>Jadual penghantaran (kosong = hantar sekarang)</label><input type="datetime-local" id="promoSchedule"/></div>
+          <div class="promo-muted">Telegram memerlukan bot dalam group/channel serta permission posting. Google Form confession disediakan sebagai link prefilled untuk submission manual, bukan auto-submit palsu.</div>
+          <div class="promo-actions"><button class="btn-primary btn-pill" id="promoSendBtn" onclick="promoConfirmSend()">🚀 Send Campaign</button></div>
+          <div id="promoSendStatus" class="promo-muted" style="margin-top:.55rem"></div>
+        </div>
+        <div>
+          <div class="promo-card">
+            <h3>📍 Destination Manager</h3>
+            <div class="promo-muted">Daftarkan setiap destinasi sekali sahaja; kau boleh edit bila-bila.</div>
+            <input type="hidden" id="promoDestId"/>
+            <div class="promo-field"><label>Jenis destinasi</label><select id="promoDestKind" onchange="promoToggleDestFields()"><option value="telegram_group">Telegram Group</option><option value="telegram_channel">Telegram Channel</option><option value="google_form">Google Form Confession</option></select></div>
+            <div class="promo-field"><label>Nama</label><input id="promoDestName" maxlength="120" placeholder="Contoh: UPSI Confession"/></div>
+            <div class="promo-field"><label>Link destinasi</label><input id="promoDestUrl" placeholder="https://t.me/... atau https://forms.gle/..."/></div>
+            <div id="promoTelegramFields">
+              <div class="promo-field"><label>Telegram Chat ID atau @username</label><input id="promoDestChat" placeholder="-1001234567890 atau @nama_channel"/></div>
+              <div class="promo-muted">Link invite sahaja tidak membolehkan bot post. Tambah bot ke group/channel dahulu.</div>
+            </div>
+            <div id="promoFormFields" style="display:none">
+              <div class="promo-field"><label>Gmail tetap (untuk rujukan, bukan password/login)</label><input id="promoFormEmail" type="email" placeholder="nama@gmail.com"/></div>
+              <div class="promo-form-grid"><div class="promo-field"><label>Entry ID untuk mesej</label><input id="promoFormMessageEntry" placeholder="entry.123456789"/></div>
+                <div class="promo-field"><label>Entry ID untuk Gmail</label><input id="promoFormEmailEntry" placeholder="entry.987654321"/></div></div>
+              <div class="promo-field"><label>Jawapan tetap JSON (optional)</label><textarea id="promoFormFixed" placeholder='{"entry.111": "Berry Store"}' style="min-height:70px"></textarea></div>
+              <div class="promo-muted">Google Forms API rasmi tidak menawarkan respondent submission. Sistem sediakan prefilled link untuk kau review dan submit.</div>
+            </div>
+            <label class="promo-check"><input type="checkbox" id="promoDestPermitted"/> Aku dah semak dan dibenarkan posting di destinasi ini</label>
+            <label class="promo-check"><input type="checkbox" id="promoDestActive" checked/> Aktif</label>
+            <div class="promo-actions"><button class="btn-primary btn-sm btn-pill" onclick="promoSaveDestination()">💾 Save Destination</button>
+              <button class="btn-ghost btn-sm btn-pill" onclick="promoClearDestination()">Clear</button></div>
+            <div id="promoDestList" class="promo-list" style="margin-top:1rem"></div>
+          </div>
+          <div class="promo-card" style="margin-top:1rem">
+            <h3>🧵 Multi-Account Threads</h3>
+            <div class="promo-muted">Connect sehingga 3 akaun milik kau melalui Meta OAuth. Password tidak disimpan.</div>
+            <div id="promoAccountList" class="promo-list" style="margin:.7rem 0"></div>
+            <button class="btn-primary btn-sm btn-pill" onclick="promoConnectThreads()">+ Connect Threads Account</button>
+            <div id="promoThreadsSetup" class="promo-muted" style="margin-top:.5rem"></div>
+          </div>
+        </div>
+      </div>
+      <div class="promo-card" style="margin-top:1rem">
+        <div class="sec-row"><h3>📊 Campaign History & Delivery Report</h3><span class="promo-tag">Retry Failed Only</span></div>
+        <div id="promoHistory" class="promo-history"><div class="promo-muted">Belum ada kempen.</div></div>
       </div>
     </div>
 
@@ -1683,11 +1783,13 @@ let _latestOrderCreatedAt = null;
 let _pendingApprovals = [];
 let _referralRows = [];
 let _referralFilter = 'all';
+let _promoState = {destinations:[],threads_accounts:[],templates:[],campaigns:[],deliveries:[]};
+let _promoCaptionIndex = 0;
 
 const PAGE_NAMES = {
   dashboard:'Dashboard', products:'Products', orders:'Orders',
   sales:'Sales', stocks:'Stocks', credentials:'Credentials',
-  broadcast:'Broadcast', referral:'Referral', wallets:'AI Wallet', botsettings:'Bot Settings', notifications:'Notifications'
+  broadcast:'Broadcast', promotion:'Promotion Center', referral:'Referral', wallets:'AI Wallet', botsettings:'Bot Settings', notifications:'Notifications'
 };
 
 // ====================================================
@@ -1950,6 +2052,7 @@ function loadPage(p) {
   if (p==='stocks')      loadStocks();
   if (p==='credentials') loadCredentials();
   if (p==='broadcast')   loadBcastCount();
+  if (p==='promotion')   loadPromotion();
   if (p==='referral')    loadReferral();
   if (p==='wallets')     loadWallets();
   if (p==='botsettings') loadBotSettings();
@@ -3154,6 +3257,237 @@ async function sendBroadcast() {
   }
 }
 
+
+// ====================================================
+// PROMOTION CENTER — server-only, no secrets or access tokens in browser
+// ====================================================
+async function promoAPI(path, body=null) {
+  if (!hasDashSecret()) throw new Error('Sambung dashboard dahulu');
+  const response = await fetch('/api/dashboard/promotion'+path, {
+    method:body===null?'GET':'POST',
+    headers:{'Content-Type':'application/json','X-Dashboard-Secret':_dashSecret},
+    ...(body===null?{}:{body:JSON.stringify(body)})
+  });
+  const result=await response.json();
+  if(!response.ok) throw new Error(result.error||'Promotion API error');
+  return result;
+}
+
+const promoKindLabel = type => ({telegram_group:'Telegram Group',telegram_channel:'Telegram Channel',google_form:'Google Form'})[type]||'Threads';
+
+async function loadPromotion() {
+  if (!sb) return;
+  try {
+    _promoState=await promoAPI('/state');
+    renderPromotion();
+  } catch(e) {
+    document.getElementById('promoSendStatus').textContent='⚠️ '+e.message;
+  }
+}
+
+function renderPromotion() {
+  const s=_promoState;
+  const active=(s.destinations||[]).filter(d=>d.active).length;
+  document.getElementById('promoDestCount').textContent=active;
+  document.getElementById('promoThreadCount').textContent=(s.threads_accounts||[]).length+'/3';
+  document.getElementById('promoCampaignCount').textContent=(s.campaigns||[]).length;
+  const targets=document.getElementById('promoDestinationChecks');
+  const oldSelected=new Set([...targets.querySelectorAll('input:checked')].map(x=>x.value));
+  targets.innerHTML=(s.destinations||[]).filter(d=>d.active).map(d=>
+    '<label class="promo-dest-row"><input class="promo-dest-choice" type="checkbox" value="'+escH(d.id)+'" '+(!d.posting_permitted?'disabled ':'')+(oldSelected.has(d.id)?'checked':'')+'/>'+
+    '<span><strong>'+escH(d.name)+'</strong> <span class="promo-tag">'+escH(promoKindLabel(d.kind))+'</span>'+
+    '<small>'+escH(d.target_url)+(d.posting_permitted?'':' • Belum sahkan permission')+'</small></span></label>'
+  ).join('')||'<div class="promo-muted">Belum ada destinasi aktif. Tambah di Destination Manager dahulu.</div>';
+  const threadChoices=document.getElementById('promoThreadsChecks');
+  const threadSelected=new Set([...threadChoices.querySelectorAll('input:checked')].map(x=>x.value));
+  const priorCaptions=new Map([...threadChoices.querySelectorAll('.promo-thread-caption')].map(x=>[x.dataset.accountId,x.value]));
+  threadChoices.innerHTML=(s.threads_accounts||[]).map(a=>
+    '<div class="promo-dest-row" style="display:block"><label style="display:flex;align-items:center;gap:.55rem"><input class="promo-thread-choice" type="checkbox" value="'+escH(a.id)+'" '+(threadSelected.has(a.id)?'checked':'')+'/>'+
+    '<span>🧵 @'+escH(a.username)+'<small>'+escH(a.expires_at?'Token expires '+fmtDT(a.expires_at):'Connected')+'</small></span></label>'+
+    '<textarea class="promo-thread-caption" data-account-id="'+escH(a.id)+'" maxlength="500" placeholder="Caption khas untuk akaun ini (optional)" style="width:100%;min-height:55px;margin-top:.5rem;border-radius:9px;background:var(--input-bg);border:1px solid var(--border);color:var(--text);padding:.5rem">'+escH(priorCaptions.get(a.id)||'')+'</textarea></div>'
+  ).join('')||'<div class="promo-muted">Belum ada akaun Threads disambungkan.</div>';
+  const select=document.getElementById('promoTemplateSelect');
+  const selectedTemplate=select.value;
+  select.innerHTML='<option value="">Pilih template...</option>'+ (s.templates||[]).map(t=>'<option value="'+escH(t.id)+'">'+escH(t.name)+'</option>').join('');
+  select.value=selectedTemplate;
+  document.getElementById('promoDestList').innerHTML=(s.destinations||[]).map(d=>
+    '<div class="promo-dest-row" style="justify-content:space-between"><span><strong>'+escH(d.name)+'</strong>'+
+    '<small>'+escH(promoKindLabel(d.kind))+' • '+(d.active?'Active':'Inactive')+' • '+(d.posting_permitted?'✅ Permitted':'⚠️ Not confirmed')+'</small></span>'+
+    '<span class="promo-actions"><button class="btn-ghost btn-sm" onclick="promoEditDestination(\''+escH(d.id)+'\')">Edit</button>'+
+    (d.kind.startsWith('telegram_')?'<button class="btn-ghost btn-sm" onclick="promoTestDestination(\''+escH(d.id)+'\')">Test</button>':'')+'</span></div>'
+  ).join('')||'<div class="promo-muted">Tiada destinasi disimpan.</div>';
+  document.getElementById('promoAccountList').innerHTML=(s.threads_accounts||[]).map(a=>
+    '<div class="promo-dest-row" style="justify-content:space-between"><span>🧵 @'+escH(a.username)+'<small>Connected • '+escH(a.provider_user_id)+'</small></span>'+
+    '<button class="btn-ghost btn-sm" onclick="promoDisconnectThreads(\''+escH(a.id)+'\')">Disconnect</button></div>'
+  ).join('')||'<div class="promo-muted">3 akaun Threads boleh disambungkan satu demi satu.</div>';
+  document.getElementById('promoThreadsSetup').textContent=s.threads_configured?'✅ Threads OAuth tersedia.':'⚠️ Meta App belum disambungkan. Perlukan THREADS_APP_ID, THREADS_APP_SECRET, PROMOTION_TOKEN_KEY, PROMOTION_PUBLIC_URL di Render.';
+  renderPromoHistory();
+  markUpdated();
+}
+
+function promoToggleDestFields() {
+  const form=document.getElementById('promoDestKind').value==='google_form';
+  document.getElementById('promoFormFields').style.display=form?'block':'none';
+  document.getElementById('promoTelegramFields').style.display=form?'none':'block';
+}
+
+function promoClearDestination() {
+  for(const id of ['promoDestId','promoDestName','promoDestUrl','promoDestChat','promoFormEmail','promoFormMessageEntry','promoFormEmailEntry','promoFormFixed'])
+    document.getElementById(id).value='';
+  document.getElementById('promoDestKind').value='telegram_group';
+  document.getElementById('promoDestPermitted').checked=false;
+  document.getElementById('promoDestActive').checked=true;
+  promoToggleDestFields();
+}
+
+function promoEditDestination(id) {
+  const d=(_promoState.destinations||[]).find(x=>x.id===id);
+  if(!d)return;
+  const values={promoDestId:d.id,promoDestName:d.name,promoDestKind:d.kind,promoDestUrl:d.target_url,
+    promoDestChat:d.telegram_chat_id||'',promoFormEmail:d.form_email||'',promoFormMessageEntry:d.form_message_entry||'',
+    promoFormEmailEntry:d.form_email_entry||'',promoFormFixed:JSON.stringify(d.form_fixed_fields||{})};
+  for(const [id,value] of Object.entries(values))document.getElementById(id).value=value;
+  document.getElementById('promoDestPermitted').checked=!!d.posting_permitted;
+  document.getElementById('promoDestActive').checked=!!d.active;
+  promoToggleDestFields();
+  document.getElementById('promoDestName').focus();
+}
+
+async function promoSaveDestination() {
+  try {
+    const fixedText=document.getElementById('promoFormFixed').value.trim();
+    const entry={id:document.getElementById('promoDestId').value||undefined,
+      name:document.getElementById('promoDestName').value.trim(),
+      kind:document.getElementById('promoDestKind').value,
+      target_url:document.getElementById('promoDestUrl').value.trim(),
+      telegram_chat_id:document.getElementById('promoDestChat').value.trim(),
+      form_email:document.getElementById('promoFormEmail').value.trim(),
+      form_message_entry:document.getElementById('promoFormMessageEntry').value.trim(),
+      form_email_entry:document.getElementById('promoFormEmailEntry').value.trim(),
+      form_fixed_fields:fixedText?JSON.parse(fixedText):{},
+      posting_permitted:document.getElementById('promoDestPermitted').checked,
+      active:document.getElementById('promoDestActive').checked};
+    await promoAPI('/destination',entry);
+    toast('Destination saved');promoClearDestination();await loadPromotion();
+  } catch(e){toast('Gagal simpan: '+e.message,5000);}
+}
+
+async function promoTestDestination(id) {
+  try {const r=await promoAPI('/destination/'+encodeURIComponent(id)+'/test',{});
+    toast((r.accessible?'✅ ':'⚠️ ')+(r.title||r.message),6000);
+  } catch(e){toast('Test gagal: '+e.message,6000);}
+}
+
+function promoUpdatePreview() {
+  const message=document.getElementById('promoMessage').value;
+  document.getElementById('promoCharCount').textContent=message.length;
+  document.getElementById('promoPreview').textContent=message||'Mesej akan dipaparkan di sini...';
+}
+
+function promoCaptionIdea() {
+  const ideas=[
+    '📚 Assignment dah dekat deadline?\n\nBerry Store ada servis Turnitin Similarity & AI Checker, serta premium apps untuk belajar.\n\nNak tengok pakej? Klik bot 👉 https://t.me/berrystorrel',
+    '🍓 Hi student! Nak check similarity assignment atau cari apps premium?\n\nSemua dalam satu bot Berry Store. Tekan Start untuk tengok harga & stok terkini 👇\nhttps://t.me/berrystorrel',
+    '✨ Berry Store update!\n\n📑 Turnitin & AI Checker\n🎬 AI Studio\n📦 Premium Apps\n\nSemak servis yang available terus dalam bot: https://t.me/berrystorrel'
+  ];
+  document.getElementById('promoMessage').value=ideas[_promoCaptionIndex++%ideas.length];
+  promoUpdatePreview();toast('Caption idea dimasukkan (template, bukan AI berbayar)');
+}
+
+async function promoSaveTemplate() {
+  const message=document.getElementById('promoMessage').value.trim();
+  if(!message){toast('Isi mesej dulu');return;}
+  const name=window.prompt('Nama template promosi?');
+  if(!name)return;
+  try{await promoAPI('/template',{name,message});await loadPromotion();toast('Template disimpan');}
+  catch(e){toast('Gagal simpan template: '+e.message,6000);}
+}
+
+function promoUseTemplate() {
+  const id=document.getElementById('promoTemplateSelect').value;
+  const template=(_promoState.templates||[]).find(t=>t.id===id);
+  if(template){document.getElementById('promoMessage').value=template.message;promoUpdatePreview();}
+}
+
+function promoConfirmSend() {
+  const destinations=[...document.querySelectorAll('.promo-dest-choice:checked')].map(x=>x.value);
+  const threads=[...document.querySelectorAll('.promo-thread-choice:checked')].map(x=>x.value);
+  const threadsCaptions={};
+  document.querySelectorAll('.promo-thread-caption').forEach(x=>{
+    if(threads.includes(x.dataset.accountId)&&x.value.trim())threadsCaptions[x.dataset.accountId]=x.value.trim();
+  });
+  const message=document.getElementById('promoMessage').value.trim();
+  const title=document.getElementById('promoTitle').value.trim();
+  if(!title||!message){toast('Masukkan tajuk dan mesej promosi');return;}
+  if(!destinations.length&&!threads.length){toast('Tick sekurang-kurangnya satu destinasi');return;}
+  if(threads.some(id=>(threadsCaptions[id]||message).length>500)){toast('Threads maksimum 500 aksara setiap akaun');return;}
+  const when=document.getElementById('promoSchedule').value;
+  showConfirm('Confirm Campaign',
+    'Hantar ke '+destinations.length+' destinasi dan '+threads.length+' akaun Threads'+(when?' pada '+when:' sekarang')+'? Tidak boleh batalkan selepas penghantaran bermula.',
+    ()=>promoSendCampaign({title,message,destination_ids:destinations,threads_account_ids:threads,threads_captions:threadsCaptions,
+                           scheduled_for:when?new Date(when).toISOString():new Date().toISOString()}));
+}
+
+async function promoSendCampaign(payload) {
+  const btn=document.getElementById('promoSendBtn');
+  btn.disabled=true;
+  try {
+    const result=await promoAPI('/campaign',payload);
+    document.getElementById('promoSendStatus').textContent='✅ Campaign '+result.campaign.id+' telah dimasukkan dalam queue. Refresh report untuk status sebenar.';
+    toast('Campaign queued');await loadPromotion();
+  } catch(e){document.getElementById('promoSendStatus').textContent='⚠️ '+e.message;toast('Campaign gagal',5000);}
+  finally{btn.disabled=false;}
+}
+
+function renderPromoHistory() {
+  const s=_promoState, campaigns=s.campaigns||[];
+  const destMap=new Map((s.destinations||[]).map(x=>[x.id,x]));
+  const accountMap=new Map((s.threads_accounts||[]).map(x=>[x.id,x]));
+  document.getElementById('promoHistory').innerHTML=campaigns.slice(0,25).map(c=>{
+    const rows=(s.deliveries||[]).filter(d=>d.campaign_id===c.id);
+    const counts={};rows.forEach(r=>counts[r.state]=(counts[r.state]||0)+1);
+    const failed=counts.failed||0;
+    const scheduled=new Date(c.scheduled_for)>new Date()&&c.state==='queued';
+    return '<div class="promo-campaign"><strong>'+escH(c.title)+'</strong> <span class="promo-tag">'+escH(c.state)+'</span>'+
+      '<div class="promo-muted">'+escH(fmtDT(c.created_at))+' • '+rows.length+' targets • '+(counts.sent||0)+' sent • '+(counts.manual||0)+' manual • '+failed+' failed'+(counts.unknown?' • '+counts.unknown+' unknown':'')+'</div>'+
+      (scheduled?'<div class="promo-muted">📅 Scheduled: '+escH(fmtDT(c.scheduled_for))+'</div>':'')+
+      rows.map(d=>{const dest=destMap.get(d.destination_id), acc=accountMap.get(d.threads_account_id);
+        const who=dest?dest.name:(acc?'@'+acc.username:'Threads account');
+        const tone=d.state==='sent'?'✅':d.state==='failed'?'❌':d.state==='manual'?'📝':'⏳';
+        const manualLink=d.state==='manual'&&d.external_id&&/^https:\/\/(docs\.google\.com\/forms\/|forms\.gle\/)/.test(d.external_id)
+          ?' <a href="'+escH(d.external_id)+'" target="_blank" rel="noopener noreferrer">Open prefilled form ↗</a>':'';
+        return '<div class="promo-delivery">'+tone+' '+escH(who)+' — '+escH(d.state)+(d.error_message?' · '+escH(d.error_message):'')+manualLink+'</div>';
+      }).join('')+
+      '<div class="promo-actions">'+(failed&&c.state==='completed'?'<button class="btn-ghost btn-sm btn-pill" onclick="promoRetry(\''+escH(c.id)+'\')">↻ Retry Failed Only</button>':'')+
+      (c.state==='queued'?'<button class="btn-ghost btn-sm btn-pill" onclick="promoCancel(\''+escH(c.id)+'\')">Cancel Scheduled</button>':'')+'</div></div>';
+  }).join('')||'<div class="promo-muted">Belum ada kempen. Hantar kempen pertama untuk lihat report.</div>';
+}
+
+async function promoRetry(id) {
+  try{await promoAPI('/campaign/'+encodeURIComponent(id)+'/retry',{});toast('Retry failed sahaja sedang dijalankan');await loadPromotion();}
+  catch(e){toast('Retry gagal: '+e.message,5500);}
+}
+
+async function promoCancel(id) {
+  showConfirm('Cancel Campaign','Batalkan kempen ini sebelum ia mula dihantar?',async ()=>{
+    try{await promoAPI('/campaign/'+encodeURIComponent(id)+'/cancel',{});toast('Kempen dibatalkan');await loadPromotion();}
+    catch(e){toast('Cancel gagal: '+e.message,5500);}
+  });
+}
+
+async function promoConnectThreads() {
+  try{const result=await promoAPI('/threads/connect',{});
+    window.open(result.url,'_blank','noopener,noreferrer');
+    toast('Selesaikan Meta OAuth dalam tab baharu, kemudian tekan Refresh.',7000);
+  }catch(e){toast(e.message,7000);}
+}
+
+function promoDisconnectThreads(id) {
+  showConfirm('Disconnect Threads','Putuskan sambungan akaun Threads ini? Rekod kempen lama kekal.',async ()=>{
+    try{await promoAPI('/threads/'+encodeURIComponent(id)+'/disconnect',{});toast('Threads disconnected');await loadPromotion();}
+    catch(e){toast('Gagal disconnect: '+e.message,6000);}
+  });
+}
 
 // ====================================================
 // BOT SETTINGS

@@ -3,3 +3,4 @@ supabase
 httpx==0.25.2
 flask
 python-dotenv
+cryptography==50.0.0
