@@ -5,6 +5,8 @@ import { Send, Link2, MessageCircle, CalendarDays, ListChecks, RefreshCw, Plus, 
 type Destination = {
   id: string; name: string; kind: 'telegram_group' | 'telegram_channel' | 'google_form';
   target_url: string; telegram_chat_id?: string; posting_permitted: boolean; active: boolean;
+  form_email?: string | null; form_message_entry?: string | null; form_email_entry?: string | null;
+  form_fixed_fields?: Record<string, string>;
 };
 type ThreadsAccount = { id: string; username: string; active: boolean; expires_at?: string | null };
 type Campaign = { id: string; title: string; message: string; state: string; scheduled_for: string; created_at: string };
@@ -38,6 +40,7 @@ export function PromotionCenter() {
   const [formMessageEntry, setFormMessageEntry] = useState('');
   const [formEmailEntry, setFormEmailEntry] = useState('');
   const [permitted, setPermitted] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [schedule, setSchedule] = useState('');
@@ -89,6 +92,7 @@ export function PromotionCenter() {
     event.preventDefault();
     await run('Destinasi telah disimpan.', async () => {
       await post('destination', {
+        ...(editingId ? { id: editingId } : {}),
         name: destinationName.trim(), kind, target_url: destinationUrl.trim(),
         telegram_chat_id: kind === 'google_form' ? null : chatId.trim(),
         form_email: kind === 'google_form' ? gmail.trim() : null,
@@ -97,9 +101,20 @@ export function PromotionCenter() {
         posting_permitted: permitted, active: true,
       });
       setDestinationName(''); setDestinationUrl(''); setChatId('');
-      setGmail(''); setFormEmailEntry(''); setFormMessageEntry(''); setPermitted(false);
+      setGmail(''); setFormEmailEntry(''); setFormMessageEntry(''); setPermitted(false); setEditingId(null);
     });
   };
+  const editDestination = (d: Destination) => {
+    setEditingId(d.id); setKind(d.kind); setDestinationName(d.name); setDestinationUrl(d.target_url);
+    setChatId(d.telegram_chat_id || ''); setGmail(d.form_email || '');
+    setFormMessageEntry(d.form_message_entry || ''); setFormEmailEntry(d.form_email_entry || '');
+    setPermitted(d.posting_permitted); setTab('destinations');
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  };
+  const toggleActive = (d: Destination) => void run(
+    d.active ? 'Destinasi telah dipause.' : 'Destinasi diaktifkan semula.',
+    async () => { await post('destination', {...d, active: !d.active}); },
+  );
   const send = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selected.length && !accounts.length) { setError('Pilih sekurang-kurangnya satu destinasi.'); return; }
@@ -235,7 +250,7 @@ export function PromotionCenter() {
 
     {tab === 'destinations' && <div className="grid gap-5 lg:grid-cols-5">
       <form onSubmit={e => void addDestination(e)} className={panel + ' lg:col-span-2'}>
-        <h2 className="text-lg font-semibold text-white"><Plus className="mr-2 inline h-4 w-4"/>Tambah destinasi</h2>
+        <h2 className="text-lg font-semibold text-white"><Plus className="mr-2 inline h-4 w-4"/>{editingId ? 'Edit destinasi' : 'Tambah destinasi'}</h2>
         <div><label className={label} htmlFor="pc-kind">Jenis</label>
           <select id="pc-kind" className={field} value={kind} onChange={e => setKind(e.target.value as Destination['kind'])}>
             <option value="telegram_group">Telegram Group</option><option value="telegram_channel">Telegram Channel</option><option value="google_form">Google Form Confession</option>
@@ -254,7 +269,8 @@ export function PromotionCenter() {
           <input type="checkbox" checked={permitted} onChange={e => setPermitted(e.target.checked)} className="mt-0.5 accent-pink-500" />
           Saya telah semak peraturan destinasi dan dibenarkan menghantar promosi.
         </label>
-        <button className={primary} type="submit" disabled={!isReady || busy || !permitted}>Simpan Destinasi</button>
+        <div className="flex flex-wrap gap-2"><button className={primary} type="submit" disabled={!isReady || busy || !permitted}>{editingId ? 'Simpan Perubahan' : 'Simpan Destinasi'}</button>
+        {editingId && <button type="button" className={secondary} onClick={() => { setEditingId(null); setDestinationName(''); setDestinationUrl(''); setChatId(''); setGmail(''); setFormMessageEntry(''); setFormEmailEntry(''); setPermitted(false); }}>Batal Edit</button>}</div>
       </form>
       <div className={panel + ' lg:col-span-3'}>
         <h2 className="text-lg font-semibold text-white">Semua destinasi ({allDestinations.length})</h2>
@@ -263,9 +279,11 @@ export function PromotionCenter() {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-white">{d.name}</div>
             <div className="break-all text-xs text-slate-400">{d.target_url}</div>
-            <div className="text-[11px] text-pink-400">{d.kind.replace('_', ' ')} · {d.posting_permitted ? 'posting permitted' : 'belum dibenarkan'}</div>
+            <div className="text-[11px] text-pink-400">{d.kind.replace('_', ' ')} · {d.active ? 'Active' : 'Paused'} · {d.posting_permitted ? 'posting permitted' : 'belum dibenarkan'}</div>
           </div>
           <a href={d.target_url} target="_blank" rel="noreferrer" className={secondary}>Buka <ExternalLink className="inline h-3 w-3"/></a>
+          <button type="button" className={secondary} disabled={busy || !isReady} onClick={() => editDestination(d)}>Edit</button>
+          <button type="button" className={secondary} disabled={busy || !isReady} onClick={() => toggleActive(d)}>{d.active ? 'Pause' : 'Resume'}</button>
           {d.kind !== 'google_form' && <button type="button" disabled={busy || !isReady} className={secondary} onClick={() => void run('Sambungan Telegram disemak.', async () => { const result = await post('destination/' + d.id + '/test'); setNotice(result.message || 'Bot boleh melihat destinasi.'); })}>Test Connection</button>}
         </div>)}
       </div>
