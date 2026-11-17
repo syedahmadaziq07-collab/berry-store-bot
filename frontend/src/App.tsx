@@ -12,8 +12,7 @@ import { CustomerDirectory } from './components/CustomerDirectory';
 import { AIStudioManagement } from './components/AIStudioManagement';
 import { WalletManagement } from './components/WalletManagement';
 import { TelegramBotControl } from './components/TelegramBotControl';
-import { BroadcastMarketing } from './components/BroadcastMarketing';
-import { PromotionCenter } from './components/PromotionCenter';
+ import { PromotionCenter } from './components/PromotionCenter';
 import { ReferralSystem } from './components/ReferralSystem';
 import { SystemMonitoring } from './components/SystemMonitoring';
 import { RenderIntegrationModal } from './components/RenderIntegrationModal';
@@ -85,7 +84,6 @@ export default function App() {
     referral_reward_rm: '',
   });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [broadcasts, setBroadcasts] = useState<any[]>([]);
   const [revenueTrend, setRevenueTrend] = useState<any[]>([]);
   const [categoryRevenue, setCategoryRevenue] = useState<Record<string, number>>({});
   const [systemHealth, setSystemHealth] = useState<any>(null);
@@ -155,7 +153,7 @@ export default function App() {
       setWallets(wallet?.wallets || []); setTransactions(wallet?.transactions || []);
       setWalletTotalBalance(wallet?.totalBalance ?? 0);
       if (data('settings')) setBotSettings(data('settings'));
-      setBroadcasts(data('broadcasts') || []); setAuditLogs(data('audit') || []);
+      setAuditLogs(data('audit') || []);
       setSystemHealth(data('health'));
     } finally {
       window.clearTimeout(timeout);
@@ -366,19 +364,6 @@ export default function App() {
     }
   };
 
-  // Broadcast
-  const handleSendBroadcast = async (title: string, message: string, audience: string) => {
-    const res = await apiFetch('/api/admin/v1/broadcast/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, message, audience }),
-    });
-    if (res.ok) {
-      showToast('Siaran mesej broadcast dihantar!');
-      fetchAllData();
-    }
-  };
-
   // Referral Reward
   const handleUpdateReward = async (rewardRM: string) => {
     await handleSaveBotSettings({ referral_reward_rm: rewardRM });
@@ -575,11 +560,13 @@ export default function App() {
           )}
 
           {currentPage === 'broadcast' && pageReady && (
-            <BroadcastMarketing
-              broadcasts={broadcasts}
-              customerCount={customers.length}
-              onSendBroadcast={handleSendBroadcast}
-            />
+            <div className="rounded-2xl border border-amber-800 bg-slate-900 p-6 space-y-4">
+              <h1 className="text-xl font-bold text-white">Broadcast Campaign</h1>
+              <p className="text-sm text-amber-200">Broadcast terus ke DM semua pelanggan belum diaktifkan pada dashboard Gemini ini. Endpoint penghantaran DM dan delivery worker belum disahkan, jadi butang hantar tidak dipaparkan untuk mengelakkan status palsu.</p>
+              <p className="text-sm text-slate-300">Untuk promosi ke Telegram group/channel, Google Forms dan akaun Threads, gunakan Promotion Center yang sudah disambungkan melalui secure bridge.</p>
+              <button type="button" onClick={() => navigate('promotion-center')}
+                className="rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-pink-500">Buka Promotion Center</button>
+            </div>
           )}
 
           {currentPage === 'promotion-center' && pageReady && <PromotionCenter />}
