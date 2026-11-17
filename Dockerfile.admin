@@ -19,6 +19,9 @@ COPY video_myr_worker.py telegram_video_flow.py telegram_video_handlers.py teleg
 COPY step2_no_retry_protocol.py step2_submission_gate.py ./
 RUN python -m py_compile step2_no_retry_protocol.py step2_submission_gate.py
 RUN python -m py_compile ai_job_service.py staging_job_worker.py fal_provider.py berry_credit_pricing.py ai_wallet_pricing_adapter.py ai_wallet_quote_check.py telegram_wallet_bridge.py topup_checkout.py staging_recovery_batch.py video_myr_worker.py telegram_video_flow.py telegram_video_handlers.py telegram_video_delivery.py
+# Fail the build on authenticated promotion-route regressions.
+COPY tests/test_admin_promotion_bridge.py ./tests/test_admin_promotion_bridge.py
+RUN python -m unittest discover -s tests -p 'test_admin_promotion_bridge.py' -v
 COPY --from=frontend /build/dist/ ./frontend/dist/
 USER berry
 EXPOSE 10000
