@@ -10,6 +10,7 @@ import {
   Wallet,
   Bot,
   Send,
+  Megaphone,
   Gift,
   Activity,
   LogOut,
@@ -29,6 +30,7 @@ export type PageId =
   | 'wallets'
   | 'bot-settings'
   | 'broadcast'
+  | 'promotion-center'
   | 'referrals'
   | 'monitoring';
 
@@ -62,6 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'wallets' as PageId, label: 'AI Wallets & Ledger', icon: Wallet },
     { id: 'bot-settings' as PageId, label: 'Bot Control Center', icon: Bot, section: 'TELEGRAM' },
     { id: 'broadcast' as PageId, label: 'Broadcast Campaign', icon: Send },
+    { id: 'promotion-center' as PageId, label: 'Promotion Center', icon: Megaphone, section: 'MARKETING' },
     { id: 'referrals' as PageId, label: 'Referrals & Vouchers', icon: Gift },
     { id: 'monitoring' as PageId, label: 'System Monitoring', icon: Activity, section: 'SYSTEM' },
   ];
