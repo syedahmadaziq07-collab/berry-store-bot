@@ -13,11 +13,26 @@ CREATE TABLE IF NOT EXISTS public.promotion_destinations (
   form_message_entry text,
   form_email_entry text,
   form_fixed_fields jsonb NOT NULL DEFAULT '{}'::jsonb,
+  submission_mode text NOT NULL DEFAULT 'manual',
+  auto_submit_authorized boolean NOT NULL DEFAULT false,
   posting_permitted boolean NOT NULL DEFAULT false,
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Upgrade existing tenant-scoped tables without activating any older forms.
+ALTER TABLE public.promotion_destinations
+  ADD COLUMN IF NOT EXISTS submission_mode text NOT NULL DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS auto_submit_authorized boolean NOT NULL DEFAULT false;
+DO $ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'promotion_destination_submission_mode_check') THEN
+    ALTER TABLE public.promotion_destinations
+      ADD CONSTRAINT promotion_destination_submission_mode_check
+      CHECK (submission_mode IN ('manual','auto') AND
+        (submission_mode <> 'auto' OR (kind='google_form' AND auto_submit_authorized AND posting_permitted)));
+  END IF;
+END $;
+
 CREATE INDEX IF NOT EXISTS promotion_destinations_tenant_idx ON public.promotion_destinations(tenant_id, active, created_at);
 
 CREATE TABLE IF NOT EXISTS public.promotion_threads_accounts (
