@@ -7,7 +7,9 @@ submissions: the official Google Forms API cannot submit a respondent answer.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
+import os
 import re
 import secrets
 import time
@@ -492,6 +494,12 @@ def register_promotion_routes(app, promo, check_secret):
     def guard():
         if request.endpoint == "berry_promotion.threads_callback":
             return None  # OAuth state is signed and time-limited.
+        # A dedicated random bridge token allows the Gemini admin server to proxy
+        # owner-authenticated calls without revealing the bot dashboard secret.
+        bridge_secret = os.getenv("PROMOTION_BRIDGE_TOKEN", "")
+        supplied = request.headers.get("X-Promotion-Bridge-Token", "")
+        if len(bridge_secret) >= 48 and supplied and hmac.compare_digest(supplied, bridge_secret):
+            return None
         ok, _ = check_secret()
         if not ok:
             return jsonify(error="Dashboard authentication required"), 401
@@ -554,7 +562,10 @@ def register_promotion_routes(app, promo, check_secret):
             if request.args.get("error"):
                 raise PromotionError("Threads menolak sambungan")
             promo.finish_threads_oauth(request.args.get("state", ""), request.args.get("code", ""))
-            return redirect(promo.origin + "/dashboard#promotion-connected", code=302)
+            return_url = os.getenv("PROMOTION_RETURN_URL", "").strip()
+            if not (return_url == "https://berry-gemini-admin-staging.onrender.com/dashboard/promotion-center"):
+                return_url = promo.origin + "/dashboard#promotion-connected"
+            return redirect(return_url, code=302)
         except PromotionError as exc:
             log.warning("Threads OAuth error: %s", type(exc).__name__)
             return jsonify(error=str(exc)), exc.status
