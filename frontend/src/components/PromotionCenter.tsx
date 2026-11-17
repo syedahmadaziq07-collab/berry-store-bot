@@ -7,6 +7,7 @@ type Destination = {
   target_url: string; telegram_chat_id?: string; posting_permitted: boolean; active: boolean;
   form_email?: string | null; form_message_entry?: string | null; form_email_entry?: string | null;
   form_fixed_fields?: Record<string, string>;
+  submission_mode?: 'manual' | 'auto'; auto_submit_authorized?: boolean;
 };
 type ThreadsAccount = { id: string; username: string; active: boolean; expires_at?: string | null };
 type Campaign = { id: string; title: string; message: string; state: string; scheduled_for: string; created_at: string };
@@ -39,6 +40,8 @@ export function PromotionCenter() {
   const [gmail, setGmail] = useState('');
   const [formMessageEntry, setFormMessageEntry] = useState('');
   const [formEmailEntry, setFormEmailEntry] = useState('');
+  const [formMode, setFormMode] = useState<'manual'|'auto'>('manual');
+  const [formAuthorized, setFormAuthorized] = useState(false);
   const [permitted, setPermitted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingActive, setEditingActive] = useState(true);
@@ -101,17 +104,20 @@ export function PromotionCenter() {
         form_message_entry: kind === 'google_form' ? formMessageEntry.trim() : null,
         form_email_entry: kind === 'google_form' ? formEmailEntry.trim() : null,
         form_fixed_fields: kind === 'google_form' ? editingFixedFields : {},
+        submission_mode: kind === 'google_form' ? formMode : 'manual',
+        auto_submit_authorized: kind === 'google_form' && formMode === 'auto' && formAuthorized,
         posting_permitted: permitted, active: editingId ? editingActive : true,
       });
       setDestinationName(''); setDestinationUrl(''); setChatId('');
-      setGmail(''); setFormEmailEntry(''); setFormMessageEntry(''); setPermitted(false); setEditingId(null); setEditingActive(true); setEditingFixedFields({});
+      setGmail(''); setFormEmailEntry(''); setFormMessageEntry(''); setPermitted(false); setEditingId(null); setEditingActive(true); setEditingFixedFields({}); setFormMode('manual'); setFormAuthorized(false);
     });
   };
   const editDestination = (d: Destination) => {
     setEditingId(d.id); setKind(d.kind); setDestinationName(d.name); setDestinationUrl(d.target_url);
     setChatId(d.telegram_chat_id || ''); setGmail(d.form_email || '');
     setFormMessageEntry(d.form_message_entry || ''); setFormEmailEntry(d.form_email_entry || '');
-    setPermitted(d.posting_permitted); setEditingActive(d.active); setEditingFixedFields(d.form_fixed_fields || {}); setTab('destinations');
+    setPermitted(d.posting_permitted); setEditingActive(d.active); setEditingFixedFields(d.form_fixed_fields || {});
+    setFormMode(d.submission_mode || 'manual'); setFormAuthorized(d.auto_submit_authorized === true); setTab('destinations');
     window.scrollTo({top: 0, behavior: 'smooth'});
   };
   const toggleActive = (d: Destination) => void run(
@@ -121,6 +127,12 @@ export function PromotionCenter() {
   const send = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selected.length && !accounts.length) { setError('Pilih sekurang-kurangnya satu destinasi.'); return; }
+    const accountTooLong = accounts.some(id => (captions[id] || message).trim().length > 500);
+    if (accountTooLong) { setError('Threads memerlukan mesej maksimum 500 aksara bagi setiap akaun.'); return; }
+    const formManualCount = allDestinations.filter(d => selected.includes(d.id) && d.kind === 'google_form' &&
+      !(d.submission_mode === 'auto' && d.auto_submit_authorized && data?.auto_form_submission)).length;
+    if (!window.confirm('Hantar kempen ke ' + (selected.length + accounts.length) +
+      ' destinasi? ' + formManualCount + ' Google Forms memerlukan submit manual. Semak mesej sebelum teruskan.')) return;
     await run('Kempen telah dimasukkan ke queue. Semak History untuk status sebenar.', async () => {
       await post('campaign', {
         title: title.trim(), message: message.trim(), destination_ids: selected,
@@ -146,6 +158,16 @@ export function PromotionCenter() {
   const isReady = connection?.connected === true;
   const allDestinations = data?.destinations || [];
   const allAccounts = data?.threads_accounts || [];
+  const selectAll = (automaticOnly: boolean) => {
+    const allowed = allDestinations.filter(d => d.active && d.posting_permitted &&
+      (!automaticOnly || d.kind !== 'google_form' ||
+        (d.submission_mode === 'auto' && d.auto_submit_authorized && data?.auto_form_submission)));
+    const enabledAccounts = allAccounts.filter(a => a.active && (!a.expires_at || new Date(a.expires_at).getTime() > Date.now()));
+    setSelected(allowed.map(d => d.id)); setAccounts(enabledAccounts.map(a => a.id));
+    setNotice(automaticOnly ? 'Destinasi automatik dipilih; Google Forms manual dikecualikan.' :
+      'Semua destinasi yang dibenarkan dipilih. Google Forms manual masih perlukan submit.');
+    setError('');
+  };
   const campaigns = data?.campaigns || [];
   const deliveries = data?.deliveries || [];
   const tabs = [
@@ -206,6 +228,11 @@ export function PromotionCenter() {
           <p className="mt-1 text-right text-[11px] text-slate-500">{message.length}/1800 karakter</p>
         </div>
         <div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button type="button" className={secondary} onClick={() => selectAll(true)}>Pilih Semua Auto</button>
+            <button type="button" className={secondary} onClick={() => selectAll(false)}>Pilih Semua Termasuk Manual</button>
+            <button type="button" className={secondary} onClick={() => { setSelected([]); setAccounts([]); }}>Kosongkan Pilihan</button>
+          </div>
           <div className={label}>Destinasi Telegram & Google Forms</div>
           <div className="max-h-44 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950 p-3">
             {!allDestinations.length && <p className="text-xs text-slate-500">Belum ada destinasi. Tambah melalui tab Destinasi.</p>}
@@ -213,7 +240,7 @@ export function PromotionCenter() {
               <input type="checkbox" checked={selected.includes(d.id)} disabled={!d.active || !d.posting_permitted}
                 onChange={() => toggle(d.id, setSelected)} className="accent-pink-500" />
               <span className="flex-1 truncate">{d.name}</span>
-              <span className="text-[10px] text-slate-400">{d.kind === 'google_form' ? 'Form · manual' : d.kind.replace('telegram_', '')}</span>
+              <span className="text-[10px] text-slate-400">{d.kind === 'google_form' ? (d.submission_mode === 'auto' && d.auto_submit_authorized && data?.auto_form_submission ? 'Form · auto' : 'Form · manual') : d.kind.replace('telegram_', '')}</span>
             </label>)}
           </div>
         </div>
@@ -231,8 +258,11 @@ export function PromotionCenter() {
           <input id="pc-schedule" type="datetime-local" className={field} value={schedule} onChange={e => setSchedule(e.target.value)} />
           <p className="mt-1 text-[11px] text-slate-500">Kosong = hantar sekarang. Masa mengikut timezone browser. Jadual maksimum 60 hari.</p>
         </div>
-        <button className={primary} disabled={!isReady || busy || !title.trim() || !message.trim() || (!selected.length && !accounts.length)} type="submit"><Send className="mr-2 inline h-4 w-4"/>{schedule ? 'Jadualkan Kempen' : 'Confirm & Send'}</button>
-        <p className="text-xs text-slate-400">Pengesahan diperlukan sebelum submit. Posting hanya ke destinasi yang dibenarkan. Google Forms memerlukan semakan dan submit manual.</p>
+        <p className="text-xs text-slate-400">{selected.length + accounts.length} destinasi dipilih ·
+          {allDestinations.filter(d => selected.includes(d.id) && d.kind === 'google_form' &&
+          !(d.submission_mode === 'auto' && d.auto_submit_authorized && data?.auto_form_submission)).length} perlu submit manual</p>
+        <button className={primary} disabled={!isReady || busy || !title.trim() || !message.trim() || (!selected.length && !accounts.length) || accounts.some(id => (captions[id] || message).trim().length > 500)} type="submit"><Send className="mr-2 inline h-4 w-4"/>{schedule ? 'Jadualkan Kempen' : 'Confirm & Send'}</button>
+        <p className="text-xs text-slate-400">Satu kempen boleh menghantar ke Telegram dan Threads yang sudah connected. Google Forms Auto hanya untuk form yang mengizinkan automasi; form lain menghasilkan prefilled link untuk submit manual. Semak confirmation setiap destinasi dalam History.</p>
       </form>
       <div className="space-y-5 lg:col-span-2">
         <section className={panel}>
@@ -266,14 +296,28 @@ export function PromotionCenter() {
             <div><label className={label} htmlFor="pc-gmail">Gmail untuk isi form (bukan password)</label><input id="pc-gmail" className={field} type="email" value={gmail} onChange={e => setGmail(e.target.value)} placeholder="email@gmail.com"/></div>
             <div><label className={label} htmlFor="pc-msgentry">Message field ID</label><input id="pc-msgentry" className={field} value={formMessageEntry} onChange={e => setFormMessageEntry(e.target.value)} placeholder="entry.123456789"/></div>
             <div><label className={label} htmlFor="pc-emailentry">Email field ID</label><input id="pc-emailentry" className={field} value={formEmailEntry} onChange={e => setFormEmailEntry(e.target.value)} placeholder="entry.987654321"/></div>
-            <p className="text-xs text-amber-300">Google Forms: sistem sediakan prefilled link. Anda masih perlu review dan tekan Submit sendiri. CAPTCHA / login tidak dibypass.</p>
+            <div>
+              <label htmlFor="pc-form-mode" className={label}>Kaedah penghantaran Google Forms</label>
+              <select id="pc-form-mode" className={field} value={formMode} onChange={e => setFormMode(e.target.value as 'manual'|'auto')}>
+                <option value="manual">Manual — prefilled link</option>
+                <option value="auto">Auto-submit — hanya dengan kebenaran pemilik form</option>
+              </select>
+              {formMode === 'auto' && <>
+                <label className="mt-3 flex gap-2 rounded-xl border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-100">
+                  <input className="mt-0.5 accent-pink-500" type="checkbox" checked={formAuthorized} onChange={e => setFormAuthorized(e.target.checked)}/>
+                  Saya mendapat kebenaran jelas daripada pemilik Google Form untuk menghantar respons promosi secara automatik.
+                </label>
+                <p className="mt-2 text-xs text-amber-300">Auto-submit hanya untuk form awam yang menerima respons, tanpa CAPTCHA/login, dan dihadkan sekali setiap form dalam 24 jam. Status Sent hanya selepas Google memulangkan confirmation. Jika tidak pasti, perlu semakan manual.</p>
+                {!data?.auto_form_submission && <p className="mt-2 text-xs text-amber-300">Auto-submit Google Form belum diaktifkan di backend. Sehingga aktif, ia akan kekal manual.</p>}
+              </>}
+            </div>
           </>}
         <label className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300">
           <input type="checkbox" checked={permitted} onChange={e => setPermitted(e.target.checked)} className="mt-0.5 accent-pink-500" />
           Saya telah semak peraturan destinasi dan dibenarkan menghantar promosi.
         </label>
-        <div className="flex flex-wrap gap-2"><button className={primary} type="submit" disabled={!isReady || busy || !permitted}>{editingId ? 'Simpan Perubahan' : 'Simpan Destinasi'}</button>
-        {editingId && <button type="button" className={secondary} onClick={() => { setEditingId(null); setDestinationName(''); setDestinationUrl(''); setChatId(''); setGmail(''); setFormMessageEntry(''); setFormEmailEntry(''); setPermitted(false); }}>Batal Edit</button>}</div>
+        <div className="flex flex-wrap gap-2"><button className={primary} type="submit" disabled={!isReady || busy || !permitted || (kind === 'google_form' && formMode === 'auto' && (!formAuthorized || !formMessageEntry.trim()))}>{editingId ? 'Simpan Perubahan' : 'Simpan Destinasi'}</button>
+        {editingId && <button type="button" className={secondary} onClick={() => { setEditingId(null); setDestinationName(''); setDestinationUrl(''); setChatId(''); setGmail(''); setFormMessageEntry(''); setFormEmailEntry(''); setPermitted(false); setFormMode('manual'); setFormAuthorized(false); }}>Batal Edit</button>}</div>
       </form>
       <div className={panel + ' lg:col-span-3'}>
         <h2 className="text-lg font-semibold text-white">Semua destinasi ({allDestinations.length})</h2>
@@ -282,7 +326,7 @@ export function PromotionCenter() {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-white">{d.name}</div>
             <div className="break-all text-xs text-slate-400">{d.target_url}</div>
-            <div className="text-[11px] text-pink-400">{d.kind.replace('_', ' ')} · {d.active ? 'Active' : 'Paused'} · {d.posting_permitted ? 'posting permitted' : 'belum dibenarkan'}</div>
+            <div className="text-[11px] text-pink-400">{d.kind.replace('_', ' ')} · {d.active ? 'Active' : 'Paused'} · {d.kind === 'google_form' ? (d.submission_mode === 'auto' && d.auto_submit_authorized ? 'Auto-submit opt-in' : 'Manual') : (d.posting_permitted ? 'posting permitted' : 'belum dibenarkan')}</div>
           </div>
           <a href={d.target_url} target="_blank" rel="noreferrer" className={secondary}>Buka <ExternalLink className="inline h-3 w-3"/></a>
           <button type="button" className={secondary} disabled={busy || !isReady} onClick={() => editDestination(d)}>Edit</button>
@@ -309,14 +353,26 @@ export function PromotionCenter() {
       <h2 className="text-lg font-semibold text-white">Sejarah kempen & delivery report</h2>
       {!campaigns.length && <p className="text-sm text-slate-400">Belum ada kempen direkodkan.</p>}
       {campaigns.map(c => <div key={c.id} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4">
-        <div className="flex flex-wrap justify-between gap-3"><div><div className="text-sm font-semibold text-white">{c.title}</div><div className="text-xs text-slate-400">{date(c.scheduled_for)}</div></div><span className="h-fit rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-pink-300">{c.state}</span></div>
+        <div className="flex flex-wrap justify-between gap-3"><div><div className="text-sm font-semibold text-white">{c.title}</div><div className="text-xs text-slate-400">{date(c.scheduled_for)}</div></div><span className="h-fit rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-pink-300">{c.state === 'completed' ? 'Processing complete' : c.state}</span></div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {(() => { const list = deliveries.filter(d => d.campaign_id === c.id);
+            const sent = list.filter(d => d.state === 'sent').length;
+            const manual = list.filter(d => d.state === 'manual').length;
+            const failed = list.filter(d => ['failed','unknown','skipped'].includes(d.state)).length;
+            return <><span className="rounded-full bg-emerald-950/50 px-3 py-1 text-emerald-300">{sent} Submitted / Sent</span>
+              <span className="rounded-full bg-amber-950/50 px-3 py-1 text-amber-300">{manual} Manual Required</span>
+              <span className="rounded-full bg-red-950/50 px-3 py-1 text-red-300">{failed} Failed / Unconfirmed</span></>;
+          })()}
+        </div>
         <p className="line-clamp-3 whitespace-pre-wrap text-xs text-slate-300">{c.message}</p>
         <div className="space-y-2">
           {deliveries.filter(d => d.campaign_id === c.id).map(d => {
             const dest = allDestinations.find(x => x.id === d.destination_id);
             const account = allAccounts.find(x => x.id === d.threads_account_id);
             return <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 p-2 text-xs">
-              <div><span className="font-semibold text-slate-200">{dest?.name || (account ? '@' + account.username : 'Destinasi')}</span><span className="ml-2 text-pink-300">{d.state}</span>{d.error_message && <div className="text-amber-300">{d.error_message}</div>}</div>
+              <div><span className="font-semibold text-slate-200">{dest?.name || (account ? '@' + account.username : 'Destinasi')}</span><span className="ml-2 text-pink-300">{d.state === 'sent' ? (dest?.kind === 'google_form' ? 'Submitted' : 'Sent') :
+              d.state === 'manual' ? 'Manual Required' : d.state === 'unknown' ? 'Unconfirmed' :
+              d.state === 'failed' ? 'Failed' : d.state}</span>{d.error_message && <div className="text-amber-300">{d.error_message}</div>}</div>
               {d.state === 'manual' && d.external_id?.startsWith('https://') && <a href={d.external_id} target="_blank" rel="noreferrer" className="text-pink-400 underline">Buka form untuk submit <ExternalLink className="inline h-3 w-3"/></a>}
             </div>;
           })}
