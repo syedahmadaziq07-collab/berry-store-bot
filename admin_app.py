@@ -191,6 +191,8 @@ def create_app(config=None, store=None, mapping_store=None):
         AI_MAPPING_SUPABASE_SERVICE_KEY=os.getenv("AI_MAPPING_SUPABASE_SERVICE_KEY", ""),
         ADMIN_WRITES_ENABLED=os.getenv("ADMIN_WRITES_ENABLED", "false").lower() == "true",
         ADMIN_ISOLATED_DATABASE=os.getenv("ADMIN_ISOLATED_DATABASE", "false").lower() == "true",
+        PROMOTION_BRIDGE_ENABLED=os.getenv("PROMOTION_BRIDGE_ENABLED", "false").lower() == "true",
+        PROMOTION_BRIDGE_TOKEN=os.getenv("PROMOTION_BRIDGE_TOKEN", ""),
         MAX_CONTENT_LENGTH=256 * 1024,
         FRONTEND_DIST=str(Path(__file__).parent / "frontend" / "dist"),
     )
@@ -270,7 +272,13 @@ def create_app(config=None, store=None, mapping_store=None):
             draft_write = (request.method == "PUT"
                            and request.path == PREFIX + "/ai/model-mappings"
                            and (mapping_draft_ready() or mapping_private_ready()))
-            if not draft_write and not (app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]):
+            # Explicitly allow promotion-only operations through a dedicated
+            # backend bridge. All shop, wallet, and order staging writes stay locked.
+            promotion_write = (request.path.startswith(PREFIX + "/promotion/")
+                               and app.config["PROMOTION_BRIDGE_ENABLED"]
+                               and len(app.config["PROMOTION_BRIDGE_TOKEN"]) >= 48
+                               and request.method == "POST")
+            if not (draft_write or promotion_write) and not (app.config["ADMIN_WRITES_ENABLED"] and app.config["ADMIN_ISOLATED_DATABASE"]):
                 audit("mutation_blocked", request.method + " " + request.path)
                 return jsonify(error="Tindakan dikunci: staging menggunakan data kedai sebenar. Database ujian berasingan dan RPC audit diperlukan."), 423
             key = request.headers.get("Idempotency-Key", "")
@@ -496,6 +504,59 @@ def create_app(config=None, store=None, mapping_store=None):
         response = jsonify(models)
         response.headers["X-Berry-Mapping-Mode"] = "staging-draft-only"
         return response
+
+    @app.route(PREFIX + "/promotion/<path:route>", methods=["GET", "POST"])
+    def promotion_proxy(route):
+        """Cookie/CSRF protected, narrowly scoped relay to the real bot Promotion Center.
+
+        Never expose a bot token, bridge credential, database key or production
+        dashboard credential in the frontend. Do not allow arbitrary URL proxying.
+        """
+        if route == "connection" and request.method == "GET":
+            ready = (app.config["PROMOTION_BRIDGE_ENABLED"]
+                     and len(app.config["PROMOTION_BRIDGE_TOKEN"]) >= 48)
+            return jsonify(connected=ready, backend="Berry Store production bot",
+                           googleFormsAutoSubmit=False, maxThreadsAccounts=3)
+        if not (app.config["PROMOTION_BRIDGE_ENABLED"]
+                and len(app.config["PROMOTION_BRIDGE_TOKEN"]) >= 48):
+            return jsonify(error="Promotion bridge belum diaktifkan oleh admin Render"), 503
+
+        method = request.method
+        segments = route.split("/")
+        def uid(value):
+            try:
+                UUID(value)
+                return True
+            except (ValueError, TypeError):
+                return False
+
+        allowed = ((route == "state" and method == "GET")
+                   or (route in {"destination", "template", "campaign", "threads/connect"} and method == "POST")
+                   or (method == "POST" and len(segments) == 3 and
+                       ((segments[0] == "destination" and uid(segments[1]) and segments[2] == "test")
+                        or (segments[0] == "campaign" and uid(segments[1]) and segments[2] in {"retry", "cancel"})
+                        or (segments[0] == "threads" and uid(segments[1]) and segments[2] == "disconnect"))))
+        if not allowed:
+            return jsonify(error="Operasi promosi tidak disokong"), 404
+
+        upstream = "https://berry-store-bot-1.onrender.com/api/dashboard/promotion/" + route
+        try:
+            response = httpx.request(method, upstream,
+                 headers={"X-Promotion-Bridge-Token": app.config["PROMOTION_BRIDGE_TOKEN"]},
+                 json=request.get_json(silent=True) if method == "POST" else None,
+                 timeout=20, follow_redirects=False)
+            if response.status_code >= 500:
+                log.warning("promotion bridge upstream error status=%s", response.status_code)
+                return jsonify(error="Backend Promotion Center belum tersedia"), 503
+            data = response.json()
+            if not isinstance(data, (dict, list)):
+                raise ValueError("Invalid upstream shape")
+            if method == "POST":
+                audit("promotion_" + route.split("/")[0], "Owner promotion action routed")
+            return jsonify(data), response.status_code
+        except (httpx.HTTPError, ValueError):
+            log.warning("promotion bridge unavailable")
+            return jsonify(error="Sambungan Promotion Center gagal; cuba semula"), 503
 
     @app.get(PREFIX + "/broadcast")
     def broadcasts():
