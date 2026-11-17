@@ -41,6 +41,8 @@ export function PromotionCenter() {
   const [formEmailEntry, setFormEmailEntry] = useState('');
   const [permitted, setPermitted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingActive, setEditingActive] = useState(true);
+  const [editingFixedFields, setEditingFixedFields] = useState<Record<string, string>>({});
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [schedule, setSchedule] = useState('');
@@ -98,17 +100,18 @@ export function PromotionCenter() {
         form_email: kind === 'google_form' ? gmail.trim() : null,
         form_message_entry: kind === 'google_form' ? formMessageEntry.trim() : null,
         form_email_entry: kind === 'google_form' ? formEmailEntry.trim() : null,
-        posting_permitted: permitted, active: true,
+        form_fixed_fields: kind === 'google_form' ? editingFixedFields : {},
+        posting_permitted: permitted, active: editingId ? editingActive : true,
       });
       setDestinationName(''); setDestinationUrl(''); setChatId('');
-      setGmail(''); setFormEmailEntry(''); setFormMessageEntry(''); setPermitted(false); setEditingId(null);
+      setGmail(''); setFormEmailEntry(''); setFormMessageEntry(''); setPermitted(false); setEditingId(null); setEditingActive(true); setEditingFixedFields({});
     });
   };
   const editDestination = (d: Destination) => {
     setEditingId(d.id); setKind(d.kind); setDestinationName(d.name); setDestinationUrl(d.target_url);
     setChatId(d.telegram_chat_id || ''); setGmail(d.form_email || '');
     setFormMessageEntry(d.form_message_entry || ''); setFormEmailEntry(d.form_email_entry || '');
-    setPermitted(d.posting_permitted); setTab('destinations');
+    setPermitted(d.posting_permitted); setEditingActive(d.active); setEditingFixedFields(d.form_fixed_fields || {}); setTab('destinations');
     window.scrollTo({top: 0, behavior: 'smooth'});
   };
   const toggleActive = (d: Destination) => void run(
