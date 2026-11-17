@@ -13,6 +13,7 @@ import { AIStudioManagement } from './components/AIStudioManagement';
 import { WalletManagement } from './components/WalletManagement';
 import { TelegramBotControl } from './components/TelegramBotControl';
 import { BroadcastMarketing } from './components/BroadcastMarketing';
+import { PromotionCenter } from './components/PromotionCenter';
 import { ReferralSystem } from './components/ReferralSystem';
 import { SystemMonitoring } from './components/SystemMonitoring';
 import { RenderIntegrationModal } from './components/RenderIntegrationModal';
@@ -580,6 +581,8 @@ export default function App() {
               onSendBroadcast={handleSendBroadcast}
             />
           )}
+
+          {currentPage === 'promotion-center' && pageReady && <PromotionCenter />}
 
           {currentPage === 'referrals' && pageReady && (
             <ReferralSystem
