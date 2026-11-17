@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from html.parser import HTMLParser
 import logging
 import os
 import re
@@ -278,10 +279,25 @@ class PromotionCenter:
             page_html = page.text[:200000]
             # No headless browser, no login, no anti-bot avoidance, no forced
             # submission of forms that are closed or require a Google session.
-            if ("formResponse" not in page_html or field not in page_html
+            if (not re.search(r'<form\\b[^>]*action=["\\'][^"\\']*/formResponse', page_html, re.I)
+                    or field.split(".", 1)[-1] not in page_html
                     or "g-recaptcha" in page_html.lower()):
                 raise PromotionError("Form ditutup, ada CAPTCHA, atau perlu login; submit manual diperlukan", 422)
-            payload = {field: message}
+
+            class HiddenFields(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.fields = {}
+                def handle_starttag(self, tag, attrs):
+                    if tag != "input":
+                        return
+                    attributes = dict(attrs)
+                    if (attributes.get("type") == "hidden"
+                            and attributes.get("name") in {"fvv", "fbzx", "pageHistory"}):
+                        self.fields[attributes["name"]] = attributes.get("value", "")
+            parser = HiddenFields()
+            parser.feed(page_html)
+            payload = {**parser.fields, field: message}
             email_key = destination.get("form_email_entry")
             email_value = destination.get("form_email")
             if email_key and ENTRY_ID.fullmatch(email_key) and email_value:
@@ -297,6 +313,8 @@ class PromotionCenter:
                     "your response has been recorded",
                     "your response has been submitted",
                     "freebirdformviewerviewresponseconfirmationmessage",
+                    "respons anda telah direkodkan",
+                    "maklum balas anda telah direkodkan",
                 )))
             if confirmed and "no longer accepting responses" not in body:
                 return "Google Forms confirmation page"
