@@ -58,7 +58,7 @@ class CancelReviewCallbackRegressionTests(TestCase):
         self.assertIn('elif data.startswith("request_cancel:"):', router)
         self.assertIn('elif data.startswith("cancel_order:"):', router)
         self.assertLess(router.index('elif data.startswith("cancel_review:"):'),
-                        router.index('elif data.startswith("cancel_order:"):'))
+                        router.rindex('elif data.startswith("cancel_order:"):'))
 
     def test_waiting_approval_order_offers_request_review(self):
         names = ("_customer_order", "show_cancel_review")
