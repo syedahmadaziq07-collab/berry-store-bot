@@ -92,7 +92,7 @@ class TurnitinServiceTests(TestCase):
         self.assertNotIn("turnitin.com/api", FLOW)
 
     def test_bot_wiring_checkout_gates_and_report_delivery(self):
-        self.assertIn('"📑 Turnitin", callback_data="turnitin"',BOT)
+        self.assertIn('"‼️ Turnitin", callback_data="turnitin"',BOT)
         self.assertIn('"BERRY_TURNITIN_CHECKOUT_ENABLED"', BOT)
         self.assertIn('"BERRY_TURNITIN_ADMIN_ONLY", "true"', BOT)
         self.assertIn('if str(order_id).startswith("TT"):', BOT)

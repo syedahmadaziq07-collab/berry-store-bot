@@ -2064,8 +2064,8 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
 async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
     """Shared checkout guard for shop, Turnitin and Berry Credits QR orders.
 
-    Only unpaid orders can be cancelled or resumed. Once a receipt is submitted,
-    its approval is an admin decision and the customer must not pay again.
+    Unpaid orders can resume payment or cancel immediately. Orders with receipts
+    can be viewed and a cancellation review requested; never collect payment twice.
     """
     uid = update.effective_user.id
     if order is None:
@@ -2103,16 +2103,23 @@ async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
             "Nak teruskan bayaran yang tadi atau batalkan dulu? 👇"
         )
         buttons = [
-            [InlineKeyboardButton("💳 Continue Pay", callback_data=f"pay:{oid}")],
-            [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_order:{oid}")],
+            [InlineKeyboardButton("💳 Continue Previous Order", callback_data=f"pay:{oid}")],
+            [InlineKeyboardButton("❌ Cancel Previous Order", callback_data=f"cancel_order:{oid}")],
+            [InlineKeyboardButton("📦 My Orders", callback_data="myorders")],
         ]
     else:
         message = (
             "⏳ Order lama awak masih dalam semakan bayaran.\n\n"
+            f"📦 {order.get('product_name') or 'Tempahan Berry Store'}\n"
             f"Order: {oid}\n"
-            "Resit dah dihantar. Tunggu admin sahkan dulu, tak perlu bayar lagi ya."
+            "Resit dah dihantar. Untuk keselamatan, jangan buat bayaran kedua.\n"
+            "Awak boleh semak order lama atau mohon pembatalan."
         )
-        buttons = [[InlineKeyboardButton("📦 My Orders", callback_data="myorders")]]
+        buttons = [
+            [InlineKeyboardButton("📦 Continue Previous Order", callback_data=f"order_view:{oid}")],
+            [InlineKeyboardButton("❌ Cancel Previous Order", callback_data=f"cancel_review:{oid}")],
+            [InlineKeyboardButton("📦 My Orders", callback_data="myorders")],
+        ]
 
     active_msg = await context.bot.send_message(
         update.effective_chat.id, message,
@@ -2616,6 +2623,205 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as exc:
         log.warning(f"Admin photo notify: {_safe_error(exc)}")
 
+
+# ─── Resume / Cancel-review for existing orders ───────────────────────────────
+
+async def _customer_order(update, context, order_id: str):
+    """Re-fetch by ID AND customer; never trust order IDs from Telegram callbacks."""
+    user_id = update.effective_user.id
+    try:
+        rows = await _run_supabase(
+            f"orders.customer_action id={order_id}",
+            lambda: sb_get("orders",
+                f"select=id,user_id,product_name,amount,status&"
+                f"id=eq.{order_id}&user_id=eq.{user_id}&limit=1"),
+        )
+    except Exception as exc:
+        log.warning("[ORDER_ACTION] lookup failed: %s", _safe_error(exc))
+        await context.bot.send_message(update.effective_chat.id,
+            "⚠️ Gagal semak order. Cuba lagi sebentar.", reply_markup=back_home())
+        return None
+    order = rows[0] if rows else None
+    if not order:
+        await context.bot.send_message(update.effective_chat.id,
+            "⛔ Order tidak ditemui atau bukan milik awak.", reply_markup=back_home())
+    return order
+
+
+async def show_existing_order(update, context, order_id: str):
+    order = await _customer_order(update, context, order_id)
+    if not order:
+        return
+    oid = order["id"]
+    status = str(order.get("status") or "")
+    message = (
+        f"📦 ORDER LAMA\n\n"
+        f"Produk: {order.get('product_name') or '-'}\n"
+        f"Order: {oid}\n"
+        f"Jumlah: RM {order.get('amount') or '0.00'}\n"
+        f"Status: {status}\n\n"
+    )
+    if status == "pending":
+        message += "Belum ada resit. Sambung bayaran atau batalkan order ini."
+        buttons = [
+            [InlineKeyboardButton("💳 Continue Payment", callback_data=f"pay:{oid}")],
+            [InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_order:{oid}")],
+        ]
+    elif status in ("waiting", "waiting_approval"):
+        message += (
+            "Resit sudah dihantar dan sedang disemak admin.\n"
+            "Jangan bayar kali kedua. Jika mahu batal, admin perlu semak bayaran dahulu."
+        )
+        buttons = [[InlineKeyboardButton("❌ Cancel Order", callback_data=f"cancel_review:{oid}")]]
+    else:
+        message += "Order ini bukan lagi dalam proses checkout."
+        buttons = []
+    buttons.append([InlineKeyboardButton("📦 My Orders", callback_data="myorders")])
+    await context.bot.send_message(update.effective_chat.id, message,
+        reply_markup=InlineKeyboardMarkup(buttons))
+
+
+async def show_cancel_review(update, context, order_id: str):
+    order = await _customer_order(update, context, order_id)
+    if not order:
+        return
+    oid = order["id"]
+    status = str(order.get("status") or "")
+    if status not in ("waiting", "waiting_approval"):
+        await show_existing_order(update, context, oid)
+        return
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "⚠️ Resit untuk order ini sudah dihantar.\n\n"
+        f"Order: {oid}\n\n"
+        "Pembatalan perlu disemak oleh admin supaya bayaran yang mungkin sudah "
+        "masuk tidak terlepas pandang. Tiada refund automatik.\n\n"
+        "Hantar permintaan pembatalan sekarang?",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Request Cancellation", callback_data=f"request_cancel:{oid}")],
+            [InlineKeyboardButton("⬅️ Back to Order", callback_data=f"order_view:{oid}")],
+        ]),
+    )
+
+
+async def request_order_cancellation(update, context, order_id: str):
+    order = await _customer_order(update, context, order_id)
+    if not order:
+        return
+    oid = order["id"]
+    if str(order.get("status") or "") not in ("waiting", "waiting_approval"):
+        await show_existing_order(update, context, oid)
+        return
+    buttons = None
+    if oid.startswith("ORD"):
+        buttons = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔎 Review Cancellation",
+                                 callback_data=f"admin_cancel_review:{oid}")
+        ]])
+    if not ADMIN_ID:
+        await context.bot.send_message(update.effective_chat.id,
+            "⚠️ Admin tidak dikonfigurasi. Sila hubungi Support untuk batalkan order.")
+        return
+    try:
+        await context.bot.send_message(
+            ADMIN_ID,
+            "⚠️ CUSTOMER REQUESTED CANCELLATION\n\n"
+            f"Order: {oid}\n"
+            f"Customer ID: {update.effective_user.id}\n"
+            f"Produk: {order.get('product_name') or '-'}\n"
+            f"Jumlah: RM {order.get('amount') or '0.00'}\n\n"
+            "Resit pernah dihantar. Semak transaksi bank dan sebarang refund "
+            "sebelum mengesahkan pembatalan. Jangan approve order tanpa semakan.",
+            reply_markup=buttons,
+        )
+    except Exception as exc:
+        log.warning("[CANCEL_REQUEST] admin notify failed: %s", _safe_error(exc))
+        await context.bot.send_message(update.effective_chat.id,
+            "⚠️ Permintaan belum dapat dihantar kepada admin. Cuba lagi atau hubungi Support.")
+        return
+    await context.bot.send_message(
+        update.effective_chat.id,
+        f"✅ Permintaan batal untuk {oid} sudah dihantar kepada admin.\n\n"
+        "Order masih menunggu semakan. Jangan buat bayaran kedua. "
+        "Jika bayaran telah diterima, refund perlu diuruskan secara manual.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📦 My Orders", callback_data="myorders")]
+        ]),
+    )
+
+
+async def admin_review_shop_cancel(update, context, order_id: str):
+    if update.effective_user.id != ADMIN_ID or not order_id.startswith("ORD"):
+        await context.bot.send_message(update.effective_chat.id, "⛔ Akses ditolak.")
+        return
+    try:
+        rows = await _run_supabase(
+            f"orders.admin_cancel_review id={order_id}",
+            lambda: sb_get("orders",
+                f"select=id,user_id,product_name,amount,status&"
+                f"id=eq.{order_id}&limit=1"),
+        )
+    except Exception as exc:
+        log.warning("[CANCEL_REQUEST] review unavailable: %s", _safe_error(exc))
+        await context.bot.send_message(update.effective_chat.id,
+            "⚠️ Gagal semak order. Cuba lagi.")
+        return
+    order = rows[0] if rows else None
+    if not order or order.get("status") not in ("waiting", "waiting_approval"):
+        await context.bot.send_message(update.effective_chat.id,
+            "ℹ️ Status order sudah berubah. Pembatalan tidak dilakukan.")
+        return
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "🔎 SEMAK PEMBATALAN ORDER\n\n"
+        f"Order: {order_id}\n"
+        f"Produk: {order.get('product_name') or '-'}\n"
+        f"Jumlah: RM {order.get('amount') or '0.00'}\n"
+        f"Status: {order.get('status')}\n\n"
+        "SAHKAN HANYA SELEPAS semak bayaran dan urusan refund (jika perlu). "
+        "Butang ini tidak memulangkan wang secara automatik.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Payment Checked — Cancel",
+                                 callback_data=f"admin_cancel_confirm:{order_id}")
+        ]]),
+    )
+
+
+async def admin_confirm_shop_cancel(update, context, order_id: str):
+    if update.effective_user.id != ADMIN_ID or not order_id.startswith("ORD"):
+        await context.bot.send_message(update.effective_chat.id, "⛔ Akses ditolak.")
+        return
+    try:
+        def change():
+            updated = sb_patch(
+                "orders",
+                f"id=eq.{order_id}&status=in.(waiting,waiting_approval)",
+                {"status": "cancelled"},
+            )
+            if not updated:
+                raise ValueError("Order not in cancellable payment-review state")
+            return updated[0]
+        order = await _run_supabase(f"orders.admin_cancel id={order_id}",
+                                    change, attempts=1)
+    except Exception as exc:
+        log.warning("[CANCEL_REQUEST] confirm failed: %s", _safe_error(exc))
+        await context.bot.send_message(update.effective_chat.id,
+            "⚠️ Order tidak dibatalkan. Status mungkin sudah berubah; semak semula.")
+        return
+    await context.bot.send_message(update.effective_chat.id,
+        f"✅ Order {order_id} dibatalkan selepas semakan. Refund tidak dibuat oleh bot.")
+    try:
+        await context.bot.send_message(
+            int(order["user_id"]),
+            f"❌ Order {order_id} telah dibatalkan oleh admin selepas semakan.\n"
+            "Jika ada bayaran diterima, urusan refund dibuat secara manual. "
+            "Hubungi Support jika belum selesai.",
+            reply_markup=main_kb(int(order["user_id"])),
+        )
+    except Exception as exc:
+        log.warning("[CANCEL_REQUEST] customer notify failed: %s", _safe_error(exc))
+
+
 # ─── Cancel Order ─────────────────────────────────────────────────────────────
 
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: str):
@@ -2659,11 +2865,11 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
 
         cancelled = False
         try:
-            await _run_supabase(
+            updated = await _run_supabase(
                 f"orders.cancel id={order_id}",
                 lambda: sb_patch("orders", f"id=eq.{order_id}&user_id=eq.{user_id}&status=eq.pending", {"status": "cancelled"}),
             )
-            cancelled = True
+            cancelled = bool(updated)
         except Exception as exc:
             log.exception(f"[CANCEL] Supabase patch failed order_id={order_id} user_id={user_id}")
         finally:
@@ -2721,10 +2927,19 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for o in orders[:10]:
             text += f"{EMOJI.get(o['status'],'❓')} {o['id']}\n   {o.get('product_name','')}\n   RM {o['amount']} — {o['status']}\n\n"
 
+    active = next((o for o in orders if o.get("status") in
+                   ("pending", "waiting", "waiting_approval")), None)
+    buttons = []
+    if active:
+        buttons.append([InlineKeyboardButton(
+            "📦 Continue / Manage Active Order",
+            callback_data=f"order_view:{active['id']}")])
+    buttons.append([InlineKeyboardButton("🏠 Home", callback_data="home")])
+    keyboard = InlineKeyboardMarkup(buttons)
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=back_home())
+        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
     else:
-        await update.message.reply_text(text, reply_markup=back_home())
+        await update.message.reply_text(text, reply_markup=keyboard)
 
 # ─── Admin: Approve / Reject ──────────────────────────────────────────────────
 
@@ -2763,7 +2978,15 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
         def approve_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
             order_data = rows[0] if rows else {}
-            sb_patch("orders", f"id=eq.{order_id}", {"status": "completed"})
+            if order_data.get("status") not in ("waiting", "waiting_approval") or not order_data.get("receipt_file_id"):
+                raise ValueError("Order not awaiting approval with a receipt")
+            changed = sb_patch(
+                "orders",
+                f"id=eq.{order_id}&status=in.(waiting,waiting_approval)&receipt_file_id=not.is.null",
+                {"status": "completed"},
+            )
+            if not changed:
+                raise ValueError("Order was already updated or cancelled")
             product_data = {}
             cred = None
             if order_data.get("product_id"):
@@ -3077,7 +3300,13 @@ async def _reject_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str):
         def reject_tx():
             rows = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
             order_data = rows[0] if rows else {}
-            sb_patch("orders", f"id=eq.{order_id}", {"status": "rejected"})
+            changed = sb_patch(
+                "orders",
+                f"id=eq.{order_id}&status=in.(waiting,waiting_approval)",
+                {"status": "rejected"},
+            )
+            if not changed:
+                raise ValueError("Order not awaiting review or already closed")
             return order_data
         order = await _run_supabase(f"orders.reject id={order_id}", reject_tx, attempts=1)
     except Exception as exc:
@@ -4644,6 +4873,17 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("buy_"):
             parts = data.split("_")
             await create_order(update, context, int(parts[1]), int(parts[2]))
+
+        elif data.startswith("order_view:"):
+            await show_existing_order(update, context, data.split(":", 1)[1])
+        elif data.startswith("cancel_review:"):
+            await show_cancel_review(update, context, data.split(":", 1)[1])
+        elif data.startswith("request_cancel:"):
+            await request_order_cancellation(update, context, data.split(":", 1)[1])
+        elif data.startswith("admin_cancel_review:"):
+            await admin_review_shop_cancel(update, context, data.split(":", 1)[1])
+        elif data.startswith("admin_cancel_confirm:"):
+            await admin_confirm_shop_cancel(update, context, data.split(":", 1)[1])
 
         elif data.startswith("pay:"):
             order_id = data.split(":", 1)[1] if ":" in data else ""
