@@ -2152,7 +2152,7 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
             f"products.order_fetch id={product_id}",
             lambda: sb_get(
                 "products",
-                f"select=id,name,stock,price,auto_delivery,delivery_mode&id=eq.{product_id}&limit=1",
+                f"select=id,name,stock,price,auto_delivery&id=eq.{product_id}&limit=1",
             ),
         )
         live_p = rows[0] if rows else None
@@ -4675,7 +4675,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         suffix = data.split(":", 1)[1] if ":" in data else ""
         data = f"cancel_order:{suffix}"
         log.info(f"[COMPAT] normalized cancel: → cancel_order: order_id={suffix!r}")
-    elif data.startswith("cancel_"):
+    elif re.fullmatch(r"cancel_(?:ORD|TT|BT)[A-Za-z0-9]+", data):
         suffix = data[len("cancel_"):]
         data = f"cancel_order:{suffix}"
         log.info(f"[COMPAT] normalized cancel_ → cancel_order: order_id={suffix!r}")
