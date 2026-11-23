@@ -177,7 +177,6 @@ class GenericCheckoutTests(TestCase):
         self.assertIn("if not changed:", BOT)
 
     def test_product_details_use_real_production_columns(self):
-        detail = function("show_product", {})
         segment = ast.get_source_segment(BOT, next(
             n for n in TREE.body if isinstance(n, ast.AsyncFunctionDef)
             and n.name == "show_product"))
