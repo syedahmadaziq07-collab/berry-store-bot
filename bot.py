@@ -1557,6 +1557,7 @@ async def _force_join_message_guard(update: Update, context: ContextTypes.DEFAUL
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("ai_video_flow", None)
+    context.user_data.pop("netflix_profile_flow", None)
     user = update.effective_user
     log.info(f"[START] received /start")
     log.info(f"[START] user_id={user.id}")
@@ -1684,6 +1685,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("ai_video_flow", None)
+    context.user_data.pop("netflix_profile_flow", None)
     if not await _check_membership_for_update(update, context):
         await _send_join_message(update)
         return
@@ -2059,6 +2061,142 @@ async def qty_adjust(update: Update, context: ContextTypes.DEFAULT_TYPE, product
     new_qty = max(1, min(current_qty + delta, 10))
     await show_product(update, context, product_id, new_qty)
 
+
+# ─── Netflix Private/Semi Private profile setup (menu item 10; product ID 9) ─
+
+NETFLIX_PRODUCT_ID = 9
+
+
+def _needs_netflix_profile(product_id: int, variant_label: str | None) -> bool:
+    """Only Netflix Private/Semi Private. Sharing and all other items skip this."""
+    return (str(product_id) == str(NETFLIX_PRODUCT_ID)
+            and bool(re.match(r"^(?:semi\s+private|private)(?:\s|$)",
+                              str(variant_label or "").strip(), re.IGNORECASE)))
+
+
+def _valid_netflix_profile(profile: dict | None) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    name, pin = profile.get("name"), profile.get("pin")
+    return (isinstance(name, str) and 1 <= len(name.strip()) <= 32
+            and not any(ord(ch) < 32 for ch in name)
+            and isinstance(pin, str) and re.fullmatch(r"[0-9]{4}", pin) is not None)
+
+
+def _netflix_name_prompt():
+    return (
+        "🍿 NETFLIX PROFILE SETUP\n\n"
+        "Sila masukkan nama profile Netflix yang awak nak gunakan.\n\n"
+        "Contoh: Lucas\n\n"
+        "Taip nama profile dan hantar di chat 👇"
+    )
+
+
+def _netflix_pin_prompt(name: str):
+    return (
+        "🔐 NETFLIX PROFILE PIN\n\n"
+        f"Nama profile: {name} ✅\n\n"
+        "Sekarang masukkan PIN 4 digit untuk profile Netflix awak.\n\n"
+        "Contoh: 0000\n\n"
+        "Taip tepat 4 digit dan hantar di chat 👇"
+    )
+
+
+async def _start_netflix_profile(update, context, pid: int, variant: dict):
+    """Collect profile information BEFORE creating an order or showing its QR."""
+    if await _offer_existing_unpaid_order(update, context):
+        return
+    context.user_data["netflix_profile_flow"] = {
+        "step": "name",
+        "product_id": pid,
+        "variant_id": int(variant["id"]),
+        "variant_label": str(variant["variant_name"]).strip(),
+        "variant_price": float(variant["price"]),
+    }
+    await _safe_edit_or_send(
+        update.callback_query,
+        _netflix_name_prompt(),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("⬅️ Back to Variants", callback_data="netflix_back:variants")
+        ]]),
+    )
+
+
+async def _netflix_back(update, context, action: str):
+    flow = context.user_data.get("netflix_profile_flow")
+    if not isinstance(flow, dict):
+        await _safe_edit_or_send(update.callback_query,
+            "ℹ️ Sesi profile telah tamat. Pilih pakej Netflix semula.",
+            reply_markup=back_shop())
+        return
+    if action == "variants":
+        context.user_data.pop("netflix_profile_flow", None)
+        await show_product(update, context, NETFLIX_PRODUCT_ID)
+    elif action == "name":
+        flow["step"] = "name"
+        flow.pop("name", None)
+        await _safe_edit_or_send(
+            update.callback_query, _netflix_name_prompt(),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("⬅️ Back to Variants", callback_data="netflix_back:variants")
+            ]]),
+        )
+
+
+async def _handle_netflix_profile_text(update, context, text: str) -> bool:
+    """Consume only active Netflix setup inputs; never log the customer's PIN."""
+    flow = context.user_data.get("netflix_profile_flow")
+    if not isinstance(flow, dict):
+        return False
+    if text == "🏠 Home":
+        context.user_data.pop("netflix_profile_flow", None)
+        return False
+    if flow.get("step") == "name":
+        if (not 1 <= len(text) <= 32 or text.startswith("/")
+                or any(ord(ch) < 32 for ch in text)):
+            await update.message.reply_text(
+                "⚠️ Nama profile mesti 1–32 aksara, dalam satu baris. Contoh: Lucas")
+            return True
+        flow["name"] = text
+        flow["step"] = "pin"
+        await update.message.reply_text(
+            _netflix_pin_prompt(text),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("⬅️ Tukar Nama Profile", callback_data="netflix_back:name")
+            ], [
+                InlineKeyboardButton("❌ Back to Variants", callback_data="netflix_back:variants")
+            ]]),
+        )
+        return True
+    if flow.get("step") != "pin":
+        context.user_data.pop("netflix_profile_flow", None)
+        await update.message.reply_text("⚠️ Sesi tamat. Pilih pakej Netflix semula.")
+        return True
+    if re.fullmatch(r"[0-9]{4}", text) is None:
+        await update.message.reply_text(
+            "⚠️ PIN mesti tepat 4 digit angka (0–9). Contoh: 0000.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("⬅️ Tukar Nama Profile", callback_data="netflix_back:name")
+            ]]),
+        )
+        return True
+    profile = {"name": flow.get("name"), "pin": text}
+    if not _valid_netflix_profile(profile):
+        context.user_data.pop("netflix_profile_flow", None)
+        await update.message.reply_text("⚠️ Maklumat tak sah. Pilih Netflix semula.")
+        return True
+    # Never retain the PIN inside user_data after the two-step setup completes.
+    context.user_data.pop("netflix_profile_flow", None)
+    context.user_data["selected_variant_id"] = flow["variant_id"]
+    await create_order(
+        update, context, int(flow["product_id"]), 1,
+        variant_label=flow["variant_label"],
+        variant_price=float(flow["variant_price"]),
+        netflix_profile=profile,
+    )
+    return True
+
+
 # ─── Create Order ─────────────────────────────────────────────────────────────
 
 async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
@@ -2129,7 +2267,7 @@ async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
     return True
 
 
-async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None):
+async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, qty: int, *, variant_label: str = None, variant_price: float = None, netflix_profile: dict | None = None):
     _t_create = time.monotonic()
     user = update.effective_user
     chat_id = update.effective_chat.id
@@ -2218,6 +2356,12 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                     return
                 variant_price = float(live_v.get("price"))
                 variant_label = str(live_v.get("variant_name") or variant_label or "")
+                # A Netflix profile checkout must still target the original
+                # Private/Semi Private variant, not a concurrently changed one.
+                if netflix_profile is not None and not _needs_netflix_profile(product_id, variant_label):
+                    context.user_data.pop(lock_user, None)
+                    await context.bot.send_message(chat_id, "⚠️ Pakej Netflix berubah. Pilih pakej semula.", reply_markup=back_shop())
+                    return
                 context.user_data["selected_variant_desc"] = live_v.get("description") or context.user_data.get("selected_variant_desc") or ""
             except Exception as exc:
                 context.user_data.pop(lock_user, None)
@@ -2226,6 +2370,16 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
                 err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat variant. Sila cuba lagi.", reply_markup=back_shop())
                 track_flow_message(context, err_msg, "error_message")
                 return
+
+    # No bypass: Netflix Private/Semi Private requires a validated profile
+    # even if an older/non-profile callback reaches create_order directly.
+    if (variant_label is not None and _needs_netflix_profile(product_id, variant_label)
+            and not _valid_netflix_profile(netflix_profile)):
+        context.user_data.pop(lock_user, None)
+        await context.bot.send_message(chat_id,
+            "⚠️ Lengkapkan nama profile dan PIN Netflix sebelum checkout.",
+            reply_markup=back_shop())
+        return
 
     # ── Shared unpaid-order prompt, including a pending Turnitin / AI Top Up. ──
     try:
@@ -2267,6 +2421,68 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
     log.info(f"Order created: {order_id} by {user.id}")
     context.user_data[f"qty_{product_id}"] = 1
+
+    if netflix_profile is not None:
+        # The owner gets ONE combined private message, after order creation
+        # and before payment QR. Do not publish the PIN or log its value.
+        try:
+            if not ADMIN_ID:
+                raise RuntimeError("Netflix admin notification is not configured")
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    "🍿 NETFLIX PROFILE REQUEST\n\n"
+                    f"📦 Pakej: {variant_label}\n"
+                    f"🧾 Order: {order_id}\n"
+                    f"👤 Customer ID: {user.id}\n"
+                    f"Nama profile: {netflix_profile['name']}\n"
+                    f"PIN 4 digit: {netflix_profile['pin']}\n"
+                    "💳 Status: Menunggu pembayaran"
+                ),
+            )
+        except Exception as exc:
+            # Fail closed: never expose the QR when the owner did not receive
+            # the required setup details. Release any just-created unpaid order.
+            log.warning("[NETFLIX] owner delivery failed for order %s: %s",
+                        order_id, type(exc).__name__)
+            try:
+                changed = await _run_supabase(
+                    f"orders.netflix_unnotified_cancel id={order_id}",
+                    lambda: sb_patch(
+                        "orders",
+                        f"id=eq.{order_id}&user_id=eq.{user.id}&status=eq.pending",
+                        {"status": "cancelled"},
+                    ),
+                    attempts=1,
+                )
+            except Exception as cancel_exc:
+                log.warning("[NETFLIX] cleanup failed for order %s: %s",
+                            order_id, type(cancel_exc).__name__)
+                changed = []
+            await context.bot.send_message(
+                chat_id,
+                ("⚠️ Tak dapat hantar maklumat profile kepada admin. "
+                 + ("Order ini dibatalkan, cuba semula."
+                    if changed else f"Order {order_id} belum dapat disahkan; hubungi Support sebelum bayar.")),
+                reply_markup=back_shop(),
+            )
+            context.user_data.pop(lock_user, None)
+            return
+        # QR is shown immediately after PIN, without an extra Proceed step.
+        await delete_flow_messages(context, context.bot, chat_id, user.id,
+                                   ["variant_select", "product_detail", "active_order", "error_message"])
+        await context.bot.send_message(
+            chat_id, "✅ Maklumat profile Netflix diterima! Sila teruskan pembayaran."
+        )
+        try:
+            await send_payment_page(
+                context, chat_id, user.id,
+                {"id": order_id, "amount": total, "status": "pending"}, order_id,
+            )
+        finally:
+            context.user_data.pop(lock_user, None)
+        return
+
     _order_title = await _setting('order_summary_title', '🧾 ORDER SUMMARY')
     _order_proceed = await _setting('order_proceed_msg', 'Sila teruskan ke pembayaran.')
     _variant_desc = context.user_data.get("selected_variant_desc") or ""
@@ -4425,6 +4641,7 @@ async def accept_ai_video_prompt(update: Update, context: ContextTypes.DEFAULT_T
 
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("ai_video_flow", None)
+    context.user_data.pop("netflix_profile_flow", None)
     user = update.effective_user
     total_users = total_sold = 0
 
@@ -4684,6 +4901,11 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = f"paid:{suffix}"
         log.info(f"[COMPAT] normalized paid_ → paid: order_id={suffix!r}")
 
+    # A user who navigates away cannot accidentally send profile data to a
+    # different checkout; only Netflix's own Back controls preserve this stage.
+    if not data.startswith("netflix_back:"):
+        context.user_data.pop("netflix_profile_flow", None)
+
     try:
         if data == "turnitin" or data.startswith("turnitin:"):
             await _turnitin_callback(update, context, data)
@@ -4767,6 +4989,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "ai_video_ratio":     await show_ai_video_ratio(update, context)
         elif data.startswith("ai_video_photo:"):
             await request_ai_video_photo(update, context, data.split(":", 1)[1])
+        elif data.startswith("netflix_back:"):
+            await _netflix_back(update, context, data.split(":", 1)[1])
         elif data == "myorders":           await my_orders(update, context)
         elif data == "referral":           await _turnitin_callback(update, context, "turnitin")
         elif data == "support":            await show_support(update, context)
@@ -4847,6 +5071,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Store selected variant_id in user_data for any downstream use
                 context.user_data["selected_variant_id"] = vid
                 context.user_data["selected_variant_desc"] = (v.get("description") or "").strip()
+
+                if _needs_netflix_profile(pid, v_label):
+                    await _start_netflix_profile(update, context, pid, v)
+                    return
 
                 await create_order(update, context, pid, 1,
                                    variant_label=str(v_label), variant_price=float(v_price))
@@ -5053,9 +5281,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text    = (update.message.text or "").strip()
     log.info(f"[MESSAGE] received")
-    log.info(f"[MESSAGE] text={text!r}")
+    if context.user_data.get("netflix_profile_flow"):
+        log.info("[MESSAGE] text=[NETFLIX_PROFILE_INPUT_REDACTED]")
+    else:
+        log.info(f"[MESSAGE] text={text!r}")
     log.info(f"[MESSAGE] user_id={user_id}")
     log.info(f"[MESSAGE] chat_id={update.effective_chat.id}")
+
+    # PIN input must be handled before numeric product selection and must
+    # never be routed to generic AI/Support text handlers or payment callbacks.
+    if await _handle_netflix_profile_text(update, context, text):
+        return
 
     # ── Gated AI Image prompt stage (disabled unless explicitly enabled) ──────
     # Runs BEFORE generic handling; returns False whenever the gate is off so
