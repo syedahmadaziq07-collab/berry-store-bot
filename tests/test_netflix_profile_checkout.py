@@ -129,6 +129,8 @@ class NetflixProfileCheckoutTests(TestCase):
             "time": SimpleNamespace(monotonic=lambda: 1.0),
             "random": SimpleNamespace(randint=lambda a,b: 95759),
             "NETFLIX_PRODUCT_ID": 9,
+            "Update": object,
+            "ContextTypes": SimpleNamespace(DEFAULT_TYPE=object),
             "_run_supabase": run_supabase,
             "sb_get": sb_get, "sb_post": sb_post, "sb_patch": Mock(return_value=[{"id":"ok"}]),
             "log": Mock(),
