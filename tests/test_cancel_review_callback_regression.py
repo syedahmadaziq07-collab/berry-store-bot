@@ -106,7 +106,7 @@ class CancelReviewCallbackRegressionTests(TestCase):
         create = next(node for node in PARSED.body if isinstance(
             node, ast.AsyncFunctionDef) and node.name == "create_order")
         code = ast.get_source_segment(BOT, create)
-        self.assertIn("select=id,name,stock,price,auto_delivery&id=", code)
+        self.assertIn("select=id,name,stock,price,auto_delivery,is_active,status&id=", code)
         self.assertNotIn("select=id,name,stock,price,auto_delivery,delivery_mode", code)
 
 

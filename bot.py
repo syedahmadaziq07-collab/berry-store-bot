@@ -1598,24 +1598,22 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_new_user = False
         try:
             def start_stats():
-                # STEP 1: Check if user is new BEFORE saving to database
-                try:
-                    existing = sb_get("users", f"select=id&id=eq.{user.id}")
-                    is_new = len(existing) == 0
-                except Exception:
-                    is_new = False
-                # STEP 2: Save user to database as usual (existing code)
-                sb_upsert("users", {
-                    "id": user.id,
-                    "username": user.username or "",
-                    "first_name": user.first_name or "",
-                })
+                # Registration must succeed before /start exposes a checkout menu.
+                existing = sb_admin_get("users", f"select=id&id=eq.{user.id}&limit=1")
+                is_new = not bool(existing)
+                if not _register_checkout_customer(user):
+                    raise RuntimeError("Telegram customer registration not confirmed")
                 users = sb_get("users", "select=id")
                 sold  = sb_get("orders", "select=id&status=eq.completed")
                 return len(users), len(sold), is_new
             total_users, total_sold, is_new_user = await _run_supabase("start.stats", start_stats)
         except Exception as exc:
-            log.warning(f"Supabase /start: {_safe_error(exc)}")
+            log.warning(f"Supabase /start registration failed: {_safe_error(exc)}")
+            await update.message.reply_text(
+                "⚠️ Tak dapat daftar akaun dalam sistem sekarang. "
+                "Sila cuba /start semula; checkout belum tersedia untuk sesi ini."
+            )
+            return
 
         now = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%A, %d %B %Y %H:%M:%S")
         _welcome = await _setting('welcome_message', 'Welcome to Berry Store.')
@@ -1979,7 +1977,7 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         try:
             rows = await _run_supabase(
                 f"products.detail id={product_id}",
-                lambda: sb_get("products", f"select=id,name,stock,price,duration,description,auto_delivery,delivery_mode,is_active,status&id=eq.{product_id}&limit=1"),
+                lambda: sb_get("products", f"select=id,name,stock,price,duration,description,auto_delivery,is_active,status&id=eq.{product_id}&limit=1"),
             )
             p = rows[0] if rows else None
         except Exception as exc:
@@ -2019,6 +2017,9 @@ async def show_product(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         log.info(f"[TIMING] show_product total_ms={int((time.monotonic()-_t_prod)*1000)} product_id={product_id} mode=variants")
         return
 
+    # A variant from a previously viewed product must never attach to this one.
+    context.user_data.pop("selected_variant_id", None)
+    context.user_data.pop("selected_variant_desc", None)
     total = round(p["price"] * qty, 2)
     stock = p.get("stock", 0)
 
@@ -2199,6 +2200,55 @@ async def _handle_netflix_profile_text(update, context, text: str) -> bool:
 
 # ─── Create Order ─────────────────────────────────────────────────────────────
 
+def _register_checkout_customer(user) -> bool:
+    """Idempotently create a missing Telegram customer before any paid order.
+
+    Only a service-role request may create customers. Do not upsert an existing
+    global user ID: that could silently move another tenant's customer.
+    """
+    if not SUPABASE_SERVICE_KEY:
+        raise RuntimeError("Customer registration requires the service-role key")
+    user_id = int(user.id)
+    if user_id <= 0:
+        raise ValueError("Invalid Telegram user ID")
+    lookup = f"select=id&id=eq.{user_id}&limit=1"
+    if sb_admin_get("users", lookup):
+        return True
+    try:
+        sb_admin_post("users", {
+            "id": user_id,
+            "username": getattr(user, "username", None) or "",
+            "first_name": getattr(user, "first_name", None) or "",
+        })
+    except _httpx.HTTPStatusError as exc:
+        # A concurrent registration may have inserted the same ID. Only
+        # accept it if a fresh tenant-scoped SELECT can see the customer.
+        if exc.response.status_code != 409:
+            raise
+    return bool(sb_admin_get("users", lookup))
+
+
+async def _ensure_checkout_customer(update, context) -> bool:
+    """Block checkout with a clear retry path if registration is unavailable."""
+    try:
+        registered = await _run_supabase(
+            "users.checkout_registration",
+            lambda: _register_checkout_customer(update.effective_user),
+            attempts=1,
+        )
+        if registered:
+            return True
+    except Exception as exc:
+        log.warning("[CHECKOUT] customer registration unavailable: %s", _safe_error(exc))
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "⚠️ Akaun belum berjaya disahkan. Cuba tekan /start semula sebelum checkout. "
+        "Tiada order atau bayaran baharu dibuat.",
+        reply_markup=back_shop(),
+    )
+    return False
+
+
 async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
     """Shared checkout guard for shop, Turnitin and Berry Credits QR orders.
 
@@ -2206,6 +2256,8 @@ async def _offer_existing_unpaid_order(update, context, order=None) -> bool:
     can be viewed and a cancellation review requested; never collect payment twice.
     """
     uid = update.effective_user.id
+    if not await _ensure_checkout_customer(update, context):
+        return True
     if order is None:
         try:
             rows = await _run_supabase(
@@ -2284,39 +2336,41 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
         cached, _age = _cached_products(max_age=None)
         p = next((item for item in cached if str(item.get("id")) == str(product_id)), None)
 
-    # Live revalidation to avoid stale stock/price risks before insert
+    # Never accept a cached-only product at checkout, even if its menu was shown.
     try:
         rows = await _run_supabase(
             f"products.order_fetch id={product_id}",
             lambda: sb_get(
                 "products",
-                f"select=id,name,stock,price,auto_delivery&id=eq.{product_id}&limit=1",
+                f"select=id,name,stock,price,auto_delivery,is_active,status&id=eq.{product_id}&limit=1",
             ),
         )
-        live_p = rows[0] if rows else None
-        if live_p:
-            p = {**(p or {}), **live_p}
+        if not rows:
+            raise LookupError("Product missing from active tenant")
+        p = {**(p or {}), **rows[0]}
     except Exception as exc:
-        if p:
-            log.warning(f"Supabase create_order product live-check fallback id={product_id}: {_safe_error(exc)}")
-        else:
-            context.user_data.pop(lock_user, None)
-            log.warning(f"Supabase create_order fetch product_id={product_id}: {_safe_error(exc)}", exc_info=True)
-            await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-            err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
-            track_flow_message(context, err_msg, "error_message")
-            return
-
-    if not p:
         context.user_data.pop(lock_user, None)
+        log.warning("[CREATE_ORDER] live product validation failed id=%s: %s",
+                    product_id, _safe_error(exc))
         await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
-        err_msg = await context.bot.send_message(chat_id, "⚠️ Ralat berlaku. Sila cuba lagi atau tekan 💬 Support dalam bot", reply_markup=back_shop())
+        err_msg = await context.bot.send_message(
+            chat_id, "⚠️ Tak dapat semak produk sekarang. Cuba lagi selepas beberapa saat.",
+            reply_markup=back_shop(),
+        )
         track_flow_message(context, err_msg, "error_message")
+        return
+    if (p.get("is_active") is False
+            or str(p.get("status", "active")).lower() in ("inactive", "deleted")):
+        context.user_data.pop(lock_user, None)
+        await context.bot.send_message(
+            chat_id, "⚠️ Produk ini tidak lagi tersedia. Sila pilih produk lain.",
+            reply_markup=back_shop(),
+        )
         return
 
     # For variant orders the stock was already validated in on_button; only
     # check product-level stock for non-variant orders.
-    if variant_price is None and p["stock"] < qty:
+    if variant_price is None and int(p.get("stock") or 0) < qty:
         context.user_data.pop(lock_user, None)
         await delete_flow_messages(context, context.bot, chat_id, user.id, ["error_message"])
         err_msg = await context.bot.send_message(chat_id, "⚠️ Stok tidak mencukupi!", reply_markup=back_shop())
@@ -2325,6 +2379,13 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
 
     if variant_price is not None:
         _variant_id = context.user_data.get("selected_variant_id") or None
+        if not _variant_id:
+            context.user_data.pop(lock_user, None)
+            await context.bot.send_message(
+                chat_id, "⚠️ Sesi pakej tamat. Sila pilih variant semula.",
+                reply_markup=back_shop(),
+            )
+            return
         if _variant_id:
             try:
                 var_rows = await _run_supabase(
@@ -2396,7 +2457,12 @@ async def create_order(update: Update, context: ContextTypes.DEFAULT_TYPE, produ
     product_name  = f"{p['name']} — {variant_label}" if variant_label else p["name"]
     total         = round(price_to_use * qty, 2)
     print(f"[CREATE_ORDER] Inserting order {order_id} total=RM{total} product_name={product_name!r}")
-    _variant_id = context.user_data.get("selected_variant_id") or None
+    # Only a confirmed variant purchase may carry a variant ID.
+    _variant_id = (context.user_data.get("selected_variant_id")
+                   if variant_price is not None else None)
+    if variant_price is None:
+        context.user_data.pop("selected_variant_id", None)
+        context.user_data.pop("selected_variant_desc", None)
     try:
         inserted_rows = await _run_supabase(
             f"orders.insert id={order_id}",
@@ -2803,11 +2869,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         def save_receipt():
-            sb_patch(
+            changed = sb_patch(
                 "orders",
                 f"id=eq.{order_id}&user_id=eq.{user.id}&status=eq.pending",
                 {"receipt_file_id": file_id, "status": "waiting_approval"},
             )
+            if not changed:
+                raise ValueError("Order changed during receipt upload")
             updated = sb_get("orders", f"select=*&id=eq.{order_id}&limit=1")
             return updated[0] if updated else {}
 
@@ -3196,6 +3264,17 @@ async def _approve_order_core(context: ContextTypes.DEFAULT_TYPE, order_id: str)
             order_data = rows[0] if rows else {}
             if order_data.get("status") not in ("waiting", "waiting_approval") or not order_data.get("receipt_file_id"):
                 raise ValueError("Order not awaiting approval with a receipt")
+            if order_data.get("product_id") and order_data.get("variant_id"):
+                # Historical orders can contain a variant from another product.
+                # Never complete one or decrement another product's inventory.
+                vid = int(order_data["variant_id"])
+                matched = sb_get(
+                    "product_variants",
+                    f"select=id,product_id&id=eq.{vid}&limit=1",
+                )
+                if (not matched
+                        or int(matched[0]["product_id"]) != int(order_data["product_id"])):
+                    raise ValueError("Order variant/product mismatch; manual review required")
             changed = sb_patch(
                 "orders",
                 f"id=eq.{order_id}&status=in.(waiting,waiting_approval)&receipt_file_id=not.is.null",
