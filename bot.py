@@ -2111,6 +2111,7 @@ async def _start_netflix_profile(update, context, pid: int, variant: dict):
         "product_id": pid,
         "variant_id": int(variant["id"]),
         "variant_label": str(variant["variant_name"]).strip(),
+        "variant_price": float(variant["price"]),
     }
     await _safe_edit_or_send(
         update.callback_query,
@@ -2190,6 +2191,7 @@ async def _handle_netflix_profile_text(update, context, text: str) -> bool:
     await create_order(
         update, context, int(flow["product_id"]), 1,
         variant_label=flow["variant_label"],
+        variant_price=float(flow["variant_price"]),
         netflix_profile=profile,
     )
     return True
