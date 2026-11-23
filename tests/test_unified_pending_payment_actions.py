@@ -37,6 +37,7 @@ def extract_pending_guard(fake_orders):
     track = Mock()
     namespace = {
         "_run_supabase": run_supabase,
+        "_ensure_checkout_customer": AsyncMock(return_value=True),
         "sb_get": lambda _table, _query: fake_orders,
         "_safe_error": str,
         "log": Mock(),
